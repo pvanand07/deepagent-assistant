@@ -1,9 +1,9 @@
 """Interactive REPL for the sandboxed deep agent.
 
 Usage:
-    python cli.py
-    python cli.py --model "openai/gpt-5"
-    python cli.py --network   # allow the sandbox outbound internet access
+    PYTHONPATH=src python src/cli.py
+    PYTHONPATH=src python src/cli.py --model "openai/gpt-5"
+    PYTHONPATH=src python src/cli.py --network   # allow the sandbox outbound internet access
 
 Type 'exit' or Ctrl-D to quit. Type '/reset' to clear conversation history
 (the sandbox filesystem persists across turns within one run either way).

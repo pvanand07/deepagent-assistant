@@ -19,19 +19,21 @@ runs in a fresh `bwrap` sandbox with:
 - **Its own PID namespace** — can't see or signal host processes.
 - **An unprivileged user namespace** — no real privilege escalation path.
 - **Best-effort memory/process `ulimit` caps** (1024MB / 64 procs by
-  default) — see the note in `bubblewrap_sandbox.py` about pairing this
+  default) — see the note in `src/bubblewrap_sandbox.py` about pairing this
   with `systemd-run --scope` + cgroups v2 for hard quota enforcement under
   untrusted/adversarial load.
 
 ## Files
 
-| File                    | Purpose                                                        |
+| Path                    | Purpose                                                        |
 |-------------------------|-----------------------------------------------------------------|
-| `bubblewrap_sandbox.py` | `BubblewrapSandbox` — the sandboxed backend (`BaseSandbox` impl) |
-| `openrouter_model.py`   | Builds a `ChatOpenAI` client pointed at OpenRouter               |
-| `agent.py`              | Wires model + sandbox into a `deepagents` agent (+ example sub-agent) |
-| `cli.py`                | Interactive terminal chat loop (token-level streaming)          |
-| `streaming.py`          | Reusable `stream_agent_turn()` helper for v2 message streaming  |
+| `src/bubblewrap_sandbox.py` | `BubblewrapSandbox` — the sandboxed backend (`BaseSandbox` impl) |
+| `src/openrouter_model.py`   | Builds a `ChatOpenAI` client pointed at OpenRouter               |
+| `src/agent.py`              | Wires model + sandbox into a `deepagents` agent (+ example sub-agent) |
+| `src/cli.py`                | Interactive terminal chat loop (token-level streaming)          |
+| `src/streaming.py`          | Reusable `stream_agent_turn()` helper for v2 message streaming  |
+| `src/api.py`                | FastAPI HTTP API for the web GUI                                |
+| `frontend/`             | Static HTML/CSS/JS GUI                                          |
 | `Dockerfile`            | Linux runtime image with bubblewrap and CLI tools               |
 | `docker-compose.yml`    | Runs the agent with namespace-friendly security opts            |
 | `workspace/`            | Host directory mounted as the agent's writable `/workspace`   |
@@ -53,7 +55,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Inside the container you get the same `cli.py` REPL as native Linux. Type your
+Inside the container you get the same `src/cli.py` REPL as native Linux. Type your
 request, `/reset` to clear history, or `exit` to quit.
 
 ### Workspace
@@ -64,7 +66,7 @@ restarts — only conversation history resets when you quit or run `/reset`.
 
 ### Network access
 
-By default the sandbox has **no** outbound network (same as native `cli.py`).
+By default the sandbox has **no** outbound network (same as native `src/cli.py`).
 To allow pip, curl, git clone, etc., either:
 
 ```bash
@@ -75,7 +77,7 @@ DEEPAGENT_NETWORK_ACCESS=true docker compose up --build
 DEEPAGENT_NETWORK_ACCESS=true
 ```
 
-You can also pass `--network` when invoking `cli.py` directly inside the
+You can also pass `--network` when invoking `src/cli.py` directly inside the
 container (overrides the env var).
 
 ### Configuration
@@ -92,8 +94,8 @@ Compose passes these from your `.env` file:
 Model and flags can also be passed at runtime:
 
 ```bash
-docker compose run --rm deepagent python cli.py --model "openai/gpt-5"
-docker compose run --rm deepagent python cli.py --network
+docker compose run --rm deepagent python src/cli.py --model "openai/gpt-5"
+docker compose run --rm deepagent python src/cli.py --network
 ```
 
 Use `docker compose up` for an attached interactive session; use
@@ -125,8 +127,9 @@ pip install -r requirements.txt
 cp .env.example .env
 # edit .env and set OPENROUTER_API_KEY
 
-# 4. Run
-python cli.py
+# 4. Run (set PYTHONPATH so imports resolve from src/)
+export PYTHONPATH=src
+python src/cli.py
 ```
 
 Other distros:
@@ -139,10 +142,11 @@ Other distros:
 ## Usage (native Linux)
 
 ```bash
-python cli.py                                  # default model, no network
-python cli.py --model "openai/gpt-5"           # pick a different OpenRouter model
-python cli.py --network                        # allow the sandbox outbound internet
-python cli.py --workdir /home/me/agent-scratch # persist the sandbox workspace across runs
+export PYTHONPATH=src
+python src/cli.py                                  # default model, no network
+python src/cli.py --model "openai/gpt-5"           # pick a different OpenRouter model
+python src/cli.py --network                        # allow the sandbox outbound internet
+python src/cli.py --workdir /home/me/agent-scratch # persist the sandbox workspace across runs
 ```
 
 Inside the REPL:
@@ -158,6 +162,7 @@ Inside the REPL:
 from agent import build_agent
 from streaming import stream_agent_turn
 
+# Run with PYTHONPATH=src (or from a shell where src/ is on PYTHONPATH)
 agent, sandbox, mcp_meta = build_agent(model_name="anthropic/claude-sonnet-4.5", network=False)
 history = [{"role": "user", "content": "Write and run a fibonacci script"}]
 history = stream_agent_turn(agent, history)  # token-level streaming to stdout
@@ -173,12 +178,12 @@ print(result["messages"][-1].content)
 
 ## Customizing
 
-- **Sub-agents**: edit `SUBAGENTS` in `agent.py` (see the `code-reviewer`
+- **Sub-agents**: edit `SUBAGENTS` in `src/agent.py` (see the `code-reviewer`
   example) to add more predefined, on-demand specialist agents — this
   follows the same task-delegation pattern as
   [`deep-agents-from-scratch`](https://github.com/langchain-ai/deep-agents-from-scratch).
 - **Resource limits**: `BubblewrapSandbox(rlimit_as_mb=..., rlimit_nproc=...)`
-  in `agent.py`.
+  in `src/agent.py`.
 - **Extra read-only mounts** (e.g. to expose a shared dataset dir):
   `BubblewrapSandbox(extra_ro_binds=["/path/on/host"])`.
 - **Model**: any tool-calling model id from https://openrouter.ai/models,

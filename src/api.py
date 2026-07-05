@@ -1,7 +1,7 @@
 """FastAPI HTTP API for the sandboxed deep agent (HTML GUI backend).
 
-Run:
-    uvicorn api:app --host 0.0.0.0 --port 8010 --reload
+Run (from repo root):
+    PYTHONPATH=src uvicorn api:app --host 0.0.0.0 --port 8010 --reload
 """
 
 from __future__ import annotations
@@ -336,6 +336,6 @@ def get_config() -> dict[str, Any]:
     }
 
 
-_FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
+_FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 if _FRONTEND_DIR.is_dir():
     app.mount("/", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
