@@ -107,9 +107,28 @@
     .markdown-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
     .markdown-body hr { border: 0; border-top: 1px solid var(--border); margin: 1.25em 0; }
     .markdown-body img { max-width: 100%; height: auto; border-radius: 0.375rem; }
+    .markdown-body .preview-action-btn {
+      display: inline-flex; align-items: center; gap: 0.375rem;
+      margin: 0.5em 0.25em 0.5em 0; padding: 0.375rem 0.75rem;
+      font: inherit; font-size: 0.8125rem; font-weight: 500; line-height: 1.25;
+      color: var(--foreground); background: var(--muted);
+      border: 1px solid var(--border); border-radius: 0.5rem; cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .markdown-body .preview-action-btn:hover {
+      background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+    }
 
     .preview-code pre { margin: 0; height: 100%; overflow: auto; padding: 1rem; font-size: 0.75rem; line-height: 1.25rem; }
     .preview-code code { font-family: var(--font-mono); }
+
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
   </style>
 </head>
 <body class="h-full bg-background text-foreground font-sans">
@@ -118,34 +137,30 @@
   <main class="flex h-screen bg-background">
 
     <!-- ======================= Sidebar ======================= -->
-    <aside class="flex h-full w-64 shrink-0 flex-col border-r border-border bg-muted/40">
+    <aside class="sidebar-panel relative flex h-full w-64 shrink-0 flex-col overflow-hidden border-r border-border">
 
-      <!-- Brand -->
-      <div class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
+      <div class="liquid-glass absolute inset-x-0 top-0 z-20 flex h-12 shrink-0 items-center gap-2 px-4">
         <span class="grid size-6 shrink-0 place-items-center rounded-md bg-foreground text-background">
           <p-icon name="cube" :size="14" />
         </span>
         <span class="truncate text-sm font-semibold tracking-tight">Deep Agent</span>
+        <div class="ml-auto flex items-center gap-0.5">
+          <button type="button" @click="newChat" :disabled="streaming" :class="iconBtn"
+            title="New chat" aria-label="New chat">
+            <p-icon name="plus" :size="13" />
+          </button>
+          <button type="button" @click="loadSessionList" :disabled="sessionListLoading" :class="iconBtn"
+            title="Refresh chat list" aria-label="Refresh chat list">
+            <p-icon name="refresh" :size="13" :class="sessionListLoading ? 'animate-spin' : ''" />
+          </button>
+        </div>
       </div>
 
-      <div class="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+      <div class="scrollbar-hide min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-12">
 
         <!-- Chat history -->
         <div>
-          <div class="mb-1 flex items-center justify-between px-2">
-            <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Chats</p>
-            <div class="flex items-center gap-0.5">
-              <button type="button" @click="newChat" :disabled="streaming" :class="iconBtn"
-                title="New chat" aria-label="New chat">
-                <p-icon name="plus" :size="13" />
-              </button>
-              <button type="button" @click="loadSessionList" :disabled="sessionListLoading" :class="iconBtn"
-                title="Refresh chat list" aria-label="Refresh chat list">
-                <p-icon name="refresh" :size="13" :class="sessionListLoading ? 'animate-spin' : ''" />
-              </button>
-            </div>
-          </div>
-          <ul class="flex max-h-64 flex-col gap-px overflow-y-auto text-xs">
+          <ul class="flex flex-col gap-px text-xs">
             <li v-if="sessionListLoading && !sessionList.length" class="px-2 py-1 text-muted-foreground/60">Loading chats…</li>
             <li v-else-if="!sessionList.length" class="px-2 py-1 text-muted-foreground/60">No chats yet</li>
             <li v-for="chat in sessionList" :key="chat.id">
@@ -205,7 +220,7 @@
     </aside>
 
     <!-- ======================= Chat panel ======================= -->
-    <div class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+    <div class="flex h-full min-w-0 flex-1 flex-col min-h-0">
       <div class="relative mx-auto flex min-h-0 w-full flex-1 flex-col" style="max-width: 800px;">
 
         <!-- Header -->
@@ -217,7 +232,7 @@
 
           <!-- Session info popover -->
           <div class="relative" ref="sessionInfoEl">
-            <button type="button" @click.stop="sessionInfoOpen = !sessionInfoOpen" :disabled="!session" :class="iconBtn"
+            <button type="button" @click="onSessionInfoClick" :disabled="!session" :class="iconBtn"
               title="Session details" aria-label="Session details" :aria-expanded="String(sessionInfoOpen)">
               <p-icon name="info" :size="16" />
             </button>
@@ -310,7 +325,7 @@
 
         <!-- Composer -->
         <form @submit.prevent="submit"
-          class="absolute inset-x-0 bottom-0 z-20 bg-linear-to-t from-background via-background/95 to-transparent px-4 pb-4 pt-12">
+          class="pointer-events-auto absolute inset-x-0 bottom-0 z-40 bg-linear-to-t from-background via-background/95 to-transparent px-4 pb-4 pt-12">
           <div class="rounded-xl border border-border bg-background p-3 shadow-sm transition-colors focus-within:border-ring/50">
             <textarea ref="inputEl" v-model="draft" rows="1" :disabled="streaming || !session"
               placeholder="What do you want to build?"
@@ -320,9 +335,9 @@
               style="outline: none;"></textarea>
 
             <div class="flex items-center justify-between gap-2 pt-2">
-              <div class="flex min-w-0 items-center gap-1">
+              <div class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
                 <!-- model chip -->
-                <span class="inline-flex h-8 max-w-56 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground"
+                <span class="inline-flex h-8 min-w-0 shrink items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground max-w-40"
                   :title="'Model: ' + modelLabel">
                   <p-icon name="cpu" :size="14" class="shrink-0 text-muted-foreground/70" />
                   <span class="min-w-0 truncate">{{ modelLabel }}</span>
@@ -331,37 +346,8 @@
                 <span class="h-4 w-px shrink-0 bg-border" aria-hidden="true"></span>
 
                 <!-- working directory picker -->
-                <div class="relative max-w-52 min-w-0" ref="pwdPickerEl">
-                  <button type="button" @click.stop="openPwdMenu" :disabled="streaming"
-                    class="inline-flex h-8 w-full min-w-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-haspopup="listbox" :aria-expanded="String(pwdMenuOpen)" title="Working directory for this message">
-                    <p-icon name="folder" :size="14" class="shrink-0 text-muted-foreground/70" />
-                    <span class="min-w-0 flex-1 truncate text-left">{{ selectedPwd || 'Workspace root' }}</span>
-                    <p-icon name="caret-down" :size="11"
-                      class="shrink-0 text-muted-foreground/50 transition-transform duration-150"
-                      :class="{ 'rotate-180': pwdMenuOpen }" />
-                  </button>
-                  <div v-if="pwdMenuOpen"
-                    class="absolute bottom-full left-0 z-40 mb-2 min-w-full overflow-hidden rounded-xl border border-border bg-background p-1 shadow-lg"
-                    role="listbox" aria-label="Working directory">
-                    <ul class="flex max-h-56 flex-col gap-0.5 overflow-y-auto">
-                      <li v-for="folder in workspaceFolders" :key="folder || '__root__'">
-                        <button type="button" role="option" :aria-selected="String(folder === selectedPwd)"
-                          @click="selectPwd(folder)"
-                          class="flex w-full min-w-0 items-center gap-2 rounded-lg py-1.5 pr-2 text-left text-xs leading-5 transition-colors"
-                          :class="folder === selectedPwd
-                            ? 'bg-accent-soft font-medium text-accent'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
-                          :style="{ paddingLeft: (folder ? folder.split('/').length - 1 : 0) * 0.75 + 0.625 + 'rem' }">
-                          <p-icon name="folder" :size="14" class="shrink-0"
-                            :class="folder === selectedPwd ? 'text-accent' : 'text-muted-foreground/70'" />
-                          <span class="min-w-0 flex-1 truncate">{{ folder ? folder.split('/').pop() : 'Workspace root' }}</span>
-                          <p-icon v-if="folder === selectedPwd" name="check" :size="12" class="shrink-0 text-accent" />
-                        </button>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
+                <pwd-picker ref="pwdPickerEl" :streaming="streaming" :folders="workspaceFolders"
+                  :selected="selectedPwd" :close-signal="pwdCloseSignal" />
               </div>
 
               <div class="flex shrink-0 items-center gap-2">
@@ -588,6 +574,38 @@ function prettyJson(text) {
   catch { return text; }
 }
 
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function normalizeWorkspacePath(path) {
+  return String(path || "")
+    .trim()
+    .replace(/^\/+/, "")
+    .replace(/^workspace\//, "");
+}
+
+function previewTagToButton(attrStr, innerLabel) {
+  const path = attrStr.match(/path\s*=\s*["']([^"']+)["']/i)?.[1];
+  const labelAttr = attrStr.match(/label\s*=\s*["']([^"']+)["']/i)?.[1];
+  const label = (innerLabel || labelAttr || "Open preview").trim();
+  const cleanPath = normalizeWorkspacePath(path);
+  if (!cleanPath) return "";
+  return `<button type="button" class="preview-action-btn" data-preview-path="${escapeHtml(cleanPath)}">${escapeHtml(label)}</button>`;
+}
+
+/** Expand <preview> XML tags from assistant messages into clickable UI buttons. */
+function expandPreviewTags(text) {
+  if (!text) return text;
+  return text
+    .replace(/<preview\s+([^>]*?)\/>/gi, (_, attrs) => previewTagToButton(attrs))
+    .replace(/<preview\s+([^>]*)>([\s\S]*?)<\/preview>/gi, (_, attrs, label) => previewTagToButton(attrs, label));
+}
+
 marked.setOptions({
   breaks: true,
   gfm: true,
@@ -693,12 +711,116 @@ const FileNode = {
   `,
 };
 
+const PwdPicker = {
+  name: "PwdPicker",
+  components: { PIcon },
+  props: {
+    streaming: { type: Boolean, default: false },
+    folders: { type: Array, default: () => [""] },
+    selected: { type: String, default: "" },
+    closeSignal: { type: Number, default: 0 },
+  },
+  emits: ["select"],
+  data() {
+    return { menuOpen: false, menuStyle: {} };
+  },
+  computed: {
+    label() {
+      return this.selected ? this.selected.split("/").pop() : "Workspace root";
+    },
+  },
+  watch: {
+    closeSignal() {
+      this.menuOpen = false;
+    },
+    streaming(val) {
+      if (val) this.menuOpen = false;
+    },
+    menuOpen(val) {
+      if (val) this.$nextTick(() => this.positionMenu());
+    },
+    folders() {
+      if (this.menuOpen) this.$nextTick(() => this.positionMenu());
+    },
+  },
+  mounted() {
+    this._onDocClick = (e) => {
+      if (!this.menuOpen) return;
+      const target = e.target;
+      if (target.closest("[data-pwd-menu]") || this.$el.contains(target)) return;
+      this.menuOpen = false;
+    };
+    this._onLayout = () => { if (this.menuOpen) this.positionMenu(); };
+    document.addEventListener("click", this._onDocClick);
+    window.addEventListener("resize", this._onLayout);
+    window.addEventListener("scroll", this._onLayout, true);
+  },
+  beforeUnmount() {
+    document.removeEventListener("click", this._onDocClick);
+    window.removeEventListener("resize", this._onLayout);
+    window.removeEventListener("scroll", this._onLayout, true);
+  },
+  methods: {
+    toggle() {
+      this.menuOpen = !this.menuOpen;
+    },
+    close() {
+      this.menuOpen = false;
+    },
+    positionMenu() {
+      const r = this.$el.getBoundingClientRect();
+      this.menuStyle = {
+        position: "fixed",
+        left: `${r.left}px`,
+        bottom: `${window.innerHeight - r.top + 8}px`,
+        width: `${Math.max(r.width, 220)}px`,
+        zIndex: 200,
+      };
+    },
+  },
+  template: `
+    <div class="relative shrink-0 min-w-[8.5rem] max-w-52">
+      <button type="button" data-pwd-picker-trigger :disabled="streaming"
+        class="inline-flex h-8 w-full items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        aria-haspopup="listbox" :aria-expanded="String(menuOpen)" title="Working directory for this message">
+        <p-icon name="folder" :size="14" class="shrink-0 text-muted-foreground/70" />
+        <span class="min-w-0 truncate">{{ label }}</span>
+        <p-icon name="caret-down" :size="11"
+          class="shrink-0 text-muted-foreground/50 transition-transform duration-150"
+          :class="{ 'rotate-180': menuOpen }" />
+      </button>
+      <teleport to="body">
+        <div v-if="menuOpen" :style="menuStyle"
+          class="overflow-hidden rounded-xl border border-border bg-background p-1 shadow-lg"
+          role="listbox" aria-label="Working directory" data-pwd-menu>
+          <ul class="scrollbar-hide flex max-h-56 flex-col gap-0.5 overflow-y-auto">
+            <li v-for="folder in folders" :key="folder || '__root__'">
+              <button type="button" role="option" data-pwd-option :data-folder="folder"
+                :aria-selected="String(folder === selected)"
+                class="flex w-full min-w-0 items-center gap-2 rounded-lg py-1.5 pr-2 text-left text-xs leading-5 transition-colors"
+                :class="folder === selected
+                  ? 'bg-accent-soft font-medium text-accent'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                :style="{ paddingLeft: (folder ? folder.split('/').length - 1 : 0) * 0.75 + 0.625 + 'rem' }">
+                <p-icon name="folder" :size="14" class="shrink-0"
+                  :class="folder === selected ? 'text-accent' : 'text-muted-foreground/70'" />
+                <span class="min-w-0 flex-1 truncate">{{ folder ? folder.split('/').pop() : 'Workspace root' }}</span>
+                <p-icon v-if="folder === selected" name="check" :size="12" class="shrink-0 text-accent" />
+              </button>
+            </li>
+          </ul>
+        </div>
+      </teleport>
+    </div>
+  `,
+};
+
 /* ---------------------------------------------------------------- */
 /* App                                                               */
 /* ---------------------------------------------------------------- */
 
 createApp({
-  components: { FileNode, PIcon },
+  components: { FileNode, PIcon, PwdPicker },
   setup() {
     /* ---------- session / config ---------- */
     const config = ref(null);
@@ -742,7 +864,7 @@ createApp({
     const workspaceFolders = ref([""]);
     const workspaceFoldersLoaded = ref(false);
     const selectedPwd = ref("");
-    const pwdMenuOpen = ref(false);
+    const pwdCloseSignal = ref(0);
     const pwdPickerEl = ref(null);
 
     /* ---------- preview ---------- */
@@ -824,7 +946,8 @@ createApp({
 
     function renderMarkdown(text) {
       if (!text) return "";
-      return DOMPurify.sanitize(marked.parse(text), { ADD_ATTR: ["target"] });
+      const html = marked.parse(expandPreviewTags(text));
+      return DOMPurify.sanitize(html, { ADD_ATTR: ["target", "data-preview-path"] });
     }
 
     async function scrollToBottom() {
@@ -940,7 +1063,7 @@ createApp({
       expandedFolders.clear();
       for (const p of cached.expandedFolders) expandedFolders.add(p);
       workspaceFolders.value = cached.workspaceFolders;
-      workspaceFoldersLoaded.value = cached.workspaceFoldersLoaded;
+      workspaceFoldersLoaded.value = cached.workspaceFoldersLoaded && cached.workspaceFolders.length > 1;
       selectedPwd.value = cached.selectedPwd;
       filesError.value = "";
       return true;
@@ -1019,23 +1142,45 @@ createApp({
         workspaceFolders.value = data.folders?.length ? data.folders : [""];
         workspaceFoldersLoaded.value = true;
       } catch {
-        workspaceFolders.value = [""];
-        workspaceFoldersLoaded.value = false;
+        workspaceFolders.value = collectFoldersFromTree();
+        workspaceFoldersLoaded.value = workspaceFolders.value.length > 1;
       }
       if (!workspaceFolders.value.includes(previous)) selectedPwd.value = "";
       snapshotWorkspace();
     }
 
-    async function openPwdMenu() {
-      pwdMenuOpen.value = !pwdMenuOpen.value;
-      if (pwdMenuOpen.value && !workspaceFoldersLoaded.value) {
-        await loadWorkspaceFolders();
-      }
+    function collectFoldersFromTree() {
+      const folders = new Set([""]);
+      const walk = (entries) => {
+        for (const entry of entries || []) {
+          if (!entry?.is_dir) continue;
+          folders.add(entry.path);
+          if (childrenMap[entry.path]) walk(childrenMap[entry.path]);
+        }
+      };
+      walk(fileTree.value);
+      return [...folders].sort((a, b) => a.localeCompare(b));
+    }
+
+    function closePwdMenu() {
+      pwdCloseSignal.value += 1;
+      pwdPickerEl.value?.close?.();
+    }
+
+    function onPwdPickerOpen() {
+      const fromTree = collectFoldersFromTree();
+      if (fromTree.length > 1) workspaceFolders.value = fromTree;
+      loadWorkspaceFolders();
+    }
+
+    function onSessionInfoClick(event) {
+      event.stopPropagation();
+      sessionInfoOpen.value = !sessionInfoOpen.value;
     }
 
     function selectPwd(folder) {
       selectedPwd.value = folder || "";
-      pwdMenuOpen.value = false;
+      closePwdMenu();
       snapshotWorkspace();
     }
 
@@ -1194,6 +1339,7 @@ createApp({
       } else {
         await loadFiles({ force: true });
       }
+      loadWorkspaceFolders().catch(() => {});
     }
 
     async function switchSession(id) {
@@ -1251,6 +1397,7 @@ createApp({
       snapshotWorkspace(sessionId.value);
       await loadFiles({ force: true });
       await loadSessionList();
+      loadWorkspaceFolders().catch(() => {});
     }
 
     async function ensureSession() {
@@ -1316,7 +1463,7 @@ createApp({
 
     async function streamChat(message) {
       streaming.value = true;
-      pwdMenuOpen.value = false;
+      closePwdMenu();
       sessionInfoOpen.value = false;
       lastTurnUsage.value = null;
       usageEstimate.value = null;
@@ -1446,22 +1593,43 @@ createApp({
     }
 
     /* ---------- global listeners ---------- */
-    function onDocClick(e) {
-      if (pwdMenuOpen.value && pwdPickerEl.value && !pwdPickerEl.value.contains(e.target)) {
-        pwdMenuOpen.value = false;
+    function onPwdPickerCapture(e) {
+      const target = e.target;
+      const trigger = target.closest("[data-pwd-picker-trigger]");
+      if (trigger && !trigger.disabled && pwdPickerEl.value) {
+        e.stopPropagation();
+        pwdPickerEl.value.toggle();
+        if (pwdPickerEl.value.menuOpen) onPwdPickerOpen();
+        return;
       }
-      if (sessionInfoOpen.value && sessionInfoEl.value && !sessionInfoEl.value.contains(e.target)) {
+      const option = target.closest("[data-pwd-option]");
+      if (option) {
+        e.stopPropagation();
+        selectPwd(option.dataset.folder || "");
+      }
+    }
+
+    function onDocClick(e) {
+      const target = e.target;
+      const previewBtn = target.closest("[data-preview-path]");
+      if (previewBtn && scrollEl.value?.contains(previewBtn)) {
+        const path = previewBtn.dataset.previewPath;
+        if (path) previewWorkspaceFile(path);
+        return;
+      }
+      if (sessionInfoOpen.value && sessionInfoEl.value && !sessionInfoEl.value.contains(target)) {
         sessionInfoOpen.value = false;
       }
     }
     function onKeydown(e) {
       if (e.key === "Escape") {
-        pwdMenuOpen.value = false;
+        closePwdMenu();
         sessionInfoOpen.value = false;
       }
     }
 
     onMounted(() => {
+      document.addEventListener("click", onPwdPickerCapture, true);
       document.addEventListener("click", onDocClick);
       document.addEventListener("keydown", onKeydown);
       ensureSession().catch((e) => {
@@ -1471,6 +1639,7 @@ createApp({
     });
 
     onBeforeUnmount(() => {
+      document.removeEventListener("click", onPwdPickerCapture, true);
       document.removeEventListener("click", onDocClick);
       document.removeEventListener("keydown", onKeydown);
       stopToolTimer();
@@ -1493,7 +1662,7 @@ createApp({
       fileTree, childrenMap, expandedFolders, filesLoading, filesError,
       loadFiles, toggleFolder,
       // pwd
-      workspaceFolders, selectedPwd, pwdMenuOpen, pwdPickerEl, selectPwd, openPwdMenu,
+      workspaceFolders, selectedPwd, pwdCloseSignal, pwdPickerEl, selectPwd, onSessionInfoClick,
       // preview
       preview, previewCollapsed, previewExpanded, previewWidth,
       previewWorkspaceFile, downloadWorkspaceFile, openPreviewInTab,

@@ -84,6 +84,24 @@ Final response:
 - Summarize what changed, where it changed, and what validation ran.
 - State any important assumptions, skipped checks, or residual risks.
 - Be concise; include only the next step that meaningfully helps the user.
+
+UI preview buttons:
+- When you create or modify a previewable workspace file (HTML, CSS, Markdown,
+  images, etc.), you may offer a one-click preview button in your reply using
+  this XML tag (rendered as a button that opens the preview pane):
+
+  <preview path="relative/workspace/path">Button label</preview>
+
+  Self-closing form (label via attribute):
+
+  <preview path="relative/workspace/path" label="Button label" />
+
+- Rules:
+  - `path` is required and must be relative to /workspace (no leading slash).
+  - Only use for files that exist in the workspace at reply time.
+  - Use a short, action-oriented label (e.g. "View preview", "Open landing page").
+  - Place the tag after explaining what was built; one tag per file is enough.
+  - Do not wrap the tag in code fences — it must appear as raw markup in prose.
 """
 
 # Example of a predefined, on-demand sub-agent (see the task-delegation

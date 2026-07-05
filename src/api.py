@@ -118,6 +118,47 @@ _PREVIEWABLE_IMAGE_SUFFIXES = {
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".avif",
 }
 
+# Directory names skipped when listing workspace folders for the pwd picker.
+_SKIP_FOLDER_NAMES = frozenset({
+    "__pycache__",
+    "node_modules",
+    "venv",
+    ".venv",
+    "dist",
+    "build",
+    "target",
+    "site-packages",
+})
+
+
+def _should_skip_folder_dir(name: str) -> bool:
+    return name.startswith(".") or name in _SKIP_FOLDER_NAMES
+
+
+def _list_workspace_folders(workdir: Path) -> list[str]:
+    """Return workspace-relative folder paths, pruning hidden and cache trees."""
+    root = workdir.resolve()
+    folders = [""]
+    stack: list[Path] = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            child_dirs: list[Path] = []
+            with os.scandir(current) as entries:
+                for entry in entries:
+                    if not entry.is_dir(follow_symlinks=False):
+                        continue
+                    if _should_skip_folder_dir(entry.name):
+                        continue
+                    child = Path(entry.path)
+                    child_dirs.append(child)
+                    folders.append(child.relative_to(root).as_posix())
+            stack.extend(sorted(child_dirs, key=lambda p: p.name.lower(), reverse=True))
+        except OSError:
+            continue
+    folders.sort(key=str.lower)
+    return folders
+
 
 def _media_type_for(path: Path) -> str:
     guessed, _ = mimetypes.guess_type(path.name)
@@ -265,18 +306,31 @@ def list_files(
     if not target.is_dir():
         raise HTTPException(status_code=400, detail="Not a directory")
 
-    entries: list[FileEntry] = []
-    for child in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
-        rel = child.relative_to(Path(session.sandbox._workdir).resolve())
-        entries.append(
-            FileEntry(
-                path=str(rel).replace("\\", "/"),
-                name=child.name,
-                is_dir=child.is_dir(),
-                size=None if child.is_dir() else child.stat().st_size,
+    workdir = Path(session.sandbox._workdir).resolve()
+    scanned: list[tuple[bool, str, FileEntry]] = []
+    with os.scandir(target) as entries:
+        for entry in entries:
+            try:
+                is_dir = entry.is_dir(follow_symlinks=False)
+            except OSError:
+                continue
+            name = entry.name
+            rel = Path(entry.path).relative_to(workdir).as_posix()
+            size: int | None = None
+            if not is_dir:
+                try:
+                    size = entry.stat(follow_symlinks=False).st_size
+                except OSError:
+                    size = 0
+            scanned.append(
+                (
+                    is_dir,
+                    name.lower(),
+                    FileEntry(path=rel, name=name, is_dir=is_dir, size=size),
+                )
             )
-        )
-    rel_path = str(target.relative_to(Path(session.sandbox._workdir).resolve())).replace("\\", "/")
+    entries = [item for _, _, item in sorted(scanned, key=lambda row: (not row[0], row[1]))]
+    rel_path = target.relative_to(workdir).as_posix()
     return FileListResponse(path=rel_path or ".", entries=entries)
 
 
@@ -327,12 +381,7 @@ def read_file_raw(
 def list_folders(session_id: str) -> FolderListResponse:
     session = _require_session(session_id)
     workdir = Path(session.sandbox._workdir).resolve()
-    folders = [""]
-    for path in sorted(workdir.rglob("*"), key=lambda p: str(p).lower()):
-        if path.is_dir():
-            rel = str(path.relative_to(workdir)).replace("\\", "/")
-            folders.append(rel)
-    return FolderListResponse(folders=folders)
+    return FolderListResponse(folders=_list_workspace_folders(workdir))
 
 
 @app.get("/api/config")
