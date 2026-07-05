@@ -7,6 +7,7 @@ Run:
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,7 +15,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from langchain_core.messages import messages_to_dict
 
@@ -117,6 +118,20 @@ def _resolve_workspace_path(session, rel_path: str) -> Path:
     except ValueError:
         raise HTTPException(status_code=400, detail="Path escapes workspace") from None
     return candidate
+
+
+_PREVIEWABLE_IMAGE_SUFFIXES = {
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".avif",
+}
+
+
+def _media_type_for(path: Path) -> str:
+    guessed, _ = mimetypes.guess_type(path.name)
+    return guessed or "application/octet-stream"
+
+
+def _is_previewable_image(path: Path) -> bool:
+    return path.suffix.lower() in _PREVIEWABLE_IMAGE_SUFFIXES
 
 
 def _validate_pwd(session, pwd: str | None) -> str | None:
@@ -270,6 +285,30 @@ def read_file(
         raise HTTPException(status_code=415, detail="Binary file cannot be displayed") from None
     rel = str(target.relative_to(Path(session.sandbox._workdir).resolve())).replace("\\", "/")
     return FileContentResponse(path=rel, content=content, size=target.stat().st_size)
+
+
+@app.get("/api/sessions/{session_id}/files/raw")
+def read_file_raw(
+    session_id: str,
+    path: str = Query(..., description="File path relative to workspace root"),
+) -> Response:
+    session = _require_session(session_id)
+    target = _resolve_workspace_path(session, path)
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    if target.is_dir():
+        raise HTTPException(status_code=400, detail="Path is a directory")
+    if not _is_previewable_image(target):
+        raise HTTPException(status_code=415, detail="File type does not support raw preview")
+    rel = str(target.relative_to(Path(session.sandbox._workdir).resolve())).replace("\\", "/")
+    return Response(
+        content=target.read_bytes(),
+        media_type=_media_type_for(target),
+        headers={
+            "Content-Disposition": f'inline; filename="{target.name}"',
+            "X-File-Path": rel,
+        },
+    )
 
 
 @app.get("/api/sessions/{session_id}/folders", response_model=FolderListResponse)

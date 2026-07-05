@@ -8,6 +8,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/styles/github.min.css" />
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -141,6 +143,9 @@
     .markdown-body a { color: var(--primary); text-decoration: underline; }
     .markdown-body hr { border: 0; border-top: 1px solid var(--border); margin: 1.25em 0; }
     .markdown-body img { max-width: 100%; height: auto; border-radius: 0.375rem; }
+
+    #preview-code pre { margin: 0; height: 100%; overflow: auto; padding: 1rem; font-size: 0.75rem; line-height: 1.25rem; }
+    #preview-code code { font-family: var(--font-mono); }
   </style>
 </head>
 <body class="h-full bg-background text-foreground font-sans">
@@ -371,6 +376,10 @@
         </div>
         <iframe id="preview-frame" class="hidden h-full w-full border-0 bg-background" title="Workspace file preview"></iframe>
         <div id="preview-markdown" class="markdown-body hidden h-full overflow-auto p-4"></div>
+        <div id="preview-code" class="hidden h-full overflow-auto bg-background"></div>
+        <div id="preview-image-wrap" class="hidden flex h-full items-center justify-center overflow-auto p-4">
+          <img id="preview-image" class="max-h-full max-w-full rounded-md object-contain shadow-sm" alt="" />
+        </div>
         <pre id="preview-text" class="hidden h-full overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-5 text-foreground"></pre>
       </div>
     </aside>
@@ -410,6 +419,9 @@
       previewEmpty: document.getElementById("preview-empty"),
       previewFrame: document.getElementById("preview-frame"),
       previewMarkdown: document.getElementById("preview-markdown"),
+      previewCode: document.getElementById("preview-code"),
+      previewImageWrap: document.getElementById("preview-image-wrap"),
+      previewImage: document.getElementById("preview-image"),
       previewText: document.getElementById("preview-text"),
       previewTitle: document.getElementById("preview-title"),
       previewSubtitle: document.getElementById("preview-subtitle"),
@@ -592,15 +604,230 @@
       return (path || "").split("/").filter(Boolean).pop() || "file";
     }
 
+    function fileExtension(path) {
+      return fileName(path).toLowerCase().split(".").pop() || "";
+    }
+
+    const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"]);
+    const IMAGE_MIME = {
+      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+      webp: "image/webp", bmp: "image/bmp", ico: "image/x-icon", avif: "image/avif",
+    };
+
+    const CODE_LANG = {
+      js: "javascript", mjs: "javascript", cjs: "javascript", jsx: "javascript",
+      ts: "typescript", tsx: "typescript",
+      py: "python", rb: "ruby", rs: "rust", go: "go",
+      java: "java", kt: "kotlin", swift: "swift", php: "php",
+      sh: "bash", bash: "bash", zsh: "bash",
+      yaml: "yaml", yml: "yaml", toml: "ini", ini: "ini",
+      xml: "xml", sql: "sql", graphql: "graphql", gql: "graphql",
+      dockerfile: "dockerfile", makefile: "makefile",
+      scss: "scss", less: "less",
+      c: "c", h: "c", cpp: "cpp", cc: "cpp", cxx: "cpp", hpp: "cpp",
+      cs: "csharp", lua: "lua", r: "r", vue: "xml", svelte: "xml",
+    };
+
     function contentTypeFor(path) {
-      const ext = fileName(path).toLowerCase().split(".").pop();
+      const ext = fileExtension(path);
       if (ext === "html" || ext === "htm") return "text/html";
-      if (ext === "css") return "text/css";
-      if (ext === "js" || ext === "mjs") return "text/javascript";
+      if (ext === "css" || ext === "scss" || ext === "less") return "text/css";
+      if (ext === "js" || ext === "mjs" || ext === "cjs") return "text/javascript";
       if (ext === "json") return "application/json";
       if (ext === "svg") return "image/svg+xml";
-      if (ext === "md") return "text/markdown";
+      if (ext === "md" || ext === "mdx") return "text/markdown";
+      if (ext === "csv") return "text/csv";
+      if (ext === "tsv") return "text/tab-separated-values";
+      if (IMAGE_EXT.has(ext)) return IMAGE_MIME[ext] || "application/octet-stream";
       return "text/plain";
+    }
+
+    function isImagePath(path) {
+      return IMAGE_EXT.has(fileExtension(path));
+    }
+
+    function codeLanguageFor(path) {
+      const base = fileName(path).toLowerCase();
+      if (base === "dockerfile") return "dockerfile";
+      if (base === "makefile") return "makefile";
+      return CODE_LANG[fileExtension(path)] || "plaintext";
+    }
+
+    function previewModeFor(path) {
+      const ext = fileExtension(path);
+      const base = fileName(path).toLowerCase();
+      if (isImagePath(path)) return "image";
+      if (ext === "html" || ext === "htm" || ext === "svg") return "html";
+      if (ext === "md" || ext === "mdx") return "markdown";
+      if (ext === "json") return "json";
+      if (ext === "csv" || ext === "tsv") return "csv";
+      if (ext === "css") return "css";
+      if (base === "dockerfile" || base === "makefile" || CODE_LANG[ext]) return "code";
+      return "text";
+    }
+
+    function hidePreviewPanes() {
+      els.previewFrame.classList.add("hidden");
+      els.previewFrame.removeAttribute("src");
+      els.previewFrame.removeAttribute("srcdoc");
+      els.previewMarkdown.classList.add("hidden");
+      els.previewCode.classList.add("hidden");
+      els.previewCode.innerHTML = "";
+      els.previewImageWrap.classList.add("hidden");
+      els.previewImage.removeAttribute("src");
+      els.previewImage.alt = "";
+      els.previewText.classList.add("hidden");
+      els.previewText.textContent = "";
+    }
+
+    function prettyJson(text) {
+      try {
+        return JSON.stringify(JSON.parse(text), null, 2);
+      } catch (_) {
+        return text;
+      }
+    }
+
+    function parseDelimitedRows(text, delimiter) {
+      const rows = [];
+      for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+        if (!line.trim()) continue;
+        const row = [];
+        let cell = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              cell += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (ch === delimiter && !inQuotes) {
+            row.push(cell);
+            cell = "";
+          } else {
+            cell += ch;
+          }
+        }
+        row.push(cell);
+        rows.push(row);
+      }
+      return rows;
+    }
+
+    function renderCsvPreview(container, text, delimiter) {
+      const rows = parseDelimitedRows(text, delimiter);
+      container.innerHTML = "";
+      if (!rows.length) {
+        const empty = document.createElement("p");
+        empty.className = "text-sm text-muted-foreground";
+        empty.textContent = "Empty table";
+        container.appendChild(empty);
+        return;
+      }
+      const table = document.createElement("table");
+      const [header, ...body] = rows;
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      for (const cell of header) {
+        const th = document.createElement("th");
+        th.textContent = cell;
+        headRow.appendChild(th);
+      }
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      for (const row of body) {
+        const tr = document.createElement("tr");
+        for (const cell of row) {
+          const td = document.createElement("td");
+          td.textContent = cell;
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      container.appendChild(table);
+    }
+
+    function cssPreviewDocument(css) {
+      const safeCss = css.replace(/<\/style/gi, "<\\/style");
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>${safeCss}</style>
+</head>
+<body>
+  <main>
+    <h1>Preview heading</h1>
+    <p>Sample paragraph with <a href="#">a link</a>, <strong>bold</strong>, and <em>italic</em> text.</p>
+    <ul><li>First list item</li><li>Second list item</li></ul>
+    <button type="button">Button</button>
+    <input type="text" value="Input field" aria-label="Sample input" />
+  </main>
+</body>
+</html>`;
+    }
+
+    function setCodePreview(container, content, language) {
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.className = language ? `language-${language}` : "";
+      code.textContent = content;
+      pre.appendChild(code);
+      container.innerHTML = "";
+      container.appendChild(pre);
+      if (window.hljs) hljs.highlightElement(code);
+    }
+
+    function showFilePreview(path, content, imageUrl = null) {
+      const mode = previewModeFor(path);
+      hidePreviewPanes();
+
+      if (mode === "image") {
+        els.previewImage.src = imageUrl;
+        els.previewImage.alt = fileName(path);
+        els.previewImageWrap.classList.remove("hidden");
+        return;
+      }
+      if (mode === "html") {
+        els.previewFrame.srcdoc = content;
+        els.previewFrame.classList.remove("hidden");
+        return;
+      }
+      if (mode === "markdown") {
+        setMarkdownContent(els.previewMarkdown, content);
+        els.previewMarkdown.classList.remove("hidden");
+        return;
+      }
+      if (mode === "json") {
+        setCodePreview(els.previewCode, prettyJson(content), "json");
+        els.previewCode.classList.remove("hidden");
+        return;
+      }
+      if (mode === "csv") {
+        const delimiter = fileExtension(path) === "tsv" ? "\t" : ",";
+        renderCsvPreview(els.previewMarkdown, content, delimiter);
+        els.previewMarkdown.classList.remove("hidden");
+        return;
+      }
+      if (mode === "css") {
+        els.previewFrame.srcdoc = cssPreviewDocument(content);
+        els.previewFrame.classList.remove("hidden");
+        return;
+      }
+      if (mode === "code") {
+        setCodePreview(els.previewCode, content, codeLanguageFor(path));
+        els.previewCode.classList.remove("hidden");
+        return;
+      }
+
+      els.previewText.textContent = content;
+      els.previewText.classList.remove("hidden");
     }
 
     marked.setOptions({ breaks: true, gfm: true });
@@ -656,6 +883,21 @@
       return api(`/api/sessions/${sessionId}/files/content?path=${encodeURIComponent(path)}`);
     }
 
+    async function loadFileBlob(path) {
+      const res = await fetch(
+        `${API}/api/sessions/${sessionId}/files/raw?path=${encodeURIComponent(path)}`
+      );
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const body = await res.json();
+          detail = body.detail || JSON.stringify(body);
+        } catch (_) {}
+        throw new Error(detail);
+      }
+      return res.blob();
+    }
+
     async function previewWorkspaceFile(path) {
       if (!sessionId) return;
       setPreviewCollapsed(false);
@@ -664,30 +906,28 @@
       els.previewSubtitle.textContent = path;
       els.previewEmpty.classList.remove("hidden");
       els.previewEmpty.textContent = "Loading preview…";
-      els.previewFrame.classList.add("hidden");
-      els.previewMarkdown.classList.add("hidden");
-      els.previewText.classList.add("hidden");
+      hidePreviewPanes();
       clearPreviewBlobUrl();
 
       try {
-        const data = await loadFileContent(path);
-        const type = contentTypeFor(data.path);
-        const blob = new Blob([data.content], { type });
-        previewBlobUrl = URL.createObjectURL(blob);
-        previewFile = { path: data.path, content: data.content, type };
-
-        els.previewEmpty.classList.add("hidden");
-        if (type === "text/html" || type === "image/svg+xml") {
-          els.previewFrame.srcdoc = data.content;
-          els.previewFrame.classList.remove("hidden");
-        } else if (type === "text/markdown") {
-          setMarkdownContent(els.previewMarkdown, data.content);
-          els.previewMarkdown.classList.remove("hidden");
+        if (isImagePath(path)) {
+          const blob = await loadFileBlob(path);
+          previewBlobUrl = URL.createObjectURL(blob);
+          previewFile = { path, blob, type: blob.type || contentTypeFor(path), size: blob.size };
+          els.previewEmpty.classList.add("hidden");
+          showFilePreview(path, null, previewBlobUrl);
+          els.previewSubtitle.textContent = `${path} · ${Number(blob.size || 0).toLocaleString()} bytes`;
         } else {
-          els.previewText.textContent = data.content;
-          els.previewText.classList.remove("hidden");
+          const data = await loadFileContent(path);
+          const type = contentTypeFor(data.path);
+          const blob = new Blob([data.content], { type });
+          previewBlobUrl = URL.createObjectURL(blob);
+          previewFile = { path: data.path, content: data.content, type };
+
+          els.previewEmpty.classList.add("hidden");
+          showFilePreview(data.path, data.content);
+          els.previewSubtitle.textContent = `${data.path} · ${Number(data.size || 0).toLocaleString()} bytes`;
         }
-        els.previewSubtitle.textContent = `${data.path} · ${Number(data.size || 0).toLocaleString()} bytes`;
         setPreviewActionsEnabled(true);
       } catch (e) {
         previewFile = null;
@@ -699,12 +939,19 @@
 
     async function downloadWorkspaceFile(path) {
       if (!sessionId || !path) return;
-      const data = previewFile?.path === path ? previewFile : await loadFileContent(path);
-      const blob = new Blob([data.content], { type: data.type || contentTypeFor(data.path) });
+      let blob;
+      if (previewFile?.path === path && previewFile.blob) {
+        blob = previewFile.blob;
+      } else if (isImagePath(path)) {
+        blob = await loadFileBlob(path);
+      } else {
+        const data = previewFile?.path === path ? previewFile : await loadFileContent(path);
+        blob = new Blob([data.content], { type: data.type || contentTypeFor(data.path) });
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = fileName(data.path);
+      a.download = fileName(path);
       document.body.appendChild(a);
       a.click();
       a.remove();
