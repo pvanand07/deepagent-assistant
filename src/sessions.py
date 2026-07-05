@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -22,7 +23,12 @@ class AgentSession:
     mcp_servers: list[str] = field(default_factory=list)
     mcp_tool_names: list[str] = field(default_factory=list)
     history: list = field(default_factory=list)
+    created_at: float = field(default_factory=time.time)
+    updated_at: float = field(default_factory=time.time)
     lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def touch(self) -> None:
+        self.updated_at = time.time()
 
     def cleanup(self) -> None:
         self.sandbox.cleanup()
@@ -65,6 +71,12 @@ class SessionStore:
     def get(self, session_id: str) -> AgentSession | None:
         with self._lock:
             return self._sessions.get(session_id)
+
+    def list_all(self) -> list[AgentSession]:
+        with self._lock:
+            sessions = list(self._sessions.values())
+        sessions.sort(key=lambda s: s.updated_at, reverse=True)
+        return sessions
 
     def delete(self, session_id: str) -> bool:
         with self._lock:

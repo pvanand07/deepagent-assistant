@@ -31,7 +31,9 @@ from api_models import (
     HealthResponse,
     MessagesResponse,
     ResetResponse,
+    SessionListResponse,
     SessionResponse,
+    SessionSummary,
 )
 from mcp_tools import load_mcp_connections
 from openrouter_model import DEFAULT_MODEL
@@ -67,6 +69,46 @@ def _serialize_messages(messages: list) -> list[dict[str, Any]]:
     if isinstance(messages[0], dict):
         return messages
     return messages_to_dict(messages)
+
+
+def _first_user_text(messages: list) -> str:
+    serialized = _serialize_messages(messages)
+    for msg in serialized:
+        role = msg.get("type") or msg.get("role")
+        if role not in {"human", "user"}:
+            continue
+        data = msg.get("data", msg)
+        content = data.get("content", "")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(block.get("text", ""))
+                elif isinstance(block, str):
+                    parts.append(block)
+            text = "".join(parts).strip()
+            if text:
+                return text
+    return ""
+
+
+def _session_title(session) -> str:
+    title = _first_user_text(session.history)
+    if not title:
+        return "New chat"
+    return title if len(title) <= 48 else title[:47] + "…"
+
+
+def _session_summary(session) -> SessionSummary:
+    return SessionSummary(
+        id=session.id,
+        title=_session_title(session),
+        message_count=len(session.history),
+        model=session.model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
+        updated_at=session.updated_at,
+    )
 
 
 def _last_assistant_text(messages: list) -> str:
@@ -151,6 +193,11 @@ def health() -> HealthResponse:
     return HealthResponse()
 
 
+@app.get("/api/sessions", response_model=SessionListResponse)
+def list_sessions() -> SessionListResponse:
+    return SessionListResponse(sessions=[_session_summary(s) for s in store.list_all()])
+
+
 @app.post("/api/sessions", response_model=SessionResponse, status_code=201)
 def create_session(body: CreateSessionRequest) -> SessionResponse:
     try:
@@ -197,11 +244,13 @@ def chat(session_id: str, body: ChatRequest) -> ChatResponse:
     pwd = _validate_pwd(session, body.pwd)
     with session.lock:
         session.history.append({"role": "user", "content": body.message})
+        session.touch()
         final_messages = session.history
         for event in iter_agent_turn_events(session.agent, session.history, pwd=pwd):
             if event["type"] == "done":
                 final_messages = event["messages"]
         session.history = final_messages
+        session.touch()
         return ChatResponse(
             reply=_last_assistant_text(final_messages),
             messages=_serialize_messages(final_messages),
@@ -216,10 +265,12 @@ def chat_stream(session_id: str, body: ChatRequest) -> StreamingResponse:
     def event_generator():
         with session.lock:
             session.history.append({"role": "user", "content": body.message})
+            session.touch()
             history_snapshot = list(session.history)
             for event in iter_agent_turn_events(session.agent, history_snapshot, pwd=pwd):
                 if event["type"] == "done":
                     session.history = event["messages"]
+                    session.touch()
                     payload = {
                         "type": "done",
                         "messages": _serialize_messages(event["messages"]),

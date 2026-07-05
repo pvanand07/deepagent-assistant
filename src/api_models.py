@@ -29,6 +29,18 @@ class SessionResponse(BaseModel):
     mcp_tool_names: list[str] = Field(default_factory=list)
 
 
+class SessionSummary(BaseModel):
+    id: str
+    title: str
+    message_count: int
+    model: str
+    updated_at: float
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionSummary]
+
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     pwd: str | None = Field(

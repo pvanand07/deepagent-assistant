@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Deep Agent</title>
 
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"></script>
@@ -22,21 +23,13 @@
 
       --color-background: var(--background);
       --color-foreground: var(--foreground);
-      --color-card: var(--card);
-      --color-card-foreground: var(--card-foreground);
-      --color-popover: var(--popover);
-      --color-popover-foreground: var(--popover-foreground);
-      --color-primary: var(--primary);
-      --color-primary-foreground: var(--primary-foreground);
-      --color-secondary: var(--secondary);
-      --color-secondary-foreground: var(--secondary-foreground);
       --color-muted: var(--muted);
       --color-muted-foreground: var(--muted-foreground);
       --color-accent: var(--accent);
-      --color-accent-foreground: var(--accent-foreground);
+      --color-accent-soft: var(--accent-soft);
       --color-destructive: var(--destructive);
+      --color-destructive-soft: var(--destructive-soft);
       --color-border: var(--border);
-      --color-input: var(--input);
       --color-ring: var(--ring);
 
       --radius-lg: 0.625rem;
@@ -44,35 +37,34 @@
 
     :root {
       --background: oklch(1 0 0);
-      --foreground: oklch(0.145 0 0);
-      --card: oklch(1 0 0);
-      --card-foreground: oklch(0.145 0 0);
-      --popover: oklch(1 0 0);
-      --popover-foreground: oklch(0.145 0 0);
-      --primary: oklch(0.205 0 0);
-      --primary-foreground: oklch(0.985 0 0);
-      --secondary: oklch(0.97 0 0);
-      --secondary-foreground: oklch(0.205 0 0);
-      --muted: oklch(0.97 0 0);
-      --muted-foreground: oklch(0.556 0 0);
-      --accent: oklch(0.97 0 0);
-      --accent-foreground: oklch(0.205 0 0);
-      --destructive: oklch(0.577 0.245 27.325);
-      --border: oklch(0.922 0 0);
-      --input: oklch(0.922 0 0);
-      --ring: oklch(0.708 0 0);
+      --foreground: oklch(0.16 0.01 260);
+      --muted: oklch(0.965 0.003 260);
+      --muted-foreground: oklch(0.5 0.015 260);
+      --accent: oklch(0.5 0.11 258);          /* calm working-blue: links, active, progress */
+      --accent-soft: oklch(0.95 0.025 258);
+      --destructive: oklch(0.55 0.2 27);
+      --destructive-soft: oklch(0.96 0.02 27);
+      --border: oklch(0.92 0.004 260);
+      --ring: oklch(0.5 0.11 258);
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+    [v-cloak] { display: none; }
+
+    /* Keyboard focus is always visible, never on click. */
+    :focus-visible {
+      outline: 2px solid var(--ring);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
     }
 
     @keyframes bounce {
       0%, 100% { transform: translateY(-25%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
       50% { transform: translateY(0); animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }
     }
-
-    .animate-spin { animation: spin 1s linear infinite; }
     .animate-bounce { animation: bounce 1s infinite; }
 
     .markdown-body {
@@ -86,221 +78,311 @@
     .markdown-body > :last-child { margin-bottom: 0; }
     .markdown-body h1, .markdown-body h2, .markdown-body h3,
     .markdown-body h4, .markdown-body h5, .markdown-body h6 {
-      margin-top: 1.25em;
-      margin-bottom: 0.5em;
-      font-weight: 600;
-      line-height: 1.3;
+      margin-top: 1.25em; margin-bottom: 0.5em; font-weight: 600; line-height: 1.3;
     }
     .markdown-body h1 { font-size: 1.5em; }
     .markdown-body h2 { font-size: 1.25em; border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }
     .markdown-body h3 { font-size: 1.125em; }
     .markdown-body p, .markdown-body ul, .markdown-body ol,
     .markdown-body blockquote, .markdown-body pre, .markdown-body table {
-      margin-top: 0.75em;
-      margin-bottom: 0.75em;
+      margin-top: 0.75em; margin-bottom: 0.75em;
     }
     .markdown-body ul, .markdown-body ol { padding-left: 1.5em; }
     .markdown-body ul { list-style-type: disc; }
     .markdown-body ol { list-style-type: decimal; }
     .markdown-body li + li { margin-top: 0.25em; }
-    .markdown-body blockquote {
-      border-left: 3px solid var(--border);
-      padding-left: 1em;
-      color: var(--muted-foreground);
-    }
+    .markdown-body blockquote { border-left: 3px solid var(--border); padding-left: 1em; color: var(--muted-foreground); }
     .markdown-body code {
-      font-family: var(--font-mono);
-      font-size: 0.85em;
-      background: var(--muted);
-      border-radius: 0.25rem;
-      padding: 0.15em 0.35em;
+      font-family: var(--font-mono); font-size: 0.85em;
+      background: var(--muted); border-radius: 0.25rem; padding: 0.15em 0.35em;
     }
     .markdown-body pre {
-      overflow-x: auto;
-      border-radius: 0.5rem;
-      border: 1px solid var(--border);
-      background: var(--muted);
-      padding: 0.75rem 1rem;
+      overflow-x: auto; border-radius: 0.5rem; border: 1px solid var(--border);
+      background: var(--muted); padding: 0.75rem 1rem;
     }
-    .markdown-body pre code {
-      background: transparent;
-      padding: 0;
-      font-size: 0.8em;
-      line-height: 1.5;
-    }
-    .markdown-body table {
-      width: 100%;
-      border-collapse: collapse;
-      display: block;
-      overflow-x: auto;
-    }
-    .markdown-body th, .markdown-body td {
-      border: 1px solid var(--border);
-      padding: 0.4em 0.65em;
-      text-align: left;
-    }
+    .markdown-body pre code { background: transparent; padding: 0; font-size: 0.8em; line-height: 1.5; }
+    .markdown-body table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
+    .markdown-body th, .markdown-body td { border: 1px solid var(--border); padding: 0.4em 0.65em; text-align: left; }
     .markdown-body th { background: var(--muted); font-weight: 600; }
-    .markdown-body a { color: var(--primary); text-decoration: underline; }
+    .markdown-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
     .markdown-body hr { border: 0; border-top: 1px solid var(--border); margin: 1.25em 0; }
     .markdown-body img { max-width: 100%; height: auto; border-radius: 0.375rem; }
 
-    #preview-code pre { margin: 0; height: 100%; overflow: auto; padding: 1rem; font-size: 0.75rem; line-height: 1.25rem; }
-    #preview-code code { font-family: var(--font-mono); }
+    .preview-code pre { margin: 0; height: 100%; overflow: auto; padding: 1rem; font-size: 0.75rem; line-height: 1.25rem; }
+    .preview-code code { font-family: var(--font-mono); }
   </style>
 </head>
 <body class="h-full bg-background text-foreground font-sans">
 
-  <main class="flex h-screen gap-0 bg-background p-0">
+<div id="app" v-cloak class="h-full">
+  <main class="flex h-screen bg-background">
 
-    <!-- Sidebar -->
-    <aside class="flex h-full w-64 shrink-0 flex-col border-r border-border bg-muted/30">
+    <!-- ======================= Sidebar ======================= -->
+    <aside class="flex h-full w-64 shrink-0 flex-col border-r border-border bg-muted/40">
 
-      <div class="min-h-0 flex-1 overflow-y-auto">
-        <div class="flex flex-col gap-1 px-2 pt-2">
-
-          <div class="mb-1 flex items-center gap-1">
-            <button
-              id="btn-new-chat"
-              type="button"
-              class="inline-flex h-7 min-w-0 flex-1 items-center justify-start gap-1 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 256 256" class="shrink-0">
-                <path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"></path>
-              </svg>
-              New chat
-            </button>
-            <button
-              id="btn-refresh-files"
-              type="button"
-              class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Refresh workspace files"
-              title="Refresh workspace files"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256">
-                <path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z"></path>
-              </svg>
-            </button>
-          </div>
-
-          <div
-            id="session-card"
-            class="relative flex h-auto w-full flex-col items-start justify-start rounded-md bg-muted px-2 py-1.5 text-left text-foreground"
-          >
-            <span class="min-w-0 flex-1">
-              <span class="flex min-w-0 items-center gap-1.5 text-sm font-medium text-foreground">
-                <span id="sidebar-title" class="truncate">Connecting…</span>
-              </span>
-              <span id="sidebar-subtitle" class="block truncate text-xs font-normal text-muted-foreground/80">
-                Starting session
-              </span>
-            </span>
-          </div>
-
-          <div class="mt-3 px-1">
-            <p class="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">Workspace</p>
-            <ul id="file-list" class="flex flex-col gap-0.5 text-xs text-muted-foreground">
-              <li class="px-1 py-0.5 text-muted-foreground/60">Loading files…</li>
-            </ul>
-          </div>
-
-        </div>
+      <!-- Brand -->
+      <div class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
+        <span class="grid size-6 shrink-0 place-items-center rounded-md bg-foreground text-background">
+          <p-icon name="cube" :size="14" />
+        </span>
+        <span class="truncate text-sm font-semibold tracking-tight">Deep Agent</span>
       </div>
 
-      <div class="flex items-center justify-between gap-2 border-t border-border py-2 pl-4 pr-2">
-        <div class="min-w-0 flex-1">
-          <p id="status-line" class="truncate text-xs font-medium text-muted-foreground" title="">
-            Initializing…
-          </p>
-        </div>
-      </div>
-    </aside>
+      <div class="min-h-0 flex-1 overflow-y-auto px-2 py-2">
 
-    <!-- Chat panel -->
-    <div class="flex h-full min-w-0 flex-1 flex-col overflow-hidden border-0 py-0 shadow-none">
-
-      <div class="relative mx-auto flex min-h-0 w-full flex-1 flex-col" style="max-width: 800px;">
-
-        <div class="flex min-h-10 items-center justify-between gap-2 border-b border-border px-3 py-1.5">
-          <div class="min-w-0">
-            <p id="chat-title" class="truncate text-sm font-semibold text-foreground">Deep Agent</p>
-            <p id="chat-subtitle" class="truncate text-xs text-muted-foreground">Sandboxed workspace</p>
-          </div>
-          <button
-            id="btn-session-info"
-            type="button"
-            class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Session information"
-            title="Session information"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256">
-              <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"></path>
-            </svg>
+        <div class="mb-1 flex items-center gap-1">
+          <button type="button" @click="newChat" :disabled="streaming"
+            class="inline-flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50">
+            <p-icon name="plus" :size="14" />
+            New chat
+          </button>
+          <button type="button" @click="loadFiles({ force: true })" :disabled="filesLoading" :class="iconBtn"
+              title="Refresh workspace files" aria-label="Refresh workspace files">
+            <p-icon name="refresh" :size="15" :class="filesLoading ? 'animate-spin' : ''" />
           </button>
         </div>
 
-        <div id="messages-scroll" class="min-h-0 flex-1 overflow-y-auto">
-          <div id="messages" class="flex min-h-full flex-col justify-end gap-2.5 p-3 pb-48"></div>
+        <!-- Chat history -->
+        <div class="mt-3">
+          <div class="mb-1 flex items-center justify-between px-2">
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Chats</p>
+            <button type="button" @click="loadSessionList" :disabled="sessionListLoading" :class="iconBtn"
+              title="Refresh chat list" aria-label="Refresh chat list">
+              <p-icon name="refresh" :size="13" :class="sessionListLoading ? 'animate-spin' : ''" />
+            </button>
+          </div>
+          <ul class="flex max-h-48 flex-col gap-px overflow-y-auto text-xs">
+            <li v-if="sessionListLoading && !sessionList.length" class="px-2 py-1 text-muted-foreground/60">Loading chats…</li>
+            <li v-else-if="!sessionList.length" class="px-2 py-1 text-muted-foreground/60">No chats yet</li>
+            <li v-for="chat in sessionList" :key="chat.id">
+              <div class="group flex items-center gap-0.5 rounded-lg transition-colors"
+                :class="chat.id === sessionId ? 'border border-border bg-background shadow-xs' : 'hover:bg-muted/80'">
+                <button type="button" @click="switchSession(chat.id)" :disabled="streaming"
+                  class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left disabled:pointer-events-none disabled:opacity-50"
+                  :title="chat.title">
+                  <span class="size-1.5 shrink-0 rounded-full"
+                    :class="chat.id === sessionId ? (streaming ? 'bg-accent animate-pulse' : 'bg-emerald-500') : 'bg-transparent'"></span>
+                  <span class="min-w-0 flex-1 truncate"
+                    :class="chat.id === sessionId ? 'font-medium text-foreground' : 'text-muted-foreground'">
+                    {{ chat.title }}
+                  </span>
+                  <span v-if="chat.message_count" class="shrink-0 rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground/70">
+                    {{ chat.message_count }}
+                  </span>
+                </button>
+                <button type="button" @click.stop="deleteSession(chat.id)" :disabled="streaming"
+                  class="mr-1 hidden size-6 shrink-0 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-destructive-soft hover:text-destructive group-hover:grid disabled:pointer-events-none disabled:opacity-50"
+                  :title="'Delete chat'" :aria-label="'Delete chat ' + chat.title">
+                  <p-icon name="x" :size="11" />
+                </button>
+              </div>
+            </li>
+          </ul>
         </div>
 
-        <div id="error-banner" class="absolute inset-x-4 bottom-36 z-30 hidden rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"></div>
+        <!-- Workspace tree -->
+        <div class="mt-4">
+          <div class="mb-1 flex items-center justify-between px-2">
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Workspace</p>
+            <span v-if="fileTree?.length" class="rounded-full bg-muted px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground/80">{{ fileTree.length }}</span>
+          </div>
+          <ul class="flex flex-col gap-px text-xs text-muted-foreground">
+            <li v-if="filesError" class="flex items-center gap-1.5 rounded-md bg-destructive-soft px-2 py-1.5 text-destructive">
+              <p-icon name="warning" :size="13" class="shrink-0" />
+              {{ filesError }}
+            </li>
+            <li v-else-if="fileTree === null" class="px-2 py-1 text-muted-foreground/60">Loading files…</li>
+            <li v-else-if="!fileTree.length" class="flex flex-col items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-4 text-center text-muted-foreground/60">
+              <p-icon name="folder" :size="16" class="text-muted-foreground/40" />
+              <span>Empty workspace.<br/>Files the agent creates appear here.</span>
+            </li>
+            <file-node v-else v-for="entry in fileTree" :key="entry.path" :entry="entry" :depth="0"
+              :expanded="expandedFolders" :children-map="childrenMap" :active-path="preview.path"
+              @toggle="toggleFolder" @preview="previewWorkspaceFile" @download="downloadWorkspaceFile" />
+          </ul>
+        </div>
+      </div>
 
-        <form id="composer-form" class="absolute inset-x-0 bottom-0 z-20 bg-linear-to-t from-background via-background/95 to-transparent px-4 pb-4 pt-12">
-          <div class="rounded-xl border border-border bg-background p-3 shadow-sm">
-            <textarea
-              id="composer-input"
-              rows="1"
-              placeholder="What do you want to build?"
-              class="max-h-40 min-h-16 w-full resize-none border-0 bg-transparent px-1 py-0 text-base shadow-none outline-none placeholder:text-muted-foreground"
-            ></textarea>
+      <div class="shrink-0 border-t border-border px-4 py-2.5">
+        <p class="truncate font-mono text-[11px] text-muted-foreground" :title="statusLine">{{ statusLine }}</p>
+      </div>
+    </aside>
 
-            <div class="flex items-center justify-between gap-2 pt-3 text-xs text-muted-foreground">
-              <div class="flex min-w-0 items-center gap-2">
-                <span id="model-label" class="inline-flex h-9 max-w-56 items-center gap-1.5 rounded-full border border-transparent px-2.5 text-sm font-normal leading-5 text-muted-foreground">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" class="shrink-0">
-                    <path d="M248,124a59.92,59.92,0,0,0-29.85-51.85,44,44,0,0,0-86.3,0A59.92,59.92,0,0,0,8,124a60.07,60.07,0,0,0,40,56.44V192a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8v-11.56A60.07,60.07,0,0,0,248,124ZM172,200H84V181.56a8,8,0,0,0-2.67-6A44,44,0,0,1,52.17,140.17a8,8,0,0,0-6-2.67,44,44,0,0,1,0-19A8,8,0,0,0,52.17,115.83a44,44,0,0,1,29.16-35.39,8,8,0,0,0,6-2.67,44,44,0,0,1,19,0,8,8,0,0,0,6,2.67A44,44,0,0,1,141.83,115.83a8,8,0,0,0,6,2.67,44,44,0,0,1,0,19,8,8,0,0,0-2.67,6A44,44,0,0,1,116,175.56a8,8,0,0,0-2.67,6Z"></path>
-                  </svg>
-                  <span class="min-w-0 truncate">Loading model…</span>
+    <!-- ======================= Chat panel ======================= -->
+    <div class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+      <div class="relative mx-auto flex min-h-0 w-full flex-1 flex-col" style="max-width: 800px;">
+
+        <!-- Header -->
+        <div class="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
+          <div class="min-w-0">
+            <p class="truncate text-sm font-semibold text-foreground">{{ chatTitle }}</p>
+            <p class="truncate text-xs text-muted-foreground">{{ chatSubtitle }}</p>
+          </div>
+
+          <!-- Session info popover -->
+          <div class="relative" ref="sessionInfoEl">
+            <button type="button" @click.stop="sessionInfoOpen = !sessionInfoOpen" :disabled="!session" :class="iconBtn"
+              title="Session details" aria-label="Session details" :aria-expanded="String(sessionInfoOpen)">
+              <p-icon name="info" :size="16" />
+            </button>
+            <div v-if="sessionInfoOpen && session"
+              class="absolute right-0 top-full z-40 mt-2 w-72 rounded-xl border border-border bg-background p-3 shadow-lg">
+              <p class="mb-2 text-xs font-semibold text-foreground">Session details</p>
+              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
+                <template v-for="row in sessionInfoRows" :key="row.label">
+                  <dt class="text-muted-foreground">{{ row.label }}</dt>
+                  <dd class="min-w-0 truncate font-mono text-foreground" :title="row.value">{{ row.value }}</dd>
+                </template>
+              </dl>
+            </div>
+          </div>
+        </div>
+
+        <!-- Messages -->
+        <div ref="scrollEl" class="min-h-0 flex-1 overflow-y-auto">
+          <div class="flex min-h-full flex-col justify-end gap-2.5 px-4 py-3 pb-48">
+
+            <!-- Empty state -->
+            <div v-if="!timeline.length && !streaming" class="flex flex-col items-center gap-2 py-16 text-center">
+              <span class="grid size-10 place-items-center rounded-xl bg-muted text-muted-foreground">
+                <p-icon name="cube" :size="20" />
+              </span>
+              <p class="text-sm font-medium text-foreground">Start building</p>
+              <p class="max-w-64 text-xs leading-5 text-muted-foreground">
+                Describe what you want. The agent works in a sandboxed workspace and its files show up in the sidebar.
+              </p>
+            </div>
+
+            <template v-for="item in timeline" :key="item.id">
+              <!-- user -->
+              <div v-if="item.kind === 'user'"
+                class="w-fit max-w-[85%] self-end rounded-2xl rounded-br-md bg-muted px-3.5 py-2 text-sm leading-6 text-foreground">
+                <p class="whitespace-pre-wrap break-words">{{ item.text }}</p>
+              </div>
+
+              <!-- assistant -->
+              <div v-else-if="item.kind === 'assistant'" class="py-1 text-sm leading-6 text-foreground">
+                <div class="markdown-body max-w-none break-words" v-html="renderMarkdown(item.text)"></div>
+              </div>
+
+              <!-- activity (tool call / result / subagent) -->
+              <div v-else-if="item.kind === 'activity'"
+                class="flex items-center gap-2 py-px text-xs leading-5 text-muted-foreground/85">
+                <span aria-hidden="true" class="grid size-4 shrink-0 place-items-center rounded bg-muted text-muted-foreground/70">
+                  <p-icon :name="item.icon" :size="10" />
                 </span>
-                <div id="pwd-picker" class="relative max-w-48 min-w-0">
-                  <button
-                    id="pwd-select-trigger"
-                    type="button"
-                    class="group/pwd inline-flex h-9 w-full min-w-0 items-center gap-1.5 rounded-full border border-transparent px-2.5 text-sm font-normal leading-5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-haspopup="listbox"
-                    aria-expanded="false"
-                    aria-controls="pwd-select-menu"
-                    title="Working directory for this message"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" class="pointer-events-none shrink-0 text-muted-foreground/80" aria-hidden="true">
-                      <path d="M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72Zm0,128H40V56H92.69l27.32,27.32A15.86,15.86,0,0,0,131.31,88H216Z"></path>
-                    </svg>
-                    <span id="pwd-select-label" class="min-w-0 flex-1 truncate text-left">Workspace</span>
-                    <svg id="pwd-select-chevron" xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 256 256" class="pointer-events-none shrink-0 text-muted-foreground/60 transition-transform duration-150" aria-hidden="true">
-                      <path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"></path>
-                    </svg>
+                <span class="min-w-0 truncate">
+                  <span v-if="item.name" class="font-medium text-muted-foreground">{{ item.name }}</span><span
+                    v-if="item.detail" class="font-mono text-[11px] text-muted-foreground/70">{{ item.name ? ' ' : '' }}{{ item.detail }}</span>
+                  <span v-if="!item.name && !item.detail">{{ item.label }}</span>
+                </span>
+              </div>
+            </template>
+
+            <!-- thinking dots -->
+            <div v-if="thinking" class="flex items-center gap-1 py-1 pl-1" aria-label="Assistant is thinking">
+              <span class="size-1.5 animate-bounce rounded-full bg-accent/60" style="animation-delay:0ms"></span>
+              <span class="size-1.5 animate-bounce rounded-full bg-accent/60" style="animation-delay:120ms"></span>
+              <span class="size-1.5 animate-bounce rounded-full bg-accent/60" style="animation-delay:240ms"></span>
+            </div>
+
+            <!-- usage line -->
+            <div v-if="usageText" class="py-0.5 pl-1 font-mono text-[11px] leading-4 text-muted-foreground/60" aria-live="polite">
+              {{ usageText }}
+            </div>
+
+            <!-- running tool -->
+            <div v-if="runningTool" class="flex items-center gap-1.5 py-0.5 pl-1 text-[11px] leading-4 text-muted-foreground/80">
+              <span class="size-1.5 animate-pulse rounded-full bg-accent"></span>
+              <span>Running <span class="font-medium">{{ runningTool }}</span>… <span class="font-mono tabular-nums">{{ runningSeconds }}s</span></span>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Error banner -->
+        <div v-if="errorMessage"
+          class="absolute inset-x-4 bottom-40 z-30 flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive-soft px-3 py-2 text-sm text-destructive shadow-sm">
+          <p-icon name="warning" :size="16" class="mt-0.5 shrink-0" />
+          <p class="min-w-0 flex-1">{{ errorMessage }}</p>
+          <button type="button" @click="errorMessage = ''"
+            class="grid size-5 shrink-0 place-items-center rounded text-destructive/70 transition-colors hover:bg-destructive/10 hover:text-destructive"
+            aria-label="Dismiss error">
+            <p-icon name="x" :size="12" />
+          </button>
+        </div>
+
+        <!-- Composer -->
+        <form @submit.prevent="submit"
+          class="absolute inset-x-0 bottom-0 z-20 bg-linear-to-t from-background via-background/95 to-transparent px-4 pb-4 pt-12">
+          <div class="rounded-xl border border-border bg-background p-3 shadow-sm transition-colors focus-within:border-ring/50">
+            <textarea ref="inputEl" v-model="draft" rows="1" :disabled="streaming || !session"
+              placeholder="What do you want to build?"
+              @keydown.enter.exact.prevent="submit"
+              @input="autoGrow"
+              class="max-h-40 min-h-16 w-full resize-none border-0 bg-transparent px-1 py-0 text-base outline-none placeholder:text-muted-foreground disabled:opacity-60"
+              style="outline: none;"></textarea>
+
+            <div class="flex items-center justify-between gap-2 pt-2">
+              <div class="flex min-w-0 items-center gap-1">
+                <!-- model chip -->
+                <span class="inline-flex h-8 max-w-56 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground"
+                  :title="'Model: ' + modelLabel">
+                  <p-icon name="cpu" :size="14" class="shrink-0 text-muted-foreground/70" />
+                  <span class="min-w-0 truncate">{{ modelLabel }}</span>
+                </span>
+
+                <span class="h-4 w-px shrink-0 bg-border" aria-hidden="true"></span>
+
+                <!-- working directory picker -->
+                <div class="relative max-w-52 min-w-0" ref="pwdPickerEl">
+                  <button type="button" @click.stop="openPwdMenu" :disabled="streaming"
+                    class="inline-flex h-8 w-full min-w-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-haspopup="listbox" :aria-expanded="String(pwdMenuOpen)" title="Working directory for this message">
+                    <p-icon name="folder" :size="14" class="shrink-0 text-muted-foreground/70" />
+                    <span class="min-w-0 flex-1 truncate text-left">{{ selectedPwd || 'Workspace root' }}</span>
+                    <p-icon name="caret-down" :size="11"
+                      class="shrink-0 text-muted-foreground/50 transition-transform duration-150"
+                      :class="{ 'rotate-180': pwdMenuOpen }" />
                   </button>
-                  <div
-                    id="pwd-select-menu"
-                    class="absolute bottom-full left-0 z-40 mb-2 hidden min-w-full overflow-hidden rounded-xl border border-border bg-muted p-1 shadow-md"
-                    role="listbox"
-                    aria-label="Working directory"
-                  >
-                    <ul id="pwd-select-list" class="flex max-h-56 flex-col gap-0.5 overflow-y-auto"></ul>
+                  <div v-if="pwdMenuOpen"
+                    class="absolute bottom-full left-0 z-40 mb-2 min-w-full overflow-hidden rounded-xl border border-border bg-background p-1 shadow-lg"
+                    role="listbox" aria-label="Working directory">
+                    <ul class="flex max-h-56 flex-col gap-0.5 overflow-y-auto">
+                      <li v-for="folder in workspaceFolders" :key="folder || '__root__'">
+                        <button type="button" role="option" :aria-selected="String(folder === selectedPwd)"
+                          @click="selectPwd(folder)"
+                          class="flex w-full min-w-0 items-center gap-2 rounded-lg py-1.5 pr-2 text-left text-xs leading-5 transition-colors"
+                          :class="folder === selectedPwd
+                            ? 'bg-accent-soft font-medium text-accent'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                          :style="{ paddingLeft: (folder ? folder.split('/').length - 1 : 0) * 0.75 + 0.625 + 'rem' }">
+                          <p-icon name="folder" :size="14" class="shrink-0"
+                            :class="folder === selectedPwd ? 'text-accent' : 'text-muted-foreground/70'" />
+                          <span class="min-w-0 flex-1 truncate">{{ folder ? folder.split('/').pop() : 'Workspace root' }}</span>
+                          <p-icon v-if="folder === selectedPwd" name="check" :size="12" class="shrink-0 text-accent" />
+                        </button>
+                      </li>
+                    </ul>
                   </div>
                 </div>
               </div>
 
               <div class="flex shrink-0 items-center gap-2">
-                <button
-                  id="btn-send"
-                  type="submit"
-                  class="inline-flex size-7 items-center justify-center rounded-full bg-foreground text-background hover:bg-foreground/90 disabled:opacity-40"
-                  aria-label="Send message"
-                  disabled
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256">
-                    <path d="M205.66,117.66l-72-72a8,8,0,0,0-11.32,0l-72,72A8,8,0,0,0,56,136H120v80a8,8,0,0,0,16,0V136h64a8,8,0,0,0,5.66-18.34Z"></path>
-                  </svg>
+                <p v-if="!streaming" class="hidden text-[11px] text-muted-foreground/50 sm:block">
+                  Enter to send · Shift+Enter for a new line
+                </p>
+                <!-- stop -->
+                <button v-if="streaming" type="button" @click="stopStream"
+                  class="inline-flex size-8 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:border-destructive/40 hover:bg-destructive-soft hover:text-destructive"
+                  aria-label="Stop generating" title="Stop generating">
+                  <p-icon name="stop" :size="11" />
+                </button>
+                <!-- send -->
+                <button v-else type="submit" :disabled="!canSend"
+                  class="inline-flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:bg-foreground/90 disabled:opacity-35"
+                  aria-label="Send message" title="Send message">
+                  <p-icon name="arrow-up" :size="16" />
                 </button>
               </div>
             </div>
@@ -310,249 +392,462 @@
       </div>
     </div>
 
-    <!-- Workspace preview -->
-    <aside
-      id="preview-panel"
-      class="flex h-full w-14 shrink-0 flex-col overflow-hidden border-l border-border bg-background transition-all duration-200"
-      aria-label="Workspace preview"
-    >
-      <div class="flex min-h-10 items-center justify-between gap-2 border-b border-border px-2 py-1.5">
-        <button
-          id="btn-preview-toggle"
-          type="button"
-          class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Show workspace preview"
-          title="Show workspace preview"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256">
-            <path d="M216,48H40A16,16,0,0,0,24,64V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V64A16,16,0,0,0,216,48Zm0,144H40V64H216V192ZM176,88a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,88Zm0,40a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,128Zm0,40a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,168Z"></path>
-          </svg>
+    <!-- ======================= Workspace preview ======================= -->
+    <aside class="flex h-full shrink-0 flex-col overflow-hidden border-l border-border bg-background transition-all duration-200"
+      :style="{ width: previewWidth }" aria-label="Workspace preview">
+
+      <div class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-2"
+        :class="previewCollapsed ? 'justify-center' : 'justify-between'">
+        <button type="button" @click="previewCollapsed = !previewCollapsed" :class="iconBtn"
+          :title="previewCollapsed ? 'Show preview panel' : 'Hide preview panel'"
+          :aria-label="previewCollapsed ? 'Show preview panel' : 'Hide preview panel'"
+          :aria-expanded="String(!previewCollapsed)">
+          <p-icon name="sidebar" :size="16" />
         </button>
-        <div id="preview-header" class="hidden min-w-0 flex-1 items-center gap-2">
+
+        <div v-if="!previewCollapsed" class="flex min-w-0 flex-1 items-center gap-1">
           <div class="min-w-0 flex-1">
-            <p id="preview-title" class="truncate text-sm font-semibold text-foreground">Workspace preview</p>
-            <p id="preview-subtitle" class="truncate text-xs text-muted-foreground">Select a file to preview</p>
+            <p class="truncate text-sm font-semibold text-foreground">{{ preview.title }}</p>
+            <p class="truncate text-xs text-muted-foreground" :title="preview.subtitle">{{ preview.subtitle }}</p>
           </div>
-          <button
-            id="btn-preview-expand"
-            type="button"
-            class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Expand workspace preview"
-            title="Expand preview"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256">
-              <path d="M216,48V96a8,8,0,0,1-16,0V67.31l-42.34,42.35a8,8,0,0,1-11.32-11.32L188.69,56H160a8,8,0,0,1,0-16h48A8,8,0,0,1,216,48ZM98.34,146.34,56,188.69V160a8,8,0,0,0-16,0v48a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16H67.31l42.35-42.34a8,8,0,0,0-11.32-11.32ZM208,152a8,8,0,0,0-8,8v28.69l-42.34-42.35a8,8,0,0,0-11.32,11.32L188.69,200H160a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V160A8,8,0,0,0,208,152ZM67.31,56H96a8,8,0,0,0,0-16H48a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31l42.34,42.35a8,8,0,0,0,11.32-11.32Z"></path>
-            </svg>
+          <button type="button" @click="previewExpanded = !previewExpanded" :class="iconBtn"
+            :title="previewExpanded ? 'Shrink preview' : 'Expand preview'">
+            <p-icon :name="previewExpanded ? 'corners-in' : 'corners-out'" :size="15" />
           </button>
-          <button
-            id="btn-preview-open"
-            type="button"
-            class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-35"
-            aria-label="Open preview in a new tab"
-            title="Open in new tab"
-            disabled
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256">
-              <path d="M224,104a8,8,0,0,1-16,0V59.31l-82.34,82.35a8,8,0,0,1-11.32-11.32L196.69,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"></path>
-            </svg>
+          <button type="button" @click="openPreviewInTab" :disabled="!preview.ready" :class="iconBtn"
+            title="Open in new tab">
+            <p-icon name="external" :size="15" />
           </button>
-          <button
-            id="btn-preview-download"
-            type="button"
-            class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-35"
-            aria-label="Download previewed file"
-            title="Download file"
-            disabled
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256">
-              <path d="M224,152v56a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V152a8,8,0,0,1,16,0v56H208V152a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,132.69V40a8,8,0,0,0-16,0v92.69L93.66,106.34a8,8,0,0,0-11.32,11.32Z"></path>
-            </svg>
+          <button type="button" @click="preview.path && downloadWorkspaceFile(preview.path)" :disabled="!preview.ready" :class="iconBtn"
+            title="Download file">
+            <p-icon name="download" :size="15" />
           </button>
         </div>
       </div>
-      <div id="preview-body" class="hidden min-h-0 flex-1 bg-muted/20">
-        <div id="preview-empty" class="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-          Select a workspace file to preview it here.
+
+      <!-- Collapsed rail hint -->
+      <div v-if="previewCollapsed" class="flex flex-1 items-start justify-center pt-3">
+        <span class="select-none text-[10px] font-medium uppercase tracking-widest text-muted-foreground/50" style="writing-mode: vertical-rl;">
+          Preview
+        </span>
+      </div>
+
+      <div v-else class="min-h-0 flex-1 bg-muted/30">
+        <div v-if="preview.mode === 'empty'" class="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground">
+          <p-icon name="file" :size="20" class="text-muted-foreground/40" />
+          {{ preview.message }}
         </div>
-        <iframe id="preview-frame" class="hidden h-full w-full border-0 bg-background" title="Workspace file preview"></iframe>
-        <div id="preview-markdown" class="markdown-body hidden h-full overflow-auto p-4"></div>
-        <div id="preview-code" class="hidden h-full overflow-auto bg-background"></div>
-        <div id="preview-image-wrap" class="hidden flex h-full items-center justify-center overflow-auto p-4">
-          <img id="preview-image" class="max-h-full max-w-full rounded-md object-contain shadow-sm" alt="" />
+        <iframe v-else-if="preview.mode === 'html'" :srcdoc="preview.content"
+          class="h-full w-full border-0 bg-background" sandbox="allow-scripts" title="Workspace file preview"></iframe>
+        <div v-else-if="preview.mode === 'markdown'" class="markdown-body h-full overflow-auto bg-background p-4" v-html="renderMarkdown(preview.content)"></div>
+        <div v-else-if="preview.mode === 'csv'" class="markdown-body h-full overflow-auto bg-background p-4">
+          <p v-if="!preview.rows.length" class="text-sm text-muted-foreground">Empty table</p>
+          <table v-else>
+            <thead><tr><th v-for="(cell, i) in preview.rows[0]" :key="i">{{ cell }}</th></tr></thead>
+            <tbody>
+              <tr v-for="(row, r) in preview.rows.slice(1)" :key="r">
+                <td v-for="(cell, c) in row" :key="c">{{ cell }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <pre id="preview-text" class="hidden h-full overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-5 text-foreground"></pre>
+        <div v-else-if="preview.mode === 'code'" class="preview-code h-full overflow-auto bg-background">
+          <pre><code v-html="preview.highlighted"></code></pre>
+        </div>
+        <div v-else-if="preview.mode === 'image'" class="flex h-full items-center justify-center overflow-auto p-4">
+          <img :src="preview.blobUrl" :alt="preview.title" class="max-h-full max-w-full rounded-md object-contain shadow-sm" />
+        </div>
+        <pre v-else class="h-full overflow-auto whitespace-pre-wrap break-words bg-background p-4 font-mono text-xs leading-5 text-foreground">{{ preview.content }}</pre>
       </div>
     </aside>
 
   </main>
+</div>
 
-  <script>
-    const API = window.location.origin;
-    const SESSION_KEY = "deepagent_session_id";
+<script>
+const { createApp, ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } = Vue;
 
-    const els = {
-      messages: document.getElementById("messages"),
-      messagesScroll: document.getElementById("messages-scroll"),
-      composerForm: document.getElementById("composer-form"),
-      composerInput: document.getElementById("composer-input"),
-      btnSend: document.getElementById("btn-send"),
-      btnNewChat: document.getElementById("btn-new-chat"),
-      btnRefreshFiles: document.getElementById("btn-refresh-files"),
-      btnSessionInfo: document.getElementById("btn-session-info"),
-      chatTitle: document.getElementById("chat-title"),
-      chatSubtitle: document.getElementById("chat-subtitle"),
-      sidebarTitle: document.getElementById("sidebar-title"),
-      sidebarSubtitle: document.getElementById("sidebar-subtitle"),
-      statusLine: document.getElementById("status-line"),
-      modelLabel: document.getElementById("model-label"),
-      pwdPicker: document.getElementById("pwd-picker"),
-      pwdSelectTrigger: document.getElementById("pwd-select-trigger"),
-      pwdSelectLabel: document.getElementById("pwd-select-label"),
-      pwdSelectMenu: document.getElementById("pwd-select-menu"),
-      pwdSelectList: document.getElementById("pwd-select-list"),
-      pwdSelectChevron: document.getElementById("pwd-select-chevron"),
-      fileList: document.getElementById("file-list"),
-      errorBanner: document.getElementById("error-banner"),
-      previewPanel: document.getElementById("preview-panel"),
-      previewHeader: document.getElementById("preview-header"),
-      previewBody: document.getElementById("preview-body"),
-      previewEmpty: document.getElementById("preview-empty"),
-      previewFrame: document.getElementById("preview-frame"),
-      previewMarkdown: document.getElementById("preview-markdown"),
-      previewCode: document.getElementById("preview-code"),
-      previewImageWrap: document.getElementById("preview-image-wrap"),
-      previewImage: document.getElementById("preview-image"),
-      previewText: document.getElementById("preview-text"),
-      previewTitle: document.getElementById("preview-title"),
-      previewSubtitle: document.getElementById("preview-subtitle"),
-      btnPreviewToggle: document.getElementById("btn-preview-toggle"),
-      btnPreviewExpand: document.getElementById("btn-preview-expand"),
-      btnPreviewOpen: document.getElementById("btn-preview-open"),
-      btnPreviewDownload: document.getElementById("btn-preview-download"),
-    };
+/* ---------------------------------------------------------------- */
+/* Constants and pure helpers                                        */
+/* ---------------------------------------------------------------- */
 
-    let sessionId = null;
-    let sessionInfo = null;
-    let config = null;
-    let streaming = false;
-    let thinkingEl = null;
-    let usageEl = null;
-    let runningEl = null;
+const API = window.location.origin;
+const SESSION_KEY = "deepagent_session_id";
+
+/* One coherent icon set (Phosphor, 256 viewBox), rendered by <p-icon>. */
+const ICON_PATHS = {
+  plus: "M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z",
+  refresh: "M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16h28.69L182.06,65.37a79.56,79.56,0,0,0-56.13-23.43h-.45A79.52,79.52,0,0,0,69.59,64.72,8,8,0,0,1,58.41,53.28a96,96,0,0,1,135,.79L224,84.69V56a8,8,0,0,1,16,0Zm-27.59,134.72a80,80,0,0,1-112.47.66L69.25,161H98a8,8,0,0,0,0-16H50a8,8,0,0,0-8,8v48a8,8,0,0,0,16,0V172.69l30.63,30.28a96,96,0,0,0,135-.79,8,8,0,0,0-11.18-11.46Z",
+  folder: "M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72Zm0,128H40V56H92.69l27.32,27.32A15.86,15.86,0,0,0,131.31,88H216Z",
+  file: "M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z",
+  "caret-right": "M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z",
+  "caret-down": "M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z",
+  download: "M224,152v56a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V152a8,8,0,0,1,16,0v56H208V152a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,132.69V40a8,8,0,0,0-16,0v92.69L93.66,106.34a8,8,0,0,0-11.32,11.32Z",
+  cpu: "M112,96h32a8,8,0,0,1,8,8v48a8,8,0,0,1-8,8H112a8,8,0,0,1-8-8V104A8,8,0,0,1,112,96Zm120,40a8,8,0,0,1-8,8H208v16a32,32,0,0,1-32,32H160v16a8,8,0,0,1-16,0V192H112v16a8,8,0,0,1-16,0V192H80a32,32,0,0,1-32-32V144H32a8,8,0,0,1,0-16H48V96H32a8,8,0,0,1,0-16H48V64A32,32,0,0,1,80,32H96V16a8,8,0,0,1,16,0V32h32V16a8,8,0,0,1,16,0V32h16a32,32,0,0,1,32,32V80h16a8,8,0,0,1,0,16H208v32h16A8,8,0,0,1,232,136ZM192,64a16,16,0,0,0-16-16H80A16,16,0,0,0,64,64v96a16,16,0,0,0,16,16h96a16,16,0,0,0,16-16Z",
+  info: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z",
+  warning: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm-8,56a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm8,104a12,12,0,1,1,12-12A12,12,0,0,1,128,184Z",
+  x: "M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z",
+  check: "M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z",
+  "arrow-up": "M205.66,117.66a8,8,0,0,1-11.32,0L136,59.31V216a8,8,0,0,1-16,0V59.31L61.66,117.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0l72,72A8,8,0,0,1,205.66,117.66Z",
+  stop: "M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Z",
+  cube: "M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,32l80.34,44-29.77,16.3-80.35-44ZM128,120,47.66,76l33.9-18.56,80.34,44ZM40,90l80,43.78v85.79L40,175.82Zm176,85.78h0l-80,43.79V133.82l32-17.51V152a8,8,0,0,0,16,0V107.55L216,90v85.77Z",
+  terminal: "M117.31,134l-72,64a8,8,0,1,1-10.63-12L100,128,34.69,70A8,8,0,1,1,45.32,58l72,64a8,8,0,0,1,0,12ZM216,184H120a8,8,0,0,0,0,16h96a8,8,0,0,0,0-16Z",
+  subagent: "M248,124a59.92,59.92,0,0,0-29.85-51.85,44,44,0,0,0-86.3,0A59.92,59.92,0,0,0,8,124a60.07,60.07,0,0,0,40,56.44V192a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8v-11.56A60.07,60.07,0,0,0,248,124ZM172,200H84V181.56a8,8,0,0,0-2.67-6A44,44,0,0,1,52.17,140.17a8,8,0,0,0-6-2.67,44,44,0,0,1,0-19A8,8,0,0,0,52.17,115.83a44,44,0,0,1,29.16-35.39,8,8,0,0,0,6-2.67,44,44,0,0,1,19,0,8,8,0,0,0,6,2.67A44,44,0,0,1,141.83,115.83a8,8,0,0,0,6,2.67,44,44,0,0,1,0,19,8,8,0,0,0-2.67,6A44,44,0,0,1,116,175.56a8,8,0,0,0-2.67,6Z",
+  sidebar: "M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z",
+  external: "M224,104a8,8,0,0,1-16,0V59.31l-82.34,82.35a8,8,0,0,1-11.32-11.32L196.69,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z",
+  "corners-out": "M216,48V96a8,8,0,0,1-16,0V67.31l-42.34,42.35a8,8,0,0,1-11.32-11.32L188.69,56H160a8,8,0,0,1,0-16h48A8,8,0,0,1,216,48ZM98.34,146.34,56,188.69V160a8,8,0,0,0-16,0v48a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16H67.31l42.35-42.34a8,8,0,0,0-11.32-11.32ZM208,152a8,8,0,0,0-8,8v28.69l-42.34-42.35a8,8,0,0,0-11.32,11.32L188.69,200H160a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V160A8,8,0,0,0,208,152ZM67.31,56H96a8,8,0,0,0,0-16H48a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31l42.34,42.35a8,8,0,0,0,11.32-11.32Z",
+  "corners-in": "M144,104V56a8,8,0,0,1,16,0V84.69l42.34-42.35a8,8,0,0,1,11.32,11.32L171.31,96H200a8,8,0,0,1,0,16H152A8,8,0,0,1,144,104ZM104,144H56a8,8,0,0,0,0,16H84.69L42.34,202.34a8,8,0,0,0,11.32,11.32L96,171.31V200a8,8,0,0,0,16,0V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,16,0V171.31l42.34,42.35a8,8,0,0,0,11.32-11.32L171.31,160H200a8,8,0,0,0,0-16ZM104,40a8,8,0,0,0-8,8V84.69L53.66,42.34A8,8,0,0,0,42.34,53.66L84.69,96H56a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V56A8,8,0,0,0,104,40Z",
+};
+
+/* Tiny icon component so every icon is rendered the same way. */
+const PIcon = {
+  name: "PIcon",
+  props: { name: { type: String, required: true }, size: { type: [Number, String], default: 16 } },
+  computed: { path() { return ICON_PATHS[this.name] || ICON_PATHS.file; } },
+  template: `
+    <svg xmlns="http://www.w3.org/2000/svg" :width="size" :height="size" fill="currentColor"
+      viewBox="0 0 256 256" aria-hidden="true"><path :d="path"/></svg>
+  `,
+};
+
+/* Shared icon-button style: one size, one hover, one disabled treatment. */
+const ICON_BTN =
+  "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors " +
+  "hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
+
+const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"]);
+const CODE_LANG = {
+  js: "javascript", mjs: "javascript", cjs: "javascript", jsx: "javascript",
+  ts: "typescript", tsx: "typescript",
+  py: "python", rb: "ruby", rs: "rust", go: "go",
+  java: "java", kt: "kotlin", swift: "swift", php: "php",
+  sh: "bash", bash: "bash", zsh: "bash",
+  yaml: "yaml", yml: "yaml", toml: "ini", ini: "ini",
+  xml: "xml", sql: "sql", graphql: "graphql", gql: "graphql",
+  scss: "scss", less: "less",
+  c: "c", h: "c", cpp: "cpp", cc: "cpp", cxx: "cpp", hpp: "cpp",
+  cs: "csharp", lua: "lua", r: "r", vue: "xml", svelte: "xml",
+  json: "json", css: "css", html: "xml",
+};
+
+const fileName = (p) => (p || "").split("/").filter(Boolean).pop() || "file";
+const fileExt = (p) => fileName(p).toLowerCase().split(".").pop() || "";
+const isImagePath = (p) => IMAGE_EXT.has(fileExt(p));
+const truncate = (t, max = 48) => {
+  const s = (t || "").trim();
+  return s.length <= max ? (s || "New chat") : s.slice(0, max - 1) + "…";
+};
+
+function codeLanguageFor(path) {
+  const base = fileName(path).toLowerCase();
+  if (base === "dockerfile") return "dockerfile";
+  if (base === "makefile") return "makefile";
+  return CODE_LANG[fileExt(path)] || "plaintext";
+}
+
+function previewModeFor(path) {
+  const ext = fileExt(path);
+  const base = fileName(path).toLowerCase();
+  if (isImagePath(path)) return "image";
+  if (ext === "html" || ext === "htm" || ext === "svg") return "html";
+  if (ext === "md" || ext === "mdx") return "markdown";
+  if (ext === "csv" || ext === "tsv") return "csv";
+  if (ext === "css") return "css";
+  if (base === "dockerfile" || base === "makefile" || CODE_LANG[ext]) return "code";
+  return "text";
+}
+
+/* CSV parsing that handles quoted newlines. */
+function parseDelimited(text, delimiter) {
+  const rows = [];
+  let row = [], cell = "", inQuotes = false;
+  const src = text.replace(/\r\n/g, "\n");
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '"') {
+      if (inQuotes && src[i + 1] === '"') { cell += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === delimiter && !inQuotes) {
+      row.push(cell); cell = "";
+    } else if (ch === "\n" && !inQuotes) {
+      row.push(cell); cell = "";
+      if (row.some((c) => c.trim() !== "")) rows.push(row);
+      row = [];
+    } else {
+      cell += ch;
+    }
+  }
+  row.push(cell);
+  if (row.some((c) => c.trim() !== "")) rows.push(row);
+  return rows;
+}
+
+function cssPreviewDocument(css) {
+  const safe = css.replace(/<\/style/gi, "<\\/style");
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><style>${safe}</style></head><body><main><h1>Preview heading</h1><p>Sample paragraph with <a href="#">a link</a>, <strong>bold</strong>, and <em>italic</em> text.</p><ul><li>First list item</li><li>Second list item</li></ul><button type="button">Button</button><input type="text" value="Input field" aria-label="Sample input"/></main></body></html>`;
+}
+
+function prettyJson(text) {
+  try { return JSON.stringify(JSON.parse(text), null, 2); }
+  catch { return text; }
+}
+
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+  highlight(code, lang) {
+    try {
+      if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
+      return hljs.highlightAuto(code).value;
+    } catch { return code; }
+  },
+});
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  if (node.tagName === "A") {
+    node.setAttribute("target", "_blank");
+    node.setAttribute("rel", "noopener noreferrer");
+  }
+});
+
+/* Incremental SSE parser: handles CRLF, multi-line data fields, comments. */
+function createSseParser() {
+  let buffer = "";
+  return function feed(chunk) {
+    buffer += chunk;
+    const events = [];
+    buffer = buffer.replace(/\r\n/g, "\n");
+    let sep;
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const block = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      if (!block.trim()) continue;
+      let eventType = "message";
+      const dataLines = [];
+      for (const line of block.split("\n")) {
+        if (line.startsWith(":")) continue;
+        if (line.startsWith("event:")) eventType = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataLines.push(line.slice(5).replace(/^ /, ""));
+      }
+      if (!dataLines.length) continue;
+      try { events.push({ event: eventType, data: JSON.parse(dataLines.join("\n")) }); }
+      catch { /* skip malformed frames */ }
+    }
+    return events;
+  };
+}
+
+/* ---------------------------------------------------------------- */
+/* Recursive file-tree node                                          */
+/* ---------------------------------------------------------------- */
+
+const FileNode = {
+  name: "FileNode",
+  components: { PIcon },
+  props: ["entry", "depth", "expanded", "childrenMap", "activePath"],
+  emits: ["toggle", "preview", "download"],
+  computed: {
+    isExpanded() { return this.expanded.has(this.entry.path); },
+    isActive() { return !this.entry.is_dir && this.activePath === this.entry.path; },
+    children() { return this.childrenMap[this.entry.path]; },
+    indent() { return { paddingLeft: `${this.depth * 0.875 + 0.375}rem` }; },
+    childIndent() { return { paddingLeft: `${(this.depth + 1) * 0.875 + 0.375}rem` }; },
+  },
+  template: `
+    <li class="flex flex-col gap-px" :title="entry.path">
+      <div class="group flex h-6 items-center gap-1 rounded-md pr-1 transition-colors"
+        :class="isActive ? 'bg-accent-soft text-accent' : 'hover:bg-muted'"
+        :style="indent">
+
+        <button v-if="entry.is_dir" type="button"
+          class="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
+          :aria-expanded="String(isExpanded)" @click="$emit('toggle', entry.path)">
+          <p-icon name="caret-right" :size="9"
+            class="shrink-0 text-muted-foreground/50 transition-transform duration-150"
+            :class="{ 'rotate-90': isExpanded }" />
+          <p-icon name="folder" :size="13" class="shrink-0 text-muted-foreground/70" />
+          <span class="min-w-0 truncate">{{ entry.name }}</span>
+        </button>
+
+        <button v-else type="button"
+          class="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
+          :class="isActive ? 'font-medium' : ''"
+          @click="$emit('preview', entry.path)">
+          <span class="w-[9px] shrink-0" aria-hidden="true"></span>
+          <p-icon name="file" :size="13" class="shrink-0"
+            :class="isActive ? 'text-accent' : 'text-muted-foreground/60'" />
+          <span class="min-w-0 truncate">{{ entry.name }}</span>
+        </button>
+
+        <button v-if="!entry.is_dir" type="button"
+          class="hidden size-5 shrink-0 place-items-center rounded text-muted-foreground/70 transition-colors hover:bg-background hover:text-foreground group-hover:grid"
+          :title="'Download ' + entry.name" :aria-label="'Download ' + entry.name"
+          @click.stop="$emit('download', entry.path)">
+          <p-icon name="download" :size="11" />
+        </button>
+      </div>
+
+      <ul v-if="entry.is_dir && isExpanded" class="flex flex-col gap-px">
+        <li v-if="children === undefined" class="h-6 leading-6 text-muted-foreground/60" :style="childIndent">Loading…</li>
+        <li v-else-if="!children.length" class="h-6 leading-6 text-muted-foreground/50" :style="childIndent">Empty folder</li>
+        <file-node v-else v-for="child in children" :key="child.path" :entry="child" :depth="depth + 1"
+          :expanded="expanded" :children-map="childrenMap" :active-path="activePath"
+          @toggle="$emit('toggle', $event)" @preview="$emit('preview', $event)" @download="$emit('download', $event)" />
+      </ul>
+    </li>
+  `,
+};
+
+/* ---------------------------------------------------------------- */
+/* App                                                               */
+/* ---------------------------------------------------------------- */
+
+createApp({
+  components: { FileNode, PIcon },
+  setup() {
+    /* ---------- session / config ---------- */
+    const config = ref(null);
+    const session = ref(null);
+    const sessionId = ref(null);
+    const sessionInfoOpen = ref(false);
+    const sessionInfoEl = ref(null);
+    const sessionList = ref([]);
+    const sessionListLoading = ref(false);
+
+    /* ---------- chat ---------- */
+    const timeline = ref([]);
+    const draft = ref("");
+    const streaming = ref(false);
+    const thinking = ref(false);
+    const errorMessage = ref("");
+    const sidebarSubtitle = ref("Starting session");
+    const chatTitleOverride = ref("");
+    let itemId = 0;
+    let errorTimer = null;
+    let abortController = null;
+
+    /* ---------- usage ---------- */
+    const lastTurnUsage = ref(null);
+    const usageEstimate = ref(null);
+
+    /* ---------- running tool ---------- */
+    const runningTool = ref(null);
+    const runningSeconds = ref("0.0");
     let runningTimer = null;
-    let runningToolName = null;
-    let runningStartedAt = 0;
-    let lastTurnUsage = null;
-    let usageEstimate = null;
-    let previewCollapsed = true;
-    let previewExpanded = false;
-    let previewFile = null;
-    let previewBlobUrl = null;
-    let fileTreeCache = new Map();
-    let expandedFolders = new Set();
-    let selectedPwd = "";
-    let pwdMenuOpen = false;
-    let workspaceFolders = [""];
 
-    const PWD_FOLDER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" class="shrink-0 text-muted-foreground/80" aria-hidden="true"><path d="M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72Zm0,128H40V56H92.69l27.32,27.32A15.86,15.86,0,0,0,131.31,88H216Z"></path></svg>`;
+    /* ---------- files ---------- */
+    const fileTree = ref(null);
+    const childrenMap = reactive({});
+    const expandedFolders = reactive(new Set());
+    const filesLoading = ref(false);
+    const filesError = ref("");
+    const workspaceCache = new Map();
 
-    function showError(message) {
-      els.errorBanner.textContent = message;
-      els.errorBanner.classList.remove("hidden");
-      setTimeout(() => els.errorBanner.classList.add("hidden"), 8000);
-    }
+    /* ---------- pwd picker ---------- */
+    const workspaceFolders = ref([""]);
+    const workspaceFoldersLoaded = ref(false);
+    const selectedPwd = ref("");
+    const pwdMenuOpen = ref(false);
+    const pwdPickerEl = ref(null);
 
-    function setStatus(text) {
-      els.statusLine.textContent = text;
-      els.statusLine.title = text;
-    }
+    /* ---------- preview ---------- */
+    const previewCollapsed = ref(true);
+    const previewExpanded = ref(false);
+    const preview = reactive({
+      mode: "empty", message: "Select a workspace file to preview it here.",
+      title: "Preview", subtitle: "No file selected",
+      path: null, content: "", rows: [], highlighted: "", blobUrl: null,
+      ready: false, blob: null, type: "",
+    });
 
-    function shortModel(name) {
-      if (!name) return "Unknown model";
-      const parts = name.split("/");
-      return parts[parts.length - 1].replace(/-/g, " ");
-    }
+    /* ---------- DOM refs ---------- */
+    const scrollEl = ref(null);
+    const inputEl = ref(null);
 
-    function formatPwdMenuLabel(path) {
-      if (!path) return "Workspace";
-      const parts = path.split("/");
-      return parts[parts.length - 1];
-    }
-
-    function formatPwdTriggerLabel(path) {
-      return path || "Workspace";
-    }
-
-    function getSelectedPwd() {
-      return selectedPwd || null;
-    }
-
-    function setSelectedPwd(path = "") {
-      selectedPwd = path || "";
-      els.pwdSelectLabel.textContent = formatPwdTriggerLabel(selectedPwd);
-      renderPwdMenu();
-    }
-
-    function closePwdMenu() {
-      pwdMenuOpen = false;
-      els.pwdSelectMenu.classList.add("hidden");
-      els.pwdSelectTrigger.setAttribute("aria-expanded", "false");
-      els.pwdSelectChevron.classList.remove("rotate-180");
-    }
-
-    function openPwdMenu() {
-      pwdMenuOpen = true;
-      els.pwdSelectMenu.classList.remove("hidden");
-      els.pwdSelectTrigger.setAttribute("aria-expanded", "true");
-      els.pwdSelectChevron.classList.add("rotate-180");
-    }
-
-    function togglePwdMenu() {
-      if (els.pwdSelectTrigger.disabled) return;
-      if (pwdMenuOpen) closePwdMenu();
-      else openPwdMenu();
-    }
-
-    function renderPwdMenu() {
-      els.pwdSelectList.innerHTML = "";
-      for (const folder of workspaceFolders) {
-        const depth = folder ? folder.split("/").length - 1 : 0;
-        const li = document.createElement("li");
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.role = "option";
-        btn.dataset.path = folder;
-        btn.setAttribute("aria-selected", folder === selectedPwd ? "true" : "false");
-        btn.className = [
-          "flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm leading-5 text-foreground",
-          "hover:bg-background/80",
-          folder === selectedPwd ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-        ].join(" ");
-        btn.style.paddingLeft = `${depth * 0.75 + 0.625}rem`;
-        btn.innerHTML = `${PWD_FOLDER_ICON}<span class="min-w-0 truncate">${formatPwdMenuLabel(folder)}</span>`;
-        btn.addEventListener("click", () => {
-          setSelectedPwd(folder);
-          closePwdMenu();
-        });
-        li.appendChild(btn);
-        els.pwdSelectList.appendChild(li);
-      }
-    }
-
-    async function loadWorkspaceFolders() {
-      if (!sessionId) return;
-      const previous = selectedPwd;
-      try {
-        const data = await api(`/api/sessions/${sessionId}/folders`);
-        workspaceFolders = data.folders?.length ? data.folders : [""];
-        if (!workspaceFolders.includes(previous)) {
-          setSelectedPwd("");
-        } else {
-          setSelectedPwd(previous);
+    /* ---------- computed ---------- */
+    const chatTitle = computed(() => chatTitleOverride.value || "Deep Agent");
+    const chatSubtitle = computed(() =>
+      session.value
+        ? `Sandbox ${session.value.sandbox_id} · network ${session.value.network ? "on" : "off"}`
+        : "Sandboxed workspace"
+    );
+    const statusLine = computed(() =>
+      session.value ? `session ${String(sessionId.value).slice(0, 8)}` : "connecting…"
+    );
+    const modelLabel = computed(() => {
+      const m = session.value?.model || config.value?.default_model || "";
+      if (!m) return "Loading model…";
+      return m.split("/").pop().replace(/-/g, " ");
+    });
+    const sessionInfoRows = computed(() => {
+      const s = session.value;
+      if (!s) return [];
+      return [
+        { label: "Session", value: s.id },
+        { label: "Sandbox", value: s.sandbox_id },
+        { label: "Workdir", value: s.workdir },
+        { label: "Model", value: s.model },
+        { label: "Network", value: s.network ? "on" : "off" },
+        { label: "Messages", value: String(s.message_count ?? timeline.value.length) },
+      ];
+    });
+    const canSend = computed(() => !!draft.value.trim() && !streaming.value && !!sessionId.value);
+    const previewWidth = computed(() =>
+      previewCollapsed.value ? "3rem" : previewExpanded.value ? "min(52vw, 760px)" : "min(38vw, 520px)"
+    );
+    const usageText = computed(() => {
+      const turn = lastTurnUsage.value, est = usageEstimate.value;
+      const parts = [];
+      const total = Number(turn?.total_tokens || 0);
+      const out = Number(turn?.output_tokens || 0);
+      const estOut = Number(est?.estimated_output_tokens || 0);
+      if (est && estOut) {
+        parts.push(`~${(total + estOut).toLocaleString()} tokens`);
+        parts.push(`in ${Number(turn?.input_tokens || 0).toLocaleString()}`);
+        parts.push(`out ~${(out + estOut).toLocaleString()}`);
+        if (est.phase === "tool_args" && est.tool_name) {
+          parts.push(`${est.tool_name} args ${Number(est.chars || 0).toLocaleString()} chars`);
+        } else if (est.phase === "text") {
+          parts.push("text streaming");
         }
-      } catch (_) {
-        workspaceFolders = [""];
-        setSelectedPwd("");
+      } else if (turn?.model_calls) {
+        parts.push(`${total.toLocaleString()} tokens`);
+        parts.push(`in ${Number(turn.input_tokens || 0).toLocaleString()}`);
+        parts.push(`out ${out.toLocaleString()}`);
+        if (turn.cache_read) parts.push(`cache ${Number(turn.cache_read).toLocaleString()}`);
+        if (turn.model_calls > 1) parts.push(`${turn.model_calls} model calls`);
       }
+      return parts.join(" · ");
+    });
+
+    /* ---------- small helpers ---------- */
+    function showError(message) {
+      errorMessage.value = message || "Something went wrong";
+      clearTimeout(errorTimer);
+      errorTimer = setTimeout(() => (errorMessage.value = ""), 8000);
+    }
+
+    function renderMarkdown(text) {
+      if (!text) return "";
+      return DOMPurify.sanitize(marked.parse(text), { ADD_ATTR: ["target"] });
+    }
+
+    async function scrollToBottom() {
+      await nextTick();
+      const el = scrollEl.value;
+      if (el) el.scrollTop = el.scrollHeight;
+    }
+
+    function pushItem(item) {
+      timeline.value.push({ id: ++itemId, ...item });
+      scrollToBottom();
+      return timeline.value[timeline.value.length - 1];
+    }
+
+    function autoGrow() {
+      const el = inputEl.value;
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 160) + "px";
     }
 
     async function api(path, options = {}) {
@@ -566,1051 +861,652 @@
         try {
           const body = await res.json();
           detail = body.detail || JSON.stringify(body);
-        } catch (_) {}
+        } catch {}
         throw new Error(detail);
       }
       return res.json();
     }
 
+    /* ---------- history helpers ---------- */
     function messageContent(msg) {
-      const data = msg.data || msg;
-      const content = data.content ?? msg.content ?? "";
+      const content = msg?.data?.content ?? msg?.content ?? "";
       if (typeof content === "string") return content;
       if (Array.isArray(content)) {
-        return content.map((block) => {
-          if (typeof block === "string") return block;
-          if (block?.type === "text") return block.text || "";
-          return "";
-        }).join("");
+        return content
+          .map((b) => (typeof b === "string" ? b : b?.type === "text" ? b.text || "" : ""))
+          .join("");
       }
       return String(content ?? "");
     }
+    const messageRole = (msg) => msg?.type || msg?.role || msg?.data?.type || "";
 
-    function messageRole(msg) {
-      return msg.type || msg.role || (msg.data && msg.data.type) || "";
+    function renderHistory(messages) {
+      timeline.value = [];
+      for (const msg of messages) {
+        const role = messageRole(msg);
+        const text = messageContent(msg);
+        if (!text) continue;
+        if (role === "human" || role === "user") pushItem({ kind: "user", text });
+        else if (role === "ai" || role === "assistant") pushItem({ kind: "assistant", text });
+      }
     }
 
-    function truncate(text, max = 48) {
-      const t = (text || "").trim();
-      if (t.length <= max) return t || "New chat";
-      return t.slice(0, max - 1) + "…";
+    /* ---------- running tool timer ---------- */
+    function startToolTimer(name) {
+      stopToolTimer();
+      runningTool.value = name;
+      const startedAt = Date.now();
+      runningSeconds.value = "0.0";
+      runningTimer = setInterval(() => {
+        runningSeconds.value = ((Date.now() - startedAt) / 1000).toFixed(1);
+      }, 100);
+    }
+    function stopToolTimer() {
+      clearInterval(runningTimer);
+      runningTimer = null;
+      runningTool.value = null;
     }
 
-    function scrollToBottom() {
-      els.messagesScroll.scrollTop = els.messagesScroll.scrollHeight;
+    /* ---------- files ---------- */
+    async function fetchEntries(path = "") {
+      const q = path ? `?path=${encodeURIComponent(path)}` : "";
+      const data = await api(`/api/sessions/${sessionId.value}/files${q}`);
+      return data.entries || [];
     }
 
-    function fileName(path) {
-      return (path || "").split("/").filter(Boolean).pop() || "file";
+    function snapshotWorkspace(id = sessionId.value) {
+      if (!id || fileTree.value === null) return;
+      workspaceCache.set(id, {
+        fileTree: fileTree.value,
+        childrenMap: { ...childrenMap },
+        expandedFolders: new Set(expandedFolders),
+        workspaceFolders: workspaceFolders.value,
+        workspaceFoldersLoaded: workspaceFoldersLoaded.value,
+        selectedPwd: selectedPwd.value,
+      });
     }
 
-    function fileExtension(path) {
-      return fileName(path).toLowerCase().split(".").pop() || "";
+    function restoreWorkspace(id) {
+      const cached = workspaceCache.get(id);
+      if (!cached) {
+        fileTree.value = null;
+        for (const key of Object.keys(childrenMap)) delete childrenMap[key];
+        expandedFolders.clear();
+        workspaceFolders.value = [""];
+        workspaceFoldersLoaded.value = false;
+        selectedPwd.value = "";
+        filesError.value = "";
+        return false;
+      }
+      fileTree.value = cached.fileTree;
+      for (const key of Object.keys(childrenMap)) delete childrenMap[key];
+      Object.assign(childrenMap, cached.childrenMap);
+      expandedFolders.clear();
+      for (const p of cached.expandedFolders) expandedFolders.add(p);
+      workspaceFolders.value = cached.workspaceFolders;
+      workspaceFoldersLoaded.value = cached.workspaceFoldersLoaded;
+      selectedPwd.value = cached.selectedPwd;
+      filesError.value = "";
+      return true;
     }
 
-    const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"]);
-    const IMAGE_MIME = {
-      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
-      webp: "image/webp", bmp: "image/bmp", ico: "image/x-icon", avif: "image/avif",
-    };
-
-    const CODE_LANG = {
-      js: "javascript", mjs: "javascript", cjs: "javascript", jsx: "javascript",
-      ts: "typescript", tsx: "typescript",
-      py: "python", rb: "ruby", rs: "rust", go: "go",
-      java: "java", kt: "kotlin", swift: "swift", php: "php",
-      sh: "bash", bash: "bash", zsh: "bash",
-      yaml: "yaml", yml: "yaml", toml: "ini", ini: "ini",
-      xml: "xml", sql: "sql", graphql: "graphql", gql: "graphql",
-      dockerfile: "dockerfile", makefile: "makefile",
-      scss: "scss", less: "less",
-      c: "c", h: "c", cpp: "cpp", cc: "cpp", cxx: "cpp", hpp: "cpp",
-      cs: "csharp", lua: "lua", r: "r", vue: "xml", svelte: "xml",
-    };
-
-    function contentTypeFor(path) {
-      const ext = fileExtension(path);
-      if (ext === "html" || ext === "htm") return "text/html";
-      if (ext === "css" || ext === "scss" || ext === "less") return "text/css";
-      if (ext === "js" || ext === "mjs" || ext === "cjs") return "text/javascript";
-      if (ext === "json") return "application/json";
-      if (ext === "svg") return "image/svg+xml";
-      if (ext === "md" || ext === "mdx") return "text/markdown";
-      if (ext === "csv") return "text/csv";
-      if (ext === "tsv") return "text/tab-separated-values";
-      if (IMAGE_EXT.has(ext)) return IMAGE_MIME[ext] || "application/octet-stream";
-      return "text/plain";
+    function clearWorkspaceView() {
+      fileTree.value = null;
+      for (const key of Object.keys(childrenMap)) delete childrenMap[key];
+      expandedFolders.clear();
+      workspaceFolders.value = [""];
+      workspaceFoldersLoaded.value = false;
+      selectedPwd.value = "";
+      filesError.value = "";
     }
 
-    function isImagePath(path) {
-      return IMAGE_EXT.has(fileExtension(path));
-    }
-
-    function codeLanguageFor(path) {
-      const base = fileName(path).toLowerCase();
-      if (base === "dockerfile") return "dockerfile";
-      if (base === "makefile") return "makefile";
-      return CODE_LANG[fileExtension(path)] || "plaintext";
-    }
-
-    function previewModeFor(path) {
-      const ext = fileExtension(path);
-      const base = fileName(path).toLowerCase();
-      if (isImagePath(path)) return "image";
-      if (ext === "html" || ext === "htm" || ext === "svg") return "html";
-      if (ext === "md" || ext === "mdx") return "markdown";
-      if (ext === "json") return "json";
-      if (ext === "csv" || ext === "tsv") return "csv";
-      if (ext === "css") return "css";
-      if (base === "dockerfile" || base === "makefile" || CODE_LANG[ext]) return "code";
-      return "text";
-    }
-
-    function hidePreviewPanes() {
-      els.previewFrame.classList.add("hidden");
-      els.previewFrame.removeAttribute("src");
-      els.previewFrame.removeAttribute("srcdoc");
-      els.previewMarkdown.classList.add("hidden");
-      els.previewCode.classList.add("hidden");
-      els.previewCode.innerHTML = "";
-      els.previewImageWrap.classList.add("hidden");
-      els.previewImage.removeAttribute("src");
-      els.previewImage.alt = "";
-      els.previewText.classList.add("hidden");
-      els.previewText.textContent = "";
-    }
-
-    function prettyJson(text) {
+    async function loadFiles({ silent = false, force = false } = {}) {
+      if (!sessionId.value || filesLoading.value) return;
+      if (!force && !silent && fileTree.value !== null) {
+        snapshotWorkspace(sessionId.value);
+        return;
+      }
+      const showSpinner = !silent;
+      if (showSpinner) {
+        filesLoading.value = true;
+        if (fileTree.value === null) filesError.value = "";
+      }
       try {
-        return JSON.stringify(JSON.parse(text), null, 2);
-      } catch (_) {
-        return text;
-      }
-    }
-
-    function parseDelimitedRows(text, delimiter) {
-      const rows = [];
-      for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
-        if (!line.trim()) continue;
-        const row = [];
-        let cell = "";
-        let inQuotes = false;
-        for (let i = 0; i < line.length; i++) {
-          const ch = line[i];
-          if (ch === '"') {
-            if (inQuotes && line[i + 1] === '"') {
-              cell += '"';
-              i++;
-            } else {
-              inQuotes = !inQuotes;
-            }
-          } else if (ch === delimiter && !inQuotes) {
-            row.push(cell);
-            cell = "";
-          } else {
-            cell += ch;
-          }
+        fileTree.value = await fetchEntries("");
+        const stillExpanded = [...expandedFolders].filter((p) => folderExists(p, fileTree.value));
+        expandedFolders.clear();
+        for (const p of stillExpanded) expandedFolders.add(p);
+        const missingExpanded = stillExpanded.filter((p) => childrenMap[p] === undefined);
+        if (missingExpanded.length) {
+          await Promise.allSettled(
+            missingExpanded.map(async (p) => { childrenMap[p] = await fetchEntries(p); })
+          );
         }
-        row.push(cell);
-        rows.push(row);
-      }
-      return rows;
-    }
-
-    function renderCsvPreview(container, text, delimiter) {
-      const rows = parseDelimitedRows(text, delimiter);
-      container.innerHTML = "";
-      if (!rows.length) {
-        const empty = document.createElement("p");
-        empty.className = "text-sm text-muted-foreground";
-        empty.textContent = "Empty table";
-        container.appendChild(empty);
-        return;
-      }
-      const table = document.createElement("table");
-      const [header, ...body] = rows;
-      const thead = document.createElement("thead");
-      const headRow = document.createElement("tr");
-      for (const cell of header) {
-        const th = document.createElement("th");
-        th.textContent = cell;
-        headRow.appendChild(th);
-      }
-      thead.appendChild(headRow);
-      table.appendChild(thead);
-      const tbody = document.createElement("tbody");
-      for (const row of body) {
-        const tr = document.createElement("tr");
-        for (const cell of row) {
-          const td = document.createElement("td");
-          td.textContent = cell;
-          tr.appendChild(td);
+        snapshotWorkspace(sessionId.value);
+      } catch {
+        if (!silent) {
+          filesError.value = "Files unavailable";
+          fileTree.value = [];
         }
-        tbody.appendChild(tr);
+      } finally {
+        if (showSpinner) filesLoading.value = false;
       }
-      table.appendChild(tbody);
-      container.appendChild(table);
     }
 
-    function cssPreviewDocument(css) {
-      const safeCss = css.replace(/<\/style/gi, "<\\/style");
-      return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>${safeCss}</style>
-</head>
-<body>
-  <main>
-    <h1>Preview heading</h1>
-    <p>Sample paragraph with <a href="#">a link</a>, <strong>bold</strong>, and <em>italic</em> text.</p>
-    <ul><li>First list item</li><li>Second list item</li></ul>
-    <button type="button">Button</button>
-    <input type="text" value="Input field" aria-label="Sample input" />
-  </main>
-</body>
-</html>`;
+    function folderExists(path, rootEntries) {
+      const top = path.split("/")[0];
+      return (rootEntries || []).some((e) => e.is_dir && (e.path === path || e.path === top));
     }
 
-    function setCodePreview(container, content, language) {
-      const pre = document.createElement("pre");
-      const code = document.createElement("code");
-      code.className = language ? `language-${language}` : "";
-      code.textContent = content;
-      pre.appendChild(code);
-      container.innerHTML = "";
-      container.appendChild(pre);
-      if (window.hljs) hljs.highlightElement(code);
-    }
-
-    function showFilePreview(path, content, imageUrl = null) {
-      const mode = previewModeFor(path);
-      hidePreviewPanes();
-
-      if (mode === "image") {
-        els.previewImage.src = imageUrl;
-        els.previewImage.alt = fileName(path);
-        els.previewImageWrap.classList.remove("hidden");
+    async function toggleFolder(path) {
+      if (expandedFolders.has(path)) {
+        expandedFolders.delete(path);
         return;
       }
-      if (mode === "html") {
-        els.previewFrame.srcdoc = content;
-        els.previewFrame.classList.remove("hidden");
-        return;
-      }
-      if (mode === "markdown") {
-        setMarkdownContent(els.previewMarkdown, content);
-        els.previewMarkdown.classList.remove("hidden");
-        return;
-      }
-      if (mode === "json") {
-        setCodePreview(els.previewCode, prettyJson(content), "json");
-        els.previewCode.classList.remove("hidden");
-        return;
-      }
-      if (mode === "csv") {
-        const delimiter = fileExtension(path) === "tsv" ? "\t" : ",";
-        renderCsvPreview(els.previewMarkdown, content, delimiter);
-        els.previewMarkdown.classList.remove("hidden");
-        return;
-      }
-      if (mode === "css") {
-        els.previewFrame.srcdoc = cssPreviewDocument(content);
-        els.previewFrame.classList.remove("hidden");
-        return;
-      }
-      if (mode === "code") {
-        setCodePreview(els.previewCode, content, codeLanguageFor(path));
-        els.previewCode.classList.remove("hidden");
-        return;
-      }
-
-      els.previewText.textContent = content;
-      els.previewText.classList.remove("hidden");
-    }
-
-    marked.setOptions({ breaks: true, gfm: true });
-
-    function renderMarkdown(text) {
-      if (!text) return "";
-      const html = marked.parse(text);
-      return DOMPurify.sanitize(html);
-    }
-
-    function setMarkdownContent(el, text) {
-      el._raw = text;
-      el.innerHTML = renderMarkdown(text);
-    }
-
-    function appendAssistantText(bubble, chunk) {
-      bubble._raw = (bubble._raw || "") + chunk;
-      setMarkdownContent(bubble._content, bubble._raw);
-    }
-
-    function setPreviewCollapsed(collapsed) {
-      previewCollapsed = collapsed;
-      els.previewPanel.style.width = collapsed ? "3.5rem" : (previewExpanded ? "min(52vw, 760px)" : "min(38vw, 520px)");
-      els.previewHeader.classList.toggle("hidden", collapsed);
-      els.previewHeader.classList.toggle("flex", !collapsed);
-      els.previewBody.classList.toggle("hidden", collapsed);
-      els.btnPreviewToggle.setAttribute("aria-label", collapsed ? "Show workspace preview" : "Hide workspace preview");
-      els.btnPreviewToggle.title = collapsed ? "Show workspace preview" : "Hide workspace preview";
-    }
-
-    function setPreviewExpanded(expanded) {
-      previewExpanded = expanded;
-      if (!previewCollapsed) {
-        els.previewPanel.style.width = expanded ? "min(52vw, 760px)" : "min(38vw, 520px)";
-      }
-      els.btnPreviewExpand.setAttribute("aria-label", expanded ? "Shrink workspace preview" : "Expand workspace preview");
-      els.btnPreviewExpand.title = expanded ? "Shrink preview" : "Expand preview";
-    }
-
-    function setPreviewActionsEnabled(enabled) {
-      els.btnPreviewOpen.disabled = !enabled;
-      els.btnPreviewDownload.disabled = !enabled;
-    }
-
-    function clearPreviewBlobUrl() {
-      if (previewBlobUrl) {
-        URL.revokeObjectURL(previewBlobUrl);
-        previewBlobUrl = null;
+      expandedFolders.add(path);
+      if (childrenMap[path] === undefined) {
+        try {
+          childrenMap[path] = await fetchEntries(path);
+          snapshotWorkspace();
+        } catch (e) {
+          expandedFolders.delete(path);
+          showError(e.message || "Folder unavailable");
+        }
       }
     }
 
-    async function loadFileContent(path) {
-      return api(`/api/sessions/${sessionId}/files/content?path=${encodeURIComponent(path)}`);
+    async function loadWorkspaceFolders() {
+      if (!sessionId.value) return;
+      const previous = selectedPwd.value;
+      try {
+        const data = await api(`/api/sessions/${sessionId.value}/folders`);
+        workspaceFolders.value = data.folders?.length ? data.folders : [""];
+        workspaceFoldersLoaded.value = true;
+      } catch {
+        workspaceFolders.value = [""];
+        workspaceFoldersLoaded.value = false;
+      }
+      if (!workspaceFolders.value.includes(previous)) selectedPwd.value = "";
+      snapshotWorkspace();
+    }
+
+    async function openPwdMenu() {
+      pwdMenuOpen.value = !pwdMenuOpen.value;
+      if (pwdMenuOpen.value && !workspaceFoldersLoaded.value) {
+        await loadWorkspaceFolders();
+      }
+    }
+
+    function selectPwd(folder) {
+      selectedPwd.value = folder || "";
+      pwdMenuOpen.value = false;
+      snapshotWorkspace();
+    }
+
+    /* ---------- preview ---------- */
+    function clearPreviewBlob() {
+      if (preview.blobUrl) {
+        URL.revokeObjectURL(preview.blobUrl);
+        preview.blobUrl = null;
+      }
+      preview.blob = null;
     }
 
     async function loadFileBlob(path) {
-      const res = await fetch(
-        `${API}/api/sessions/${sessionId}/files/raw?path=${encodeURIComponent(path)}`
-      );
+      const res = await fetch(`${API}/api/sessions/${sessionId.value}/files/raw?path=${encodeURIComponent(path)}`);
       if (!res.ok) {
         let detail = res.statusText;
-        try {
-          const body = await res.json();
-          detail = body.detail || JSON.stringify(body);
-        } catch (_) {}
+        try { detail = (await res.json()).detail || detail; } catch {}
         throw new Error(detail);
       }
       return res.blob();
     }
 
     async function previewWorkspaceFile(path) {
-      if (!sessionId) return;
-      setPreviewCollapsed(false);
-      setPreviewActionsEnabled(false);
-      els.previewTitle.textContent = fileName(path);
-      els.previewSubtitle.textContent = path;
-      els.previewEmpty.classList.remove("hidden");
-      els.previewEmpty.textContent = "Loading preview…";
-      hidePreviewPanes();
-      clearPreviewBlobUrl();
+      if (!sessionId.value) return;
+      previewCollapsed.value = false;
+      clearPreviewBlob();
+      Object.assign(preview, {
+        mode: "empty", message: "Loading preview…",
+        title: fileName(path), subtitle: path,
+        path, content: "", rows: [], highlighted: "", ready: false, type: "",
+      });
 
       try {
         if (isImagePath(path)) {
           const blob = await loadFileBlob(path);
-          previewBlobUrl = URL.createObjectURL(blob);
-          previewFile = { path, blob, type: blob.type || contentTypeFor(path), size: blob.size };
-          els.previewEmpty.classList.add("hidden");
-          showFilePreview(path, null, previewBlobUrl);
-          els.previewSubtitle.textContent = `${path} · ${Number(blob.size || 0).toLocaleString()} bytes`;
+          preview.blob = blob;
+          preview.blobUrl = URL.createObjectURL(blob);
+          preview.mode = "image";
+          preview.subtitle = `${path} · ${Number(blob.size || 0).toLocaleString()} bytes`;
         } else {
-          const data = await loadFileContent(path);
-          const type = contentTypeFor(data.path);
-          const blob = new Blob([data.content], { type });
-          previewBlobUrl = URL.createObjectURL(blob);
-          previewFile = { path: data.path, content: data.content, type };
-
-          els.previewEmpty.classList.add("hidden");
-          showFilePreview(data.path, data.content);
-          els.previewSubtitle.textContent = `${data.path} · ${Number(data.size || 0).toLocaleString()} bytes`;
+          const data = await api(`/api/sessions/${sessionId.value}/files/content?path=${encodeURIComponent(path)}`);
+          const mode = previewModeFor(data.path);
+          preview.subtitle = `${data.path} · ${Number(data.size || 0).toLocaleString()} bytes`;
+          if (mode === "html") {
+            preview.content = data.content;
+            preview.mode = "html";
+          } else if (mode === "css") {
+            preview.content = cssPreviewDocument(data.content);
+            preview.mode = "html";
+          } else if (mode === "markdown") {
+            preview.content = data.content;
+            preview.mode = "markdown";
+          } else if (mode === "csv") {
+            preview.rows = parseDelimited(data.content, fileExt(path) === "tsv" ? "\t" : ",");
+            preview.mode = "csv";
+          } else if (mode === "code") {
+            const lang = codeLanguageFor(path);
+            const source = lang === "json" ? prettyJson(data.content) : data.content;
+            let html;
+            try { html = hljs.highlight(source, { language: lang }).value; }
+            catch { html = hljs.highlightAuto(source).value; }
+            preview.highlighted = DOMPurify.sanitize(html);
+            preview.mode = "code";
+          } else {
+            preview.content = data.content;
+            preview.mode = "text";
+          }
+          preview.type = mode === "html" ? "text/html" : "text/plain";
+          preview.blob = new Blob([data.content], { type: preview.type });
+          preview.blobUrl = URL.createObjectURL(preview.blob);
         }
-        setPreviewActionsEnabled(true);
+        preview.ready = true;
       } catch (e) {
-        previewFile = null;
-        els.previewEmpty.textContent = e.message || "Preview unavailable";
-        els.previewEmpty.classList.remove("hidden");
-        setPreviewActionsEnabled(false);
+        Object.assign(preview, { mode: "empty", message: e.message || "Preview unavailable", ready: false });
       }
+    }
+
+    function openPreviewInTab() {
+      if (preview.blobUrl) window.open(preview.blobUrl, "_blank", "noopener,noreferrer");
     }
 
     async function downloadWorkspaceFile(path) {
-      if (!sessionId || !path) return;
-      let blob;
-      if (previewFile?.path === path && previewFile.blob) {
-        blob = previewFile.blob;
-      } else if (isImagePath(path)) {
-        blob = await loadFileBlob(path);
+      if (!sessionId.value || !path) return;
+      try {
+        let blob;
+        if (preview.path === path && preview.blob) {
+          blob = preview.blob;
+        } else if (isImagePath(path)) {
+          blob = await loadFileBlob(path);
+        } else {
+          const data = await api(`/api/sessions/${sessionId.value}/files/content?path=${encodeURIComponent(path)}`);
+          blob = new Blob([data.content], { type: "text/plain" });
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName(path);
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    /* ---------- session lifecycle ---------- */
+    function resetChatUi() {
+      timeline.value = [];
+      itemId = 0;
+      lastTurnUsage.value = null;
+      usageEstimate.value = null;
+      stopToolTimer();
+      clearPreviewBlob();
+      previewCollapsed.value = true;
+      Object.assign(preview, {
+        mode: "empty",
+        message: "Select a workspace file to preview it here.",
+        title: "Preview",
+        subtitle: "No file selected",
+        path: null,
+        content: "",
+        rows: [],
+        highlighted: "",
+        ready: false,
+        type: "",
+      });
+    }
+
+    async function loadSessionList() {
+      sessionListLoading.value = true;
+      try {
+        const data = await api("/api/sessions");
+        sessionList.value = data.sessions || [];
+      } catch {
+        sessionList.value = [];
+      } finally {
+        sessionListLoading.value = false;
+      }
+    }
+
+    async function loadSessionState(id) {
+      if (sessionId.value && sessionId.value !== id) snapshotWorkspace(sessionId.value);
+      session.value = await api(`/api/sessions/${id}`);
+      sessionId.value = id;
+      sessionStorage.setItem(SESSION_KEY, id);
+      const { messages } = await api(`/api/sessions/${id}/messages`);
+      resetChatUi();
+      const hadCache = restoreWorkspace(id);
+      renderHistory(messages);
+      const firstUser = messages.find((m) => ["human", "user"].includes(messageRole(m)));
+      chatTitleOverride.value = firstUser ? truncate(messageContent(firstUser)) : "New chat";
+      sidebarSubtitle.value = messages.length ? `${messages.length} messages` : "Ready";
+      if (hadCache) {
+        loadFiles({ silent: true, force: true }).catch(() => {});
       } else {
-        const data = previewFile?.path === path ? previewFile : await loadFileContent(path);
-        blob = new Blob([data.content], { type: data.type || contentTypeFor(data.path) });
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName(path);
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
-
-    function formatUsage(turn, estimate) {
-      const parts = [];
-      const confirmedTotal = Number(turn?.total_tokens || 0);
-      const confirmedOut = Number(turn?.output_tokens || 0);
-      const estOut = Number(estimate?.estimated_output_tokens || 0);
-
-      if (estimate && estOut) {
-        const liveTotal = confirmedTotal + estOut;
-        const liveOut = confirmedOut + estOut;
-        parts.push(`~${liveTotal.toLocaleString()} tokens`);
-        parts.push(`in ${Number(turn?.input_tokens || 0).toLocaleString()}`);
-        parts.push(`out ~${liveOut.toLocaleString()}`);
-        if (estimate.phase === "tool_args" && estimate.tool_name) {
-          parts.push(`${estimate.tool_name} args ${Number(estimate.chars || 0).toLocaleString()} chars`);
-        } else if (estimate.phase === "text") {
-          parts.push("text streaming");
-        }
-      } else if (turn?.model_calls) {
-        parts.push(`${confirmedTotal.toLocaleString()} tokens`);
-        parts.push(`in ${Number(turn.input_tokens || 0).toLocaleString()}`);
-        parts.push(`out ${confirmedOut.toLocaleString()}`);
-        if (turn.cache_read) {
-          parts.push(`cache ${Number(turn.cache_read).toLocaleString()}`);
-        }
-        if (turn.model_calls > 1) {
-          parts.push(`${turn.model_calls} model calls`);
-        }
-      }
-
-      return parts.join(" · ");
-    }
-
-    function ensureRunningLine() {
-      if (!runningEl) {
-        runningEl = document.createElement("div");
-        runningEl.id = "running-line";
-        runningEl.className = "py-0.5 pl-1 text-[11px] leading-4 text-muted-foreground/80";
-      }
-      return runningEl;
-    }
-
-    function showToolRunning(name) {
-      stopToolRunning(false);
-      runningToolName = name;
-      runningStartedAt = Date.now();
-      const el = ensureRunningLine();
-      el.innerHTML = `<span class="inline-flex items-center gap-1.5"><span class="size-1.5 animate-pulse rounded-full bg-muted-foreground/60"></span><span class="running-label">Running ${name}… 0.0s</span></span>`;
-      els.messages.appendChild(el);
-      pinStatusLines();
-      runningTimer = setInterval(() => {
-        if (!runningEl || !runningToolName) return;
-        const secs = ((Date.now() - runningStartedAt) / 1000).toFixed(1);
-        const label = runningEl.querySelector(".running-label");
-        if (label) label.textContent = `Running ${runningToolName}… ${secs}s`;
-      }, 100);
-    }
-
-    function stopToolRunning(removeLine = true) {
-      if (runningTimer) {
-        clearInterval(runningTimer);
-        runningTimer = null;
-      }
-      runningToolName = null;
-      if (removeLine && runningEl) {
-        runningEl.remove();
-        runningEl = null;
+        await loadFiles({ force: true });
       }
     }
 
-    function pinStatusLines() {
-      if (usageEl && usageEl.textContent) els.messages.appendChild(usageEl);
-      if (runningEl) els.messages.appendChild(runningEl);
-    }
-
-    function refreshUsageLine() {
-      const text = formatUsage(lastTurnUsage, usageEstimate);
-      if (!text) return;
-      const el = ensureUsageLine();
-      el.textContent = text;
-      pinStatusLines();
-    }
-
-    function ensureUsageLine() {
-      if (!usageEl) {
-        usageEl = document.createElement("div");
-        usageEl.id = "usage-line";
-        usageEl.className = "py-0.5 pl-1 text-[11px] font-mono leading-4 text-muted-foreground/65";
-        usageEl.setAttribute("aria-live", "polite");
-      }
-      return usageEl;
-    }
-
-    function pinUsageLine() {
-      pinStatusLines();
-    }
-
-    function appendEvent(el) {
-      els.messages.appendChild(el);
-      pinStatusLines();
-    }
-
-    function updateUsageLine(turn, estimate = null) {
-      if (turn?.model_calls) {
-        lastTurnUsage = turn;
-        if (!estimate) usageEstimate = null;
-      }
-      if (estimate) usageEstimate = estimate;
-      refreshUsageLine();
-      scrollToBottom();
-    }
-
-    function clearUsageLine() {
-      stopToolRunning();
-      if (usageEl) {
-        usageEl.remove();
-        usageEl = null;
-      }
-      lastTurnUsage = null;
-      usageEstimate = null;
-    }
-
-    function elUserBubble(text) {
-      const div = document.createElement("div");
-      div.className = "flex w-fit max-w-[85%] flex-col gap-1 self-end rounded-md bg-muted/80 px-3 py-2 text-sm leading-6 text-foreground";
-      const p = document.createElement("p");
-      p.className = "whitespace-pre-wrap break-words";
-      p.textContent = text;
-      div.appendChild(p);
-      return div;
-    }
-
-    function elAssistantBubble() {
-      const wrap = document.createElement("div");
-      wrap.className = "flex flex-col gap-1 py-1 text-sm leading-6 text-foreground";
-      const inner = document.createElement("div");
-      inner.className = "markdown-body max-w-none break-words text-sm leading-6 text-foreground";
-      wrap.appendChild(inner);
-      wrap._content = inner;
-      wrap._raw = "";
-      return wrap;
-    }
-
-    function elActivity(label, iconPath) {
-      const div = document.createElement("div");
-      div.className = "flex flex-col gap-1 py-px text-xs leading-5 text-muted-foreground/85";
-      div.innerHTML = `
-        <div class="flex items-center gap-1.5">
-          <span aria-hidden="true" class="grid size-4 shrink-0 place-items-center rounded-sm bg-muted/70 text-muted-foreground/80">
-            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 256 256">
-              <path d="${iconPath}"></path>
-            </svg>
-          </span>
-          <span class="min-w-0 truncate text-muted-foreground/85 activity-label"></span>
-        </div>`;
-      div.querySelector(".activity-label").textContent = label;
-      return div;
-    }
-
-    const ICONS = {
-      tool: "M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM93.66,141.66a8,8,0,0,1-11.32,0l-32-32a8,8,0,0,1,0-11.32l32-32a8,8,0,0,1,11.32,11.32L75.31,104l17.35,17.34A8,8,0,0,1,93.66,141.66Zm58.68,17.66H152a8,8,0,0,1,0-16h8a8,8,0,0,1,0,16Z",
-      subagent: "M248,124a59.92,59.92,0,0,0-29.85-51.85,44,44,0,0,0-86.3,0A59.92,59.92,0,0,0,8,124a60.07,60.07,0,0,0,40,56.44V192a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8v-11.56A60.07,60.07,0,0,0,248,124ZM172,200H84V181.56a8,8,0,0,0-2.67-6A44,44,0,0,1,52.17,140.17a8,8,0,0,0-6-2.67,44,44,0,0,1,0-19A8,8,0,0,0,52.17,115.83a44,44,0,0,1,29.16-35.39,8,8,0,0,0,6-2.67,44,44,0,0,1,19,0,8,8,0,0,0,6,2.67A44,44,0,0,1,141.83,115.83a8,8,0,0,0,6,2.67,44,44,0,0,1,0,19,8,8,0,0,0-2.67,6A44,44,0,0,1,116,175.56a8,8,0,0,0-2.67,6Z",
-    };
-
-    function showThinking() {
-      hideThinking();
-      thinkingEl = document.createElement("div");
-      thinkingEl.className = "flex flex-col gap-1 py-1 text-sm leading-6 text-foreground";
-      thinkingEl.setAttribute("aria-label", "Assistant is thinking");
-      thinkingEl.innerHTML = `
-        <div class="flex items-center gap-1 py-1 text-muted-foreground">
-          <span class="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay:0ms"></span>
-          <span class="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay:120ms"></span>
-          <span class="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay:240ms"></span>
-        </div>`;
-      els.messages.appendChild(thinkingEl);
-      pinUsageLine();
-      scrollToBottom();
-    }
-
-    function hideThinking() {
-      if (thinkingEl) {
-        thinkingEl.remove();
-        thinkingEl = null;
+    async function switchSession(id) {
+      if (streaming.value || !id || id === sessionId.value) return;
+      sessionInfoOpen.value = false;
+      try {
+        await loadSessionState(id);
+      } catch (e) {
+        showError(e.message || "Chat unavailable");
+        await loadSessionList();
       }
     }
 
-    function renderHistory(messages) {
-      els.messages.innerHTML = "";
-      usageEl = null;
-      for (const msg of messages) {
-        const role = messageRole(msg);
-        const text = messageContent(msg);
-        if (!text) continue;
-        if (role === "human" || role === "user") {
-          els.messages.appendChild(elUserBubble(text));
-        } else if (role === "ai" || role === "assistant") {
-          const bubble = elAssistantBubble();
-          setMarkdownContent(bubble._content, text);
-          bubble._raw = text;
-          els.messages.appendChild(bubble);
-        }
+    async function deleteSession(id) {
+      if (streaming.value || !id) return;
+      if (!confirm("Delete this chat and its sandbox workspace?")) return;
+      try {
+        await api(`/api/sessions/${id}`, { method: "DELETE" });
+      } catch (e) {
+        showError(e.message || "Failed to delete chat");
+        return;
       }
-      scrollToBottom();
-    }
-
-    function updateChrome() {
-      const model = sessionInfo?.model || config?.default_model || "";
-      const modelText = shortModel(model);
-      els.modelLabel.querySelector("span").textContent = modelText;
-      els.chatSubtitle.textContent = sessionInfo
-        ? `Sandbox ${sessionInfo.sandbox_id} · network ${sessionInfo.network ? "on" : "off"}`
-        : "Sandboxed workspace";
-      setStatus(sessionInfo ? `Session ${sessionId.slice(0, 8)}…` : "No session");
-    }
-
-    function fileTreeKey(path = "") {
-      return path && path !== "." ? path : "";
-    }
-
-    async function fetchFileEntries(path = "") {
-      const key = fileTreeKey(path);
-      const q = key ? `?path=${encodeURIComponent(key)}` : "";
-      const data = await api(`/api/sessions/${sessionId}/files${q}`);
-      fileTreeCache.set(key, data.entries || []);
-      return data.entries || [];
-    }
-
-    function renderFileTreeEntry(entry, depth) {
-      const li = document.createElement("li");
-      li.className = "flex flex-col gap-0.5";
-      li.title = entry.path;
-
-      const row = document.createElement("div");
-      row.className = "group flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted";
-      row.style.paddingLeft = `${depth * 0.75 + 0.25}rem`;
-
-      const name = document.createElement("button");
-      name.type = "button";
-      name.className = "min-w-0 flex-1 truncate text-left";
-
-      if (entry.is_dir) {
-        const isExpanded = expandedFolders.has(entry.path);
-        name.textContent = `${isExpanded ? "▾" : "▸"} 📁 ${entry.name}`;
-        name.setAttribute("aria-expanded", String(isExpanded));
-        name.addEventListener("click", async () => {
-          if (expandedFolders.has(entry.path)) {
-            expandedFolders.delete(entry.path);
-            renderWorkspaceTree();
-            return;
-          }
-
-          expandedFolders.add(entry.path);
-          renderWorkspaceTree();
+      workspaceCache.delete(id);
+      if (id === sessionId.value) {
+        sessionStorage.removeItem(SESSION_KEY);
+        sessionId.value = null;
+        session.value = null;
+        resetChatUi();
+        const remaining = sessionList.value.filter((s) => s.id !== id);
+        if (remaining.length) {
           try {
-            if (!fileTreeCache.has(entry.path)) {
-              await fetchFileEntries(entry.path);
-            }
-            renderWorkspaceTree();
-          } catch (e) {
-            expandedFolders.delete(entry.path);
-            renderWorkspaceTree();
-            showError(e.message || "Folder unavailable");
-          }
-        });
-      } else {
-        name.textContent = `📄 ${entry.name}`;
-        name.addEventListener("click", () => {
-          previewWorkspaceFile(entry.path).catch((e) => showError(e.message));
-        });
-      }
-
-      row.appendChild(name);
-      if (!entry.is_dir) {
-        const download = document.createElement("button");
-        download.type = "button";
-        download.className = "hidden shrink-0 rounded px-1 text-[10px] text-muted-foreground hover:bg-background hover:text-foreground group-hover:inline-flex";
-        download.textContent = "Download";
-        download.title = `Download ${entry.path}`;
-        download.addEventListener("click", (e) => {
-          e.stopPropagation();
-          downloadWorkspaceFile(entry.path).catch((err) => showError(err.message));
-        });
-        row.appendChild(download);
-      }
-      li.appendChild(row);
-
-      if (entry.is_dir && expandedFolders.has(entry.path)) {
-        const children = fileTreeCache.get(entry.path);
-        const childList = document.createElement("ul");
-        childList.className = "flex flex-col gap-0.5";
-        if (children) {
-          if (children.length) {
-            for (const child of children) {
-              childList.appendChild(renderFileTreeEntry(child, depth + 1));
-            }
-          } else {
-            const empty = document.createElement("li");
-            empty.className = "px-1 py-0.5 text-muted-foreground/60";
-            empty.style.paddingLeft = `${(depth + 1) * 0.75 + 0.25}rem`;
-            empty.textContent = "Empty folder";
-            childList.appendChild(empty);
+            await loadSessionState(remaining[0].id);
+          } catch {
+            await createSession();
+            chatTitleOverride.value = "New chat";
+            sidebarSubtitle.value = "Ready";
           }
         } else {
-          const loading = document.createElement("li");
-          loading.className = "px-1 py-0.5 text-muted-foreground/60";
-          loading.style.paddingLeft = `${(depth + 1) * 0.75 + 0.25}rem`;
-          loading.textContent = "Loading…";
-          childList.appendChild(loading);
+          await createSession();
+          chatTitleOverride.value = "New chat";
+          sidebarSubtitle.value = "Ready";
         }
-        li.appendChild(childList);
       }
-
-      return li;
-    }
-
-    function renderWorkspaceTree() {
-      const rootEntries = fileTreeCache.get("");
-      els.fileList.innerHTML = "";
-      if (!rootEntries) {
-        els.fileList.innerHTML = `<li class="px-1 py-0.5 text-muted-foreground/60">Loading files…</li>`;
-        return;
-      }
-      if (!rootEntries.length) {
-        els.fileList.innerHTML = `<li class="px-1 py-0.5 text-muted-foreground/60">Empty workspace</li>`;
-        return;
-      }
-      for (const entry of rootEntries) {
-        els.fileList.appendChild(renderFileTreeEntry(entry, 0));
-      }
-    }
-
-    async function preloadExpandedFolders(path = "") {
-      const entries = fileTreeCache.get(fileTreeKey(path)) || [];
-      for (const entry of entries) {
-        if (!entry.is_dir || !expandedFolders.has(entry.path)) continue;
-        await fetchFileEntries(entry.path);
-        await preloadExpandedFolders(entry.path);
-      }
-    }
-
-    async function loadFiles() {
-      if (!sessionId) return;
-      try {
-        fileTreeCache = new Map();
-        renderWorkspaceTree();
-        await fetchFileEntries("");
-        await preloadExpandedFolders("");
-        renderWorkspaceTree();
-        await loadWorkspaceFolders();
-      } catch (e) {
-        els.fileList.innerHTML = `<li class="px-1 py-0.5 text-destructive/80">Files unavailable</li>`;
-      }
+      await loadSessionList();
     }
 
     async function createSession() {
-      sessionInfo = await api("/api/sessions", { method: "POST", body: "{}" });
-      sessionId = sessionInfo.id;
-      sessionStorage.setItem(SESSION_KEY, sessionId);
-      updateChrome();
-      await loadFiles();
-      els.btnSend.disabled = false;
+      if (sessionId.value) snapshotWorkspace(sessionId.value);
+      session.value = await api("/api/sessions", { method: "POST", body: "{}" });
+      sessionId.value = session.value.id;
+      sessionStorage.setItem(SESSION_KEY, sessionId.value);
+      resetChatUi();
+      clearWorkspaceView();
+      fileTree.value = [];
+      snapshotWorkspace(sessionId.value);
+      await loadFiles({ force: true });
+      await loadSessionList();
     }
 
     async function ensureSession() {
-      config = await api("/api/config");
-      els.modelLabel.querySelector("span").textContent = shortModel(config.default_model);
-
+      config.value = await api("/api/config");
+      await loadSessionList();
       const saved = sessionStorage.getItem(SESSION_KEY);
-      if (saved) {
+      if (saved && sessionList.value.some((s) => s.id === saved)) {
         try {
-          sessionInfo = await api(`/api/sessions/${saved}`);
-          sessionId = saved;
-          const { messages } = await api(`/api/sessions/${sessionId}/messages`);
-          renderHistory(messages);
-          const firstUser = messages.find((m) => ["human", "user"].includes(messageRole(m)));
-          const title = firstUser ? truncate(messageContent(firstUser)) : "Resumed chat";
-          els.chatTitle.textContent = title;
-          els.sidebarTitle.textContent = title;
-          els.sidebarSubtitle.textContent = `${messages.length} messages`;
-          updateChrome();
-          await loadFiles();
-          els.btnSend.disabled = false;
+          await loadSessionState(saved);
           return;
-        } catch (_) {
+        } catch {
           sessionStorage.removeItem(SESSION_KEY);
         }
       }
+      if (sessionList.value.length) {
+        try {
+          await loadSessionState(sessionList.value[0].id);
+          return;
+        } catch {
+          sessionList.value = [];
+        }
+      }
       await createSession();
-      els.chatTitle.textContent = "New chat";
-      els.sidebarTitle.textContent = "New chat";
-      els.sidebarSubtitle.textContent = "What do you want to build?";
-    }
-
-    async function resetChat() {
-      if (!sessionId) return;
-      if (streaming) return;
-      await api(`/api/sessions/${sessionId}/reset`, { method: "POST" });
-      els.messages.innerHTML = "";
-      clearUsageLine();
-      els.chatTitle.textContent = "New chat";
-      els.sidebarTitle.textContent = "New chat";
-      els.sidebarSubtitle.textContent = "History cleared";
-      await loadFiles();
+      chatTitleOverride.value = "New chat";
+      sidebarSubtitle.value = "Ready";
     }
 
     async function newChat() {
-      if (streaming) return;
-      if (sessionId) {
-        try { await api(`/api/sessions/${sessionId}`, { method: "DELETE" }); } catch (_) {}
+      if (streaming.value) return;
+      sessionInfoOpen.value = false;
+      try {
+        await createSession();
+        chatTitleOverride.value = "New chat";
+        sidebarSubtitle.value = "Ready";
+      } catch (e) {
+        showError(e.message);
       }
-      sessionStorage.removeItem(SESSION_KEY);
-      sessionId = null;
-      sessionInfo = null;
-      els.messages.innerHTML = "";
-      clearUsageLine();
-      await createSession();
-      els.chatTitle.textContent = "New chat";
-      els.sidebarTitle.textContent = "New chat";
-      els.sidebarSubtitle.textContent = "What do you want to build?";
     }
 
-    function parseSseEvents(buffer) {
-      const events = [];
-      const blocks = buffer.split("\n\n");
-      const rest = blocks.pop() || "";
-      for (const block of blocks) {
-        if (!block.trim()) continue;
-        let eventType = "message";
-        let data = "";
-        for (const line of block.split("\n")) {
-          if (line.startsWith("event:")) eventType = line.slice(6).trim();
-          if (line.startsWith("data:")) data += line.slice(5).trim();
-        }
-        if (data) {
-          try {
-            events.push({ event: eventType, data: JSON.parse(data) });
-          } catch (_) {}
-        }
+    /* ---------- streaming chat ---------- */
+    function stopStream() {
+      if (abortController) abortController.abort();
+    }
+
+    async function submit() {
+      const text = draft.value.trim();
+      if (!text || streaming.value || !sessionId.value) return;
+      draft.value = "";
+      await nextTick();
+      autoGrow();
+      try {
+        await streamChat(text);
+      } catch (e) {
+        if (e.name !== "AbortError") showError(e.message || "Request failed");
+      } finally {
+        streaming.value = false;
+        thinking.value = false;
+        stopToolTimer();
+        abortController = null;
+        nextTick(() => inputEl.value?.focus());
       }
-      return { events, rest };
     }
 
     async function streamChat(message) {
-      streaming = true;
-      els.btnSend.disabled = true;
-      els.composerInput.disabled = true;
-      els.pwdSelectTrigger.disabled = true;
-      closePwdMenu();
+      streaming.value = true;
+      pwdMenuOpen.value = false;
+      sessionInfoOpen.value = false;
+      lastTurnUsage.value = null;
+      usageEstimate.value = null;
 
-      els.messages.appendChild(elUserBubble(message));
-      pinUsageLine();
-      els.chatTitle.textContent = truncate(message);
-      els.sidebarTitle.textContent = truncate(message);
-      els.sidebarSubtitle.textContent = "Running…";
-      showThinking();
+      pushItem({ kind: "user", text: message });
+      chatTitleOverride.value = truncate(message);
+      sidebarSubtitle.value = "Running…";
+      thinking.value = true;
 
-      let assistantEl = null;
-      let toolActivity = null;
+      let assistantItem = null;
+      let toolItem = null;
+      let toolName = "";
       let toolArgs = "";
-      clearUsageLine();
 
-      const res = await fetch(`${API}/api/sessions/${sessionId}/chat/stream`, {
+      abortController = new AbortController();
+      const res = await fetch(`${API}/api/sessions/${sessionId.value}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          pwd: getSelectedPwd(),
-        }),
+        body: JSON.stringify({ message, pwd: selectedPwd.value || null }),
+        signal: abortController.signal,
       });
-
-      if (!res.ok) {
-        hideThinking();
-        throw new Error(`Stream failed (${res.status})`);
-      }
+      if (!res.ok || !res.body) throw new Error(`Stream failed (${res.status})`);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = "";
+      const feed = createSseParser();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parsed = parseSseEvents(buffer);
-        buffer = parsed.rest;
+      const ensureAssistant = () => {
+        if (!assistantItem) assistantItem = pushItem({ kind: "assistant", text: "" });
+        return assistantItem;
+      };
 
-        for (const { data } of parsed.events) {
-          switch (data.type) {
-            case "source_start":
-              hideThinking();
-              if (data.is_subagent) {
-                appendEvent(elActivity(`Sub-agent: ${data.source}`, ICONS.subagent));
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          for (const { data } of feed(decoder.decode(value, { stream: true }))) {
+            switch (data.type) {
+              case "source_start":
+                thinking.value = false;
+                if (data.is_subagent) {
+                  pushItem({ kind: "activity", icon: "subagent", name: "Sub-agent", detail: data.source });
+                }
+                break;
+
+              case "token":
+                thinking.value = false;
+                ensureAssistant().text += data.text || "";
+                scrollToBottom();
+                break;
+
+              case "tool_call_start":
+                thinking.value = false;
+                toolName = data.name || "tool";
+                toolArgs = "";
+                toolItem = pushItem({ kind: "activity", icon: "terminal", name: toolName, detail: "(…)" });
+                break;
+
+              case "tool_call_args":
+                toolArgs += data.args || "";
+                if (toolItem) toolItem.detail = `(${toolArgs})`;
+                break;
+
+              case "tool_call_end":
+                if (toolItem) toolItem.detail = `(${toolArgs || ""})`;
+                toolItem = null;
+                assistantItem = null;
+                break;
+
+              case "tool_running":
+                startToolTimer(data.name || toolName);
+                break;
+
+              case "tool_result": {
+                thinking.value = false;
+                stopToolTimer();
+                usageEstimate.value = null;
+                const content = data.content || "";
+                const previewText = content.slice(0, 200) + (content.length > 200 ? "…" : "");
+                pushItem({ kind: "activity", icon: "terminal", name: data.name, detail: `→ ${previewText}` });
+                assistantItem = null;
+                break;
               }
-              if (!assistantEl) {
-                assistantEl = elAssistantBubble();
-                appendEvent(assistantEl);
-              }
-              break;
-            case "token":
-              hideThinking();
-              if (!assistantEl) {
-                assistantEl = elAssistantBubble();
-                appendEvent(assistantEl);
-              }
-              appendAssistantText(assistantEl, data.text);
-              pinUsageLine();
-              scrollToBottom();
-              break;
-            case "tool_call_start":
-              hideThinking();
-              toolArgs = "";
-              toolActivity = elActivity(`Calling ${data.name}(…)`, ICONS.tool);
-              toolActivity._name = data.name;
-              appendEvent(toolActivity);
-              scrollToBottom();
-              break;
-            case "tool_call_args":
-              toolArgs += data.args || "";
-              if (toolActivity) {
-                toolActivity.querySelector(".activity-label").textContent =
-                  `Calling ${toolActivity._name}(${toolArgs})`;
-              }
-              pinStatusLines();
-              scrollToBottom();
-              break;
-            case "tool_call_end":
-              if (toolActivity) {
-                const label = toolArgs
-                  ? `Calling ${toolActivity._name}(${toolArgs})`
-                  : `Calling ${toolActivity._name}()`;
-                toolActivity.querySelector(".activity-label").textContent = label;
-              }
-              toolActivity = null;
-              assistantEl = null;
-              pinStatusLines();
-              break;
-            case "tool_running":
-              showToolRunning(data.name);
-              break;
-            case "tool_result":
-              hideThinking();
-              stopToolRunning();
-              usageEstimate = null;
-              const preview = (data.content || "").slice(0, 200);
-              appendEvent(elActivity(
-                `${data.name}: ${preview}${data.content?.length > 200 ? "…" : ""}`,
-                ICONS.tool
-              ));
-              assistantEl = null;
-              scrollToBottom();
-              break;
-            case "usage":
-              updateUsageLine(data.turn);
-              break;
-            case "usage_estimate":
-              updateUsageLine(data.turn, data);
-              break;
-            case "done":
-              hideThinking();
-              stopToolRunning();
-              usageEstimate = null;
-              if (!assistantEl && data.reply) {
-                assistantEl = elAssistantBubble();
-                setMarkdownContent(assistantEl._content, data.reply);
-                assistantEl._raw = data.reply;
-                appendEvent(assistantEl);
-              }
-              if (data.usage) updateUsageLine(data.usage);
-              els.sidebarSubtitle.textContent = `${data.messages?.length || 0} messages`;
-              await loadFiles();
-              break;
+
+              case "usage":
+                if (data.turn?.model_calls) {
+                  lastTurnUsage.value = data.turn;
+                  usageEstimate.value = null;
+                }
+                break;
+
+              case "usage_estimate":
+                if (data.turn?.model_calls) lastTurnUsage.value = data.turn;
+                usageEstimate.value = data;
+                break;
+
+              case "error":
+                showError(data.message || "Agent error");
+                break;
+
+              case "done":
+                thinking.value = false;
+                stopToolTimer();
+                usageEstimate.value = null;
+                if (!assistantItem && data.reply) {
+                  pushItem({ kind: "assistant", text: data.reply });
+                }
+                if (data.usage?.model_calls) lastTurnUsage.value = data.usage;
+                sidebarSubtitle.value = `${data.messages?.length || 0} messages`;
+                if (session.value) session.value.message_count = data.messages?.length || 0;
+                loadFiles({ silent: true, force: true }).catch(() => {});
+                loadSessionList().catch(() => {});
+                break;
+            }
           }
         }
+      } catch (e) {
+        if (e.name === "AbortError") {
+          pushItem({ kind: "activity", icon: "stop", label: "Generation stopped" });
+          sidebarSubtitle.value = "Stopped";
+        } else {
+          throw e;
+        }
+      } finally {
+        try { reader.releaseLock(); } catch {}
       }
-
-      hideThinking();
-      streaming = false;
-      els.btnSend.disabled = false;
-      els.composerInput.disabled = false;
-      els.pwdSelectTrigger.disabled = false;
-      els.composerInput.focus();
     }
 
-    els.composerForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const text = els.composerInput.value.trim();
-      if (!text || streaming || !sessionId) return;
-      els.composerInput.value = "";
-      try {
-        await streamChat(text);
-      } catch (err) {
-        showError(err.message || "Request failed");
-        streaming = false;
-        els.btnSend.disabled = false;
-        els.composerInput.disabled = false;
-        els.pwdSelectTrigger.disabled = false;
+    /* ---------- global listeners ---------- */
+    function onDocClick(e) {
+      if (pwdMenuOpen.value && pwdPickerEl.value && !pwdPickerEl.value.contains(e.target)) {
+        pwdMenuOpen.value = false;
       }
-    });
-
-    els.composerInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        els.composerForm.requestSubmit();
+      if (sessionInfoOpen.value && sessionInfoEl.value && !sessionInfoEl.value.contains(e.target)) {
+        sessionInfoOpen.value = false;
       }
+    }
+    function onKeydown(e) {
+      if (e.key === "Escape") {
+        pwdMenuOpen.value = false;
+        sessionInfoOpen.value = false;
+      }
+    }
+
+    onMounted(() => {
+      document.addEventListener("click", onDocClick);
+      document.addEventListener("keydown", onKeydown);
+      ensureSession().catch((e) => {
+        showError(e.message || "Failed to connect to API");
+        sidebarSubtitle.value = "Start API on port 8010";
+      });
     });
 
-    els.btnNewChat.addEventListener("click", () => newChat().catch((e) => showError(e.message)));
-    els.btnRefreshFiles.addEventListener("click", () => loadFiles().catch((e) => showError(e.message)));
-    els.pwdSelectTrigger.addEventListener("click", (e) => {
-      e.stopPropagation();
-      togglePwdMenu();
-    });
-    document.addEventListener("click", (e) => {
-      if (!pwdMenuOpen) return;
-      if (!els.pwdPicker.contains(e.target)) closePwdMenu();
-    });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closePwdMenu();
-    });
-    renderPwdMenu();
-    els.btnPreviewToggle.addEventListener("click", () => setPreviewCollapsed(!previewCollapsed));
-    els.btnPreviewExpand.addEventListener("click", () => setPreviewExpanded(!previewExpanded));
-    els.btnPreviewOpen.addEventListener("click", () => {
-      if (!previewBlobUrl) return;
-      window.open(previewBlobUrl, "_blank", "noopener,noreferrer");
-    });
-    els.btnPreviewDownload.addEventListener("click", () => {
-      if (!previewFile) return;
-      downloadWorkspaceFile(previewFile.path).catch((e) => showError(e.message));
-    });
-    els.btnSessionInfo.addEventListener("click", () => {
-      if (!sessionInfo) return;
-      alert(
-        `Session: ${sessionInfo.id}\n` +
-        `Sandbox: ${sessionInfo.sandbox_id}\n` +
-        `Workdir: ${sessionInfo.workdir}\n` +
-        `Model: ${sessionInfo.model}\n` +
-        `Network: ${sessionInfo.network}\n` +
-        `Messages: ${sessionInfo.message_count}`
-      );
+    onBeforeUnmount(() => {
+      document.removeEventListener("click", onDocClick);
+      document.removeEventListener("keydown", onKeydown);
+      stopToolTimer();
+      clearPreviewBlob();
+      if (abortController) abortController.abort();
     });
 
-    window.addEventListener("beforeunload", () => {
-      /* session persists server-side until deleted or server restart */
-    });
-
-    ensureSession().catch((e) => {
-      showError(e.message || "Failed to connect to API");
-      setStatus("Disconnected");
-      els.sidebarTitle.textContent = "Offline";
-      els.sidebarSubtitle.textContent = "Start API on port 8010";
-    });
-  </script>
+    return {
+      iconBtn: ICON_BTN,
+      // session / chrome
+      session, sessionId, sessionList, sessionListLoading, chatTitle, chatSubtitle, statusLine, modelLabel, sidebarSubtitle,
+      sessionInfoOpen, sessionInfoEl, sessionInfoRows,
+      loadSessionList, switchSession, deleteSession,
+      // chat
+      timeline, draft, streaming, thinking, errorMessage, canSend,
+      submit, stopStream, newChat, renderMarkdown, autoGrow,
+      // usage / running
+      usageText, runningTool, runningSeconds,
+      // files
+      fileTree, childrenMap, expandedFolders, filesLoading, filesError,
+      loadFiles, toggleFolder,
+      // pwd
+      workspaceFolders, selectedPwd, pwdMenuOpen, pwdPickerEl, selectPwd, openPwdMenu,
+      // preview
+      preview, previewCollapsed, previewExpanded, previewWidth,
+      previewWorkspaceFile, downloadWorkspaceFile, openPreviewInTab,
+      // refs
+      scrollEl, inputEl,
+    };
+  },
+}).mount("#app");
+</script>
 
 </body>
 </html>
