@@ -1,0 +1,24 @@
+services:
+  deepagent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BWRAP_SETUID: "0"
+    stdin_open: true
+    tty: true
+    environment:
+      DEEPAGENT_WORKDIR: /workspace
+      CODEX_GUI_WORKSPACE: /workspace
+      DEEPAGENT_NETWORK_ACCESS: ${DEEPAGENT_NETWORK_ACCESS:-false}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-anthropic/claude-sonnet-4.5}
+      OPENROUTER_TEMPERATURE: ${OPENROUTER_TEMPERATURE:-0.3}
+      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-http://localhost}
+      OPENROUTER_SITE_NAME: ${OPENROUTER_SITE_NAME:-deep-agent-bwrap}
+    volumes:
+      - ./workspace:/workspace
+    security_opt:
+      - apparmor:unconfined
+      - seccomp:unconfined
+    restart: "no"

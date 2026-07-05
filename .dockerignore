@@ -1,0 +1,11 @@
+.venv
+__pycache__
+*.pyc
+.git
+.gitignore
+.env
+workspace
+workspace/*
+.claude
+reference_sandboxing.md
+README.md
