@@ -200,7 +200,7 @@
                   class="flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left disabled:pointer-events-none disabled:opacity-50"
                   :title="chat.preview && chat.preview !== 'No session yet' ? chat.preview : chat.title">
                   <span class="truncate"
-                    :class="chat.id === sessionId ? 'font-medium text-foreground' : 'text-muted-foreground'">
+                    :class="chat.id === sessionId ? 'font-medium text-black' : 'text-black'">
                     {{ chat.title }}
                   </span>
                   <span class="truncate text-muted-foreground/60">{{ chat.preview || 'No session yet' }}</span>
@@ -328,7 +328,7 @@
             <template v-for="item in timeline" :key="item.id">
               <!-- user -->
               <div v-if="item.kind === 'user'"
-                class="w-fit max-w-[85%] self-end rounded-2xl rounded-br-md bg-muted px-3.5 py-2 text-sm leading-6 text-foreground">
+                class="w-fit max-w-[85%] self-end rounded-2xl rounded-br-md bg-muted px-3.5 py-2 text-sm leading-6 text-black">
                 <p class="whitespace-pre-wrap break-words">{{ item.text }}</p>
               </div>
 
@@ -392,7 +392,7 @@
               placeholder="What do you want to build?"
               @keydown.enter.exact.prevent="submit"
               @input="autoGrow"
-              class="max-h-40 min-h-16 w-full resize-none border-0 bg-transparent px-1 py-0 text-base outline-none placeholder:text-muted-foreground disabled:opacity-60"
+              class="max-h-40 min-h-16 w-full resize-none border-0 bg-transparent px-1 py-0 text-base text-black outline-none placeholder:text-muted-foreground disabled:opacity-60"
               style="outline: none;"></textarea>
 
             <div class="flex items-center justify-between gap-2 pt-2">
