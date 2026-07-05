@@ -129,6 +129,36 @@
     .scrollbar-hide::-webkit-scrollbar {
       display: none;
     }
+
+    .liquid-glass {
+      pointer-events: none;
+      background: rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(40px) saturate(2);
+      -webkit-backdrop-filter: blur(40px) saturate(2);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.45);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.55),
+        0 12px 32px -18px rgba(15, 23, 42, 0.14);
+    }
+
+    .liquid-glass > * {
+      position: relative;
+      z-index: 1;
+      pointer-events: auto;
+    }
+
+    .liquid-glass::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.14) 0%,
+        transparent 70%
+      );
+    }
   </style>
 </head>
 <body class="h-full bg-background text-foreground font-sans">
@@ -137,9 +167,9 @@
   <main class="flex h-screen bg-background">
 
     <!-- ======================= Sidebar ======================= -->
-    <aside class="sidebar-panel relative flex h-full w-64 shrink-0 flex-col overflow-hidden border-r border-border">
+    <aside class="relative flex h-full w-64 shrink-0 flex-col overflow-hidden border-r border-border bg-gradient-to-b from-muted/70 via-muted/45 to-muted/25">
 
-      <div class="liquid-glass absolute inset-x-0 top-0 z-20 flex h-12 shrink-0 items-center gap-2 px-4">
+      <div class="liquid-glass absolute inset-x-0 top-0 z-20 flex h-12 items-center gap-2 px-4">
         <span class="grid size-6 shrink-0 place-items-center rounded-md bg-foreground text-background">
           <p-icon name="cube" :size="14" />
         </span>
@@ -156,10 +186,10 @@
         </div>
       </div>
 
-      <div class="scrollbar-hide min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-12">
+      <div class="flex min-h-0 flex-1 flex-col">
 
         <!-- Chat history -->
-        <div>
+        <div class="scrollbar-hide min-h-0 flex-1 overflow-y-auto px-2 pt-12">
           <ul class="flex flex-col gap-px text-xs">
             <li v-if="sessionListLoading && !sessionList.length" class="px-2 py-1 text-muted-foreground/60">Loading chats…</li>
             <li v-else-if="!sessionList.length" class="px-2 py-1 text-muted-foreground/60">No chats yet</li>
@@ -186,18 +216,44 @@
         </div>
 
         <!-- Workspace tree -->
-        <div class="mt-4">
-          <div class="mb-1 flex items-center justify-between px-2">
-            <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Workspace</p>
+        <div class="flex shrink-0 flex-col border-t border-border px-2 py-2" :class="workspaceOpen ? 'min-h-0 max-h-72' : ''">
+          <div class="mb-1 flex shrink-0 items-center justify-between gap-1 px-2">
+            <button type="button" @click="workspaceOpen = !workspaceOpen"
+              class="flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 text-left transition-colors hover:bg-muted/60"
+              :aria-expanded="String(workspaceOpen)" aria-label="Toggle workspace panel">
+              <p-icon name="caret-right" :size="9"
+                class="shrink-0 text-muted-foreground/60 transition-transform duration-200"
+                :class="workspaceOpen ? 'rotate-90' : ''"></p-icon>
+              <span class="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Workspace</span>
+            </button>
             <div class="flex items-center gap-1">
               <span v-if="fileTree?.length" class="rounded-full bg-muted px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground/80">{{ fileTree.length }}</span>
-              <button type="button" @click="loadFiles({ force: true })" :disabled="filesLoading" :class="iconBtn"
+              <button type="button" @click.stop="openNewFolder" :disabled="!sessionId || creatingFolder" :class="iconBtn"
+                title="New folder" aria-label="New folder">
+                <p-icon name="plus" :size="13" />
+              </button>
+              <button type="button" @click.stop="loadFiles({ force: true })" :disabled="filesLoading" :class="iconBtn"
                 title="Refresh workspace files" aria-label="Refresh workspace files">
                 <p-icon name="refresh" :size="13" :class="filesLoading ? 'animate-spin' : ''" />
               </button>
             </div>
           </div>
-          <ul class="flex flex-col gap-px text-xs text-muted-foreground">
+          <div v-if="newFolderOpen" class="mb-1 flex items-center gap-1 px-2">
+            <input ref="newFolderInputEl" v-model="newFolderName" type="text"
+              :placeholder="selectedPwd ? 'Folder in ' + selectedPwd.split('/').pop() : 'Folder name'"
+              :disabled="creatingFolder"
+              class="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+              @keydown.enter.prevent="createFolder" @keydown.escape.prevent="cancelNewFolder" />
+            <button type="button" @click="createFolder" :disabled="!newFolderName.trim() || creatingFolder" :class="iconBtn"
+              title="Create folder" aria-label="Create folder">
+              <p-icon name="check" :size="13" />
+            </button>
+            <button type="button" @click="cancelNewFolder" :disabled="creatingFolder" :class="iconBtn"
+              title="Cancel" aria-label="Cancel new folder">
+              <p-icon name="x" :size="13" />
+            </button>
+          </div>
+          <ul v-show="workspaceOpen" class="scrollbar-hide flex min-h-0 flex-1 flex-col gap-px overflow-y-auto text-xs text-muted-foreground">
             <li v-if="filesError" class="flex items-center gap-1.5 rounded-md bg-destructive-soft px-2 py-1.5 text-destructive">
               <p-icon name="warning" :size="13" class="shrink-0" />
               {{ filesError }}
@@ -214,8 +270,13 @@
         </div>
       </div>
 
-      <div class="shrink-0 border-t border-border px-4 py-2.5">
-        <p class="truncate font-mono text-[11px] text-muted-foreground" :title="statusLine">{{ statusLine }}</p>
+      <div class="shrink-0 border-t border-border px-2 py-2">
+        <div class="flex items-center gap-1.5 px-2 py-1">
+          <span class="grid size-5 shrink-0 place-items-center rounded-full bg-foreground text-[9px] font-semibold text-background">
+            {{ userInitial }}
+          </span>
+          <span class="truncate text-[10px] font-semibold text-muted-foreground/70">{{ username }}</span>
+        </div>
       </div>
     </aside>
 
@@ -858,7 +919,12 @@ createApp({
     const expandedFolders = reactive(new Set());
     const filesLoading = ref(false);
     const filesError = ref("");
+    const workspaceOpen = ref(true);
     const workspaceCache = new Map();
+    const newFolderOpen = ref(false);
+    const newFolderName = ref("");
+    const creatingFolder = ref(false);
+    const newFolderInputEl = ref(null);
 
     /* ---------- pwd picker ---------- */
     const workspaceFolders = ref([""]);
@@ -888,13 +954,15 @@ createApp({
         ? `Sandbox ${session.value.sandbox_id} · network ${session.value.network ? "on" : "off"}`
         : "Sandboxed workspace"
     );
-    const statusLine = computed(() =>
-      session.value ? `session ${String(sessionId.value).slice(0, 8)}` : "connecting…"
-    );
     const modelLabel = computed(() => {
       const m = session.value?.model || config.value?.default_model || "";
       if (!m) return "Loading model…";
       return m.split("/").pop().replace(/-/g, " ");
+    });
+    const username = computed(() => config.value?.username || "User");
+    const userInitial = computed(() => {
+      const name = username.value.trim();
+      return name ? name.charAt(0).toUpperCase() : "?";
     });
     const sessionInfoRows = computed(() => {
       const s = session.value;
@@ -1147,6 +1215,45 @@ createApp({
       }
       if (!workspaceFolders.value.includes(previous)) selectedPwd.value = "";
       snapshotWorkspace();
+    }
+
+    function openNewFolder() {
+      if (!sessionId.value) return;
+      workspaceOpen.value = true;
+      newFolderOpen.value = true;
+      newFolderName.value = "";
+      nextTick(() => newFolderInputEl.value?.focus());
+    }
+
+    function cancelNewFolder() {
+      newFolderOpen.value = false;
+      newFolderName.value = "";
+    }
+
+    async function createFolder() {
+      const name = newFolderName.value.trim();
+      if (!name || creatingFolder.value || !sessionId.value) return;
+      creatingFolder.value = true;
+      try {
+        const parent = selectedPwd.value || "";
+        const data = await api(`/api/sessions/${sessionId.value}/folders`, {
+          method: "POST",
+          body: JSON.stringify({ name, parent }),
+        });
+        cancelNewFolder();
+        if (parent) {
+          expandedFolders.add(parent);
+          childrenMap[parent] = await fetchEntries(parent);
+        }
+        await loadFiles({ force: true });
+        await loadWorkspaceFolders();
+        if (data.path) expandedFolders.add(data.path);
+        snapshotWorkspace();
+      } catch (e) {
+        showError(e.message || "Failed to create folder");
+      } finally {
+        creatingFolder.value = false;
+      }
     }
 
     function collectFoldersFromTree() {
@@ -1650,7 +1757,8 @@ createApp({
     return {
       iconBtn: ICON_BTN,
       // session / chrome
-      session, sessionId, sessionList, sessionListLoading, chatTitle, chatSubtitle, statusLine, modelLabel, sidebarSubtitle,
+      session, sessionId, sessionList, sessionListLoading, chatTitle, chatSubtitle, modelLabel, sidebarSubtitle,
+      username, userInitial,
       sessionInfoOpen, sessionInfoEl, sessionInfoRows,
       loadSessionList, switchSession, deleteSession,
       // chat
@@ -1659,8 +1767,9 @@ createApp({
       // usage / running
       usageText, runningTool, runningSeconds,
       // files
-      fileTree, childrenMap, expandedFolders, filesLoading, filesError,
-      loadFiles, toggleFolder,
+      fileTree, childrenMap, expandedFolders, filesLoading, filesError, workspaceOpen,
+      loadFiles, toggleFolder, newFolderOpen, newFolderName, creatingFolder, newFolderInputEl,
+      openNewFolder, cancelNewFolder, createFolder,
       // pwd
       workspaceFolders, selectedPwd, pwdCloseSignal, pwdPickerEl, selectPwd, onSessionInfoClick,
       // preview

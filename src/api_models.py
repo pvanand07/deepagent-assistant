@@ -83,3 +83,12 @@ class FileContentResponse(BaseModel):
 
 class FolderListResponse(BaseModel):
     folders: list[str]
+
+
+class CreateFolderRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+    parent: str = Field("", description="Parent folder path relative to workspace root")
+
+
+class FolderCreateResponse(BaseModel):
+    path: str

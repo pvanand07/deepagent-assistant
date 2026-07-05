@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import getpass
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -22,10 +23,12 @@ from agent import _default_workdir
 from api_models import (
     ChatRequest,
     ChatResponse,
+    CreateFolderRequest,
     CreateSessionRequest,
     FileContentResponse,
     FileEntry,
     FileListResponse,
+    FolderCreateResponse,
     FolderListResponse,
     HealthResponse,
     MessagesResponse,
@@ -133,6 +136,17 @@ _SKIP_FOLDER_NAMES = frozenset({
 
 def _should_skip_folder_dir(name: str) -> bool:
     return name.startswith(".") or name in _SKIP_FOLDER_NAMES
+
+
+def _validate_folder_name(name: str) -> str:
+    clean = name.strip()
+    if not clean:
+        raise HTTPException(status_code=400, detail="Folder name is required")
+    if clean in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid folder name")
+    if "/" in clean or "\\" in clean:
+        raise HTTPException(status_code=400, detail="Folder name cannot contain path separators")
+    return clean
 
 
 def _list_workspace_folders(workdir: Path) -> list[str]:
@@ -384,6 +398,28 @@ def list_folders(session_id: str) -> FolderListResponse:
     return FolderListResponse(folders=_list_workspace_folders(workdir))
 
 
+@app.post("/api/sessions/{session_id}/folders", response_model=FolderCreateResponse, status_code=201)
+def create_folder(session_id: str, body: CreateFolderRequest) -> FolderCreateResponse:
+    session = _require_session(session_id)
+    name = _validate_folder_name(body.name)
+    parent = body.parent.strip().lstrip("/")
+    parent_path = _resolve_workspace_path(session, parent)
+    if not parent_path.exists():
+        raise HTTPException(status_code=404, detail="Parent folder not found")
+    if not parent_path.is_dir():
+        raise HTTPException(status_code=400, detail="Parent path is not a directory")
+    target = parent_path / name
+    if target.exists():
+        raise HTTPException(status_code=409, detail="Folder already exists")
+    try:
+        target.mkdir(parents=False, exist_ok=False)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail="Failed to create folder") from e
+    workdir = Path(session.sandbox._workdir).resolve()
+    rel = str(target.relative_to(workdir)).replace("\\", "/")
+    return FolderCreateResponse(path=rel if rel != "." else "")
+
+
 @app.get("/api/config")
 def get_config() -> dict[str, Any]:
     mcp_connections = load_mcp_connections()
@@ -394,6 +430,7 @@ def get_config() -> dict[str, Any]:
         in {"1", "true", "yes"},
         "mcp_enabled": bool(mcp_connections),
         "mcp_servers": list(mcp_connections.keys()),
+        "username": os.environ.get("DEEPAGENT_USERNAME") or getpass.getuser() or "User",
     }
 
 
