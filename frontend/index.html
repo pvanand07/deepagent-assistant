@@ -6,6 +6,8 @@
   <title>Deep Agent</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -70,6 +72,75 @@
 
     .animate-spin { animation: spin 1s linear infinite; }
     .animate-bounce { animation: bounce 1s infinite; }
+
+    .markdown-body {
+      max-width: none;
+      font-size: 0.875rem;
+      line-height: 1.625;
+      color: var(--foreground);
+      word-wrap: break-word;
+    }
+    .markdown-body > :first-child { margin-top: 0; }
+    .markdown-body > :last-child { margin-bottom: 0; }
+    .markdown-body h1, .markdown-body h2, .markdown-body h3,
+    .markdown-body h4, .markdown-body h5, .markdown-body h6 {
+      margin-top: 1.25em;
+      margin-bottom: 0.5em;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .markdown-body h1 { font-size: 1.5em; }
+    .markdown-body h2 { font-size: 1.25em; border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }
+    .markdown-body h3 { font-size: 1.125em; }
+    .markdown-body p, .markdown-body ul, .markdown-body ol,
+    .markdown-body blockquote, .markdown-body pre, .markdown-body table {
+      margin-top: 0.75em;
+      margin-bottom: 0.75em;
+    }
+    .markdown-body ul, .markdown-body ol { padding-left: 1.5em; }
+    .markdown-body ul { list-style-type: disc; }
+    .markdown-body ol { list-style-type: decimal; }
+    .markdown-body li + li { margin-top: 0.25em; }
+    .markdown-body blockquote {
+      border-left: 3px solid var(--border);
+      padding-left: 1em;
+      color: var(--muted-foreground);
+    }
+    .markdown-body code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: var(--muted);
+      border-radius: 0.25rem;
+      padding: 0.15em 0.35em;
+    }
+    .markdown-body pre {
+      overflow-x: auto;
+      border-radius: 0.5rem;
+      border: 1px solid var(--border);
+      background: var(--muted);
+      padding: 0.75rem 1rem;
+    }
+    .markdown-body pre code {
+      background: transparent;
+      padding: 0;
+      font-size: 0.8em;
+      line-height: 1.5;
+    }
+    .markdown-body table {
+      width: 100%;
+      border-collapse: collapse;
+      display: block;
+      overflow-x: auto;
+    }
+    .markdown-body th, .markdown-body td {
+      border: 1px solid var(--border);
+      padding: 0.4em 0.65em;
+      text-align: left;
+    }
+    .markdown-body th { background: var(--muted); font-weight: 600; }
+    .markdown-body a { color: var(--primary); text-decoration: underline; }
+    .markdown-body hr { border: 0; border-top: 1px solid var(--border); margin: 1.25em 0; }
+    .markdown-body img { max-width: 100%; height: auto; border-radius: 0.375rem; }
   </style>
 </head>
 <body class="h-full bg-background text-foreground font-sans">
@@ -299,6 +370,7 @@
           Select a workspace file to preview it here.
         </div>
         <iframe id="preview-frame" class="hidden h-full w-full border-0 bg-background" title="Workspace file preview"></iframe>
+        <div id="preview-markdown" class="markdown-body hidden h-full overflow-auto p-4"></div>
         <pre id="preview-text" class="hidden h-full overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-5 text-foreground"></pre>
       </div>
     </aside>
@@ -337,6 +409,7 @@
       previewBody: document.getElementById("preview-body"),
       previewEmpty: document.getElementById("preview-empty"),
       previewFrame: document.getElementById("preview-frame"),
+      previewMarkdown: document.getElementById("preview-markdown"),
       previewText: document.getElementById("preview-text"),
       previewTitle: document.getElementById("preview-title"),
       previewSubtitle: document.getElementById("preview-subtitle"),
@@ -530,6 +603,24 @@
       return "text/plain";
     }
 
+    marked.setOptions({ breaks: true, gfm: true });
+
+    function renderMarkdown(text) {
+      if (!text) return "";
+      const html = marked.parse(text);
+      return DOMPurify.sanitize(html);
+    }
+
+    function setMarkdownContent(el, text) {
+      el._raw = text;
+      el.innerHTML = renderMarkdown(text);
+    }
+
+    function appendAssistantText(bubble, chunk) {
+      bubble._raw = (bubble._raw || "") + chunk;
+      setMarkdownContent(bubble._content, bubble._raw);
+    }
+
     function setPreviewCollapsed(collapsed) {
       previewCollapsed = collapsed;
       els.previewPanel.style.width = collapsed ? "3.5rem" : (previewExpanded ? "min(52vw, 760px)" : "min(38vw, 520px)");
@@ -574,6 +665,7 @@
       els.previewEmpty.classList.remove("hidden");
       els.previewEmpty.textContent = "Loading preview…";
       els.previewFrame.classList.add("hidden");
+      els.previewMarkdown.classList.add("hidden");
       els.previewText.classList.add("hidden");
       clearPreviewBlobUrl();
 
@@ -588,6 +680,9 @@
         if (type === "text/html" || type === "image/svg+xml") {
           els.previewFrame.srcdoc = data.content;
           els.previewFrame.classList.remove("hidden");
+        } else if (type === "text/markdown") {
+          setMarkdownContent(els.previewMarkdown, data.content);
+          els.previewMarkdown.classList.remove("hidden");
         } else {
           els.previewText.textContent = data.content;
           els.previewText.classList.remove("hidden");
@@ -751,9 +846,10 @@
       const wrap = document.createElement("div");
       wrap.className = "flex flex-col gap-1 py-1 text-sm leading-6 text-foreground";
       const inner = document.createElement("div");
-      inner.className = "max-w-none whitespace-pre-wrap break-words text-sm leading-6 text-foreground";
+      inner.className = "markdown-body max-w-none break-words text-sm leading-6 text-foreground";
       wrap.appendChild(inner);
       wrap._content = inner;
+      wrap._raw = "";
       return wrap;
     }
 
@@ -812,7 +908,8 @@
           els.messages.appendChild(elUserBubble(text));
         } else if (role === "ai" || role === "assistant") {
           const bubble = elAssistantBubble();
-          bubble._content.textContent = text;
+          setMarkdownContent(bubble._content, text);
+          bubble._raw = text;
           els.messages.appendChild(bubble);
         }
       }
@@ -1118,7 +1215,7 @@
                 assistantEl = elAssistantBubble();
                 appendEvent(assistantEl);
               }
-              assistantEl._content.textContent += data.text;
+              appendAssistantText(assistantEl, data.text);
               pinUsageLine();
               scrollToBottom();
               break;
@@ -1177,7 +1274,8 @@
               usageEstimate = null;
               if (!assistantEl && data.reply) {
                 assistantEl = elAssistantBubble();
-                assistantEl._content.textContent = data.reply;
+                setMarkdownContent(assistantEl._content, data.reply);
+                assistantEl._raw = data.reply;
                 appendEvent(assistantEl);
               }
               if (data.usage) updateUsageLine(data.usage);
