@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import atexit
 import os
+from typing import Any
 
 from deepagents import SubAgent, create_deep_agent
 from dotenv import load_dotenv
@@ -112,6 +113,7 @@ def build_agent(
     with_subagents: bool = True,
     mcp_tools: list | None = None,
     mcp_servers: list[str] | None = None,
+    checkpointer: Any | None = None,
 ):
     """Construct the deep agent and its sandbox backend.
 
@@ -148,6 +150,7 @@ def build_agent(
         tools=mcp_tools or None,
         middleware=[PwdContextMiddleware()],
         context_schema=AgentContext,
+        checkpointer=checkpointer,
     )
     mcp_meta = {
         "servers": resolved_servers,

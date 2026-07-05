@@ -130,45 +130,35 @@
 
       <div class="min-h-0 flex-1 overflow-y-auto px-2 py-2">
 
-        <div class="mb-1 flex items-center gap-1">
-          <button type="button" @click="newChat" :disabled="streaming"
-            class="inline-flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50">
-            <p-icon name="plus" :size="14" />
-            New chat
-          </button>
-          <button type="button" @click="loadFiles({ force: true })" :disabled="filesLoading" :class="iconBtn"
-              title="Refresh workspace files" aria-label="Refresh workspace files">
-            <p-icon name="refresh" :size="15" :class="filesLoading ? 'animate-spin' : ''" />
-          </button>
-        </div>
-
         <!-- Chat history -->
-        <div class="mt-3">
+        <div>
           <div class="mb-1 flex items-center justify-between px-2">
             <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Chats</p>
-            <button type="button" @click="loadSessionList" :disabled="sessionListLoading" :class="iconBtn"
-              title="Refresh chat list" aria-label="Refresh chat list">
-              <p-icon name="refresh" :size="13" :class="sessionListLoading ? 'animate-spin' : ''" />
-            </button>
+            <div class="flex items-center gap-0.5">
+              <button type="button" @click="newChat" :disabled="streaming" :class="iconBtn"
+                title="New chat" aria-label="New chat">
+                <p-icon name="plus" :size="13" />
+              </button>
+              <button type="button" @click="loadSessionList" :disabled="sessionListLoading" :class="iconBtn"
+                title="Refresh chat list" aria-label="Refresh chat list">
+                <p-icon name="refresh" :size="13" :class="sessionListLoading ? 'animate-spin' : ''" />
+              </button>
+            </div>
           </div>
-          <ul class="flex max-h-48 flex-col gap-px overflow-y-auto text-xs">
+          <ul class="flex max-h-64 flex-col gap-px overflow-y-auto text-xs">
             <li v-if="sessionListLoading && !sessionList.length" class="px-2 py-1 text-muted-foreground/60">Loading chats…</li>
             <li v-else-if="!sessionList.length" class="px-2 py-1 text-muted-foreground/60">No chats yet</li>
             <li v-for="chat in sessionList" :key="chat.id">
               <div class="group flex items-center gap-0.5 rounded-lg transition-colors"
                 :class="chat.id === sessionId ? 'border border-border bg-background shadow-xs' : 'hover:bg-muted/80'">
                 <button type="button" @click="switchSession(chat.id)" :disabled="streaming"
-                  class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left disabled:pointer-events-none disabled:opacity-50"
-                  :title="chat.title">
-                  <span class="size-1.5 shrink-0 rounded-full"
-                    :class="chat.id === sessionId ? (streaming ? 'bg-accent animate-pulse' : 'bg-emerald-500') : 'bg-transparent'"></span>
-                  <span class="min-w-0 flex-1 truncate"
+                  class="flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left disabled:pointer-events-none disabled:opacity-50"
+                  :title="chat.preview && chat.preview !== 'No session yet' ? chat.preview : chat.title">
+                  <span class="truncate"
                     :class="chat.id === sessionId ? 'font-medium text-foreground' : 'text-muted-foreground'">
                     {{ chat.title }}
                   </span>
-                  <span v-if="chat.message_count" class="shrink-0 rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground/70">
-                    {{ chat.message_count }}
-                  </span>
+                  <span class="truncate text-muted-foreground/60">{{ chat.preview || 'No session yet' }}</span>
                 </button>
                 <button type="button" @click.stop="deleteSession(chat.id)" :disabled="streaming"
                   class="mr-1 hidden size-6 shrink-0 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-destructive-soft hover:text-destructive group-hover:grid disabled:pointer-events-none disabled:opacity-50"
@@ -184,7 +174,13 @@
         <div class="mt-4">
           <div class="mb-1 flex items-center justify-between px-2">
             <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Workspace</p>
-            <span v-if="fileTree?.length" class="rounded-full bg-muted px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground/80">{{ fileTree.length }}</span>
+            <div class="flex items-center gap-1">
+              <span v-if="fileTree?.length" class="rounded-full bg-muted px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground/80">{{ fileTree.length }}</span>
+              <button type="button" @click="loadFiles({ force: true })" :disabled="filesLoading" :class="iconBtn"
+                title="Refresh workspace files" aria-label="Refresh workspace files">
+                <p-icon name="refresh" :size="13" :class="filesLoading ? 'animate-spin' : ''" />
+              </button>
+            </div>
           </div>
           <ul class="flex flex-col gap-px text-xs text-muted-foreground">
             <li v-if="filesError" class="flex items-center gap-1.5 rounded-md bg-destructive-soft px-2 py-1.5 text-destructive">

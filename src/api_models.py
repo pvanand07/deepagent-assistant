@@ -32,6 +32,7 @@ class SessionResponse(BaseModel):
 class SessionSummary(BaseModel):
     id: str
     title: str
+    preview: str
     message_count: int
     model: str
     updated_at: float

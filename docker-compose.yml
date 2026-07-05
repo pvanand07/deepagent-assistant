@@ -45,8 +45,10 @@ services:
       OPENROUTER_SITE_NAME: ${OPENROUTER_SITE_NAME:-deep-agent-bwrap}
       IRESEARCHER_MCP_URL: ${IRESEARCHER_MCP_URL:-https://iresearcher-mcp.elevatics.site/mcp}
       IRESEARCHER_MCP_BEARER_TOKEN: ${IRESEARCHER_MCP_BEARER_TOKEN:-}
+      DEEPAGENT_DATA_DIR: /app/data
     volumes:
       - ./workspace:/workspace
+      - ./data:/app/data
       - ./frontend:/app/frontend
     security_opt:
       - apparmor:unconfined

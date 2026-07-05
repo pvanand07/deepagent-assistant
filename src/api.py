@@ -17,7 +17,6 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from langchain_core.messages import messages_to_dict
 
 from agent import _default_workdir
 from api_models import (
@@ -36,6 +35,7 @@ from api_models import (
     SessionSummary,
 )
 from mcp_tools import load_mcp_connections
+from message_summary import last_assistant_text, serialize_messages
 from openrouter_model import DEFAULT_MODEL
 from sessions import store
 from streaming import iter_agent_turn_events
@@ -44,7 +44,7 @@ from streaming import iter_agent_turn_events
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     yield
-    store.cleanup_all()
+    store.close()
 
 
 app = FastAPI(
@@ -64,71 +64,22 @@ app.add_middleware(
 
 
 def _serialize_messages(messages: list) -> list[dict[str, Any]]:
-    if not messages:
-        return []
-    if isinstance(messages[0], dict):
-        return messages
-    return messages_to_dict(messages)
+    return serialize_messages(messages)
 
 
-def _first_user_text(messages: list) -> str:
-    serialized = _serialize_messages(messages)
-    for msg in serialized:
-        role = msg.get("type") or msg.get("role")
-        if role not in {"human", "user"}:
-            continue
-        data = msg.get("data", msg)
-        content = data.get("content", "")
-        if isinstance(content, str) and content.strip():
-            return content.strip()
-        if isinstance(content, list):
-            parts = []
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    parts.append(block.get("text", ""))
-                elif isinstance(block, str):
-                    parts.append(block)
-            text = "".join(parts).strip()
-            if text:
-                return text
-    return ""
-
-
-def _session_title(session) -> str:
-    title = _first_user_text(session.history)
-    if not title:
-        return "New chat"
-    return title if len(title) <= 48 else title[:47] + "…"
-
-
-def _session_summary(session) -> SessionSummary:
+def _session_summary(meta) -> SessionSummary:
     return SessionSummary(
-        id=session.id,
-        title=_session_title(session),
-        message_count=len(session.history),
-        model=session.model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
-        updated_at=session.updated_at,
+        id=meta.id,
+        title=meta.title or "New chat",
+        preview=meta.preview or "No session yet",
+        message_count=meta.message_count or 0,
+        model=meta.model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
+        updated_at=meta.updated_at,
     )
 
 
 def _last_assistant_text(messages: list) -> str:
-    serialized = _serialize_messages(messages)
-    for msg in reversed(serialized):
-        role = msg.get("type") or msg.get("role")
-        if role in {"ai", "assistant"}:
-            data = msg.get("data", msg)
-            content = data.get("content", "")
-            if isinstance(content, str):
-                return content
-            if isinstance(content, list):
-                parts = []
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        parts.append(block.get("text", ""))
-                    elif isinstance(block, str):
-                        parts.append(block)
-                return "".join(parts)
-    return ""
+    return last_assistant_text(messages)
 
 
 def _require_session(session_id: str):
@@ -139,13 +90,14 @@ def _require_session(session_id: str):
 
 
 def _session_response(session) -> SessionResponse:
+    messages = session.get_messages()
     return SessionResponse(
         id=session.id,
         sandbox_id=session.sandbox.id,
         workdir=str(session.sandbox._workdir),
         network=session.sandbox.network,
         model=session.model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
-        message_count=len(session.history),
+        message_count=len(messages),
         mcp_servers=session.mcp_servers,
         mcp_tool_names=session.mcp_tool_names,
     )
@@ -195,7 +147,7 @@ def health() -> HealthResponse:
 
 @app.get("/api/sessions", response_model=SessionListResponse)
 def list_sessions() -> SessionListResponse:
-    return SessionListResponse(sessions=[_session_summary(s) for s in store.list_all()])
+    return SessionListResponse(sessions=[_session_summary(m) for m in store.list_all()])
 
 
 @app.post("/api/sessions", response_model=SessionResponse, status_code=201)
@@ -225,16 +177,16 @@ def delete_session(session_id: str) -> None:
 
 @app.get("/api/sessions/{session_id}/messages", response_model=MessagesResponse)
 def get_messages(session_id: str) -> MessagesResponse:
-    session = _require_session(session_id)
-    with session.lock:
-        return MessagesResponse(messages=_serialize_messages(session.history))
+    _require_session(session_id)
+    messages = store.read_messages(session_id)
+    store.sync_chat_summary(session_id, messages)
+    return MessagesResponse(messages=_serialize_messages(messages))
 
 
 @app.post("/api/sessions/{session_id}/reset", response_model=ResetResponse)
 def reset_history(session_id: str) -> ResetResponse:
-    session = _require_session(session_id)
-    with session.lock:
-        session.history = []
+    _require_session(session_id)
+    store.reset_thread(session_id)
     return ResetResponse()
 
 
@@ -242,15 +194,20 @@ def reset_history(session_id: str) -> ResetResponse:
 def chat(session_id: str, body: ChatRequest) -> ChatResponse:
     session = _require_session(session_id)
     pwd = _validate_pwd(session, body.pwd)
+    user_turn = [{"role": "user", "content": body.message}]
     with session.lock:
-        session.history.append({"role": "user", "content": body.message})
         session.touch()
-        final_messages = session.history
-        for event in iter_agent_turn_events(session.agent, session.history, pwd=pwd):
+        final_messages = user_turn
+        for event in iter_agent_turn_events(
+            session.agent,
+            user_turn,
+            thread_id=session.id,
+            pwd=pwd,
+        ):
             if event["type"] == "done":
                 final_messages = event["messages"]
-        session.history = final_messages
         session.touch()
+        store.sync_chat_summary(session_id, final_messages)
         return ChatResponse(
             reply=_last_assistant_text(final_messages),
             messages=_serialize_messages(final_messages),
@@ -263,14 +220,18 @@ def chat_stream(session_id: str, body: ChatRequest) -> StreamingResponse:
     pwd = _validate_pwd(session, body.pwd)
 
     def event_generator():
+        user_turn = [{"role": "user", "content": body.message}]
         with session.lock:
-            session.history.append({"role": "user", "content": body.message})
             session.touch()
-            history_snapshot = list(session.history)
-            for event in iter_agent_turn_events(session.agent, history_snapshot, pwd=pwd):
+            for event in iter_agent_turn_events(
+                session.agent,
+                user_turn,
+                thread_id=session.id,
+                pwd=pwd,
+            ):
                 if event["type"] == "done":
-                    session.history = event["messages"]
                     session.touch()
+                    store.sync_chat_summary(session_id, event["messages"])
                     payload = {
                         "type": "done",
                         "messages": _serialize_messages(event["messages"]),

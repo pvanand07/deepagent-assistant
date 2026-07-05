@@ -7,12 +7,13 @@ history. See https://docs.langchain.com/oss/python/deepagents/streaming
 
 from __future__ import annotations
 
-import asyncio
 import sys
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any
 
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage, ToolMessageChunk
+
+from session_persistence import get_async_runner
 
 # ANSI styling (override via ``style=`` on ``stream_agent_turn`` for tests/TTY checks)
 DEFAULT_STYLE = {
@@ -109,37 +110,39 @@ def _usage_estimate_event(
     }
 
 
-def _iter_agent_stream(agent: Any, history: list, **stream_kwargs: Any) -> Iterator[Any]:
+def _iter_agent_stream(
+    agent: Any,
+    input_messages: list,
+    *,
+    config: dict[str, Any] | None = None,
+    **stream_kwargs: Any,
+) -> Iterator[Any]:
     """Iterate LangGraph v2 stream chunks using ``astream`` (required for async MCP tools)."""
 
     async def _chunks() -> AsyncIterator[Any]:
-        async for chunk in agent.astream({"messages": history}, **stream_kwargs):
+        async for chunk in agent.astream(
+            {"messages": input_messages},
+            config=config,
+            **stream_kwargs,
+        ):
             yield chunk
 
     agen = _chunks()
-    loop = asyncio.new_event_loop()
-    try:
-        while True:
-            try:
-                yield loop.run_until_complete(agen.__anext__())
-            except StopAsyncIteration:
-                break
-    finally:
-        try:
-            loop.run_until_complete(agen.aclose())
-        except (RuntimeError, StopAsyncIteration):
-            pass
-        loop.close()
+    yield from get_async_runner().iter_async_generator(agen)
 
 
 def iter_agent_turn_events(
     agent: Any,
-    history: list,
+    input_messages: list,
     *,
+    thread_id: str | None = None,
     pwd: str | None = None,
     tool_preview_len: int = 500,
 ) -> Iterator[dict[str, Any]]:
     """Yield structured stream events for API/SSE consumers.
+
+    When ``thread_id`` is set, ``input_messages`` should contain only the new
+    user turn; prior history is loaded from the LangGraph checkpointer.
 
     Event types:
         source_start  - agent/subagent began producing output
@@ -151,7 +154,7 @@ def iter_agent_turn_events(
         tool_running  - sandbox tool execution started (after model finishes)
         done          - final message list (serialized via caller)
     """
-    final_messages = history
+    final_messages = list(input_messages)
     current_source = ""
     in_tool_call = False
     current_tool_name: str | None = None
@@ -186,8 +189,14 @@ def iter_agent_turn_events(
     }
     if pwd:
         stream_kwargs["context"] = {"pwd": pwd}
+    config = {"configurable": {"thread_id": thread_id}} if thread_id else None
 
-    for chunk in _iter_agent_stream(agent, history, **stream_kwargs):
+    for chunk in _iter_agent_stream(
+        agent,
+        input_messages,
+        config=config,
+        **stream_kwargs,
+    ):
         chunk_type = chunk["type"]
         ns = chunk.get("ns", ())
 
@@ -276,27 +285,18 @@ def iter_agent_turn_events(
 
 def stream_agent_turn(
     agent: Any,
-    history: list,
+    input_messages: list,
     *,
+    thread_id: str | None = None,
     write: Callable[[str], None] | None = None,
     style: dict[str, str] | None = None,
     tool_preview_len: int = 500,
 ) -> list:
     """Run one agent turn with token-level streaming.
 
-    Streams individual LLM tokens, tool-call chunks, and tool results from the
-    main agent and any subagents (``subgraphs=True``). Returns the updated
-    ``messages`` list from the final ``values`` chunk for conversation history.
-
-    Args:
-        agent: A ``create_deep_agent`` compiled graph.
-        history: Current conversation messages (including the latest user turn).
-        write: Optional sink for streamed output; defaults to stdout with flush.
-        style: Optional ANSI color map; pass empty dict to disable colors.
-        tool_preview_len: Max chars shown for tool results.
-
-    Returns:
-        The full message list after the turn completes.
+    When ``thread_id`` is set, pass only the new user message(s); history is
+    restored from the LangGraph checkpointer. Otherwise ``input_messages`` is
+    treated as the full in-memory history for this turn.
     """
     colors = DEFAULT_STYLE if style is None else style
     cyan = colors.get("cyan", "")
@@ -306,10 +306,11 @@ def stream_agent_turn(
 
     sink = write or (lambda text: (sys.stdout.write(text), sys.stdout.flush()))
 
-    final_messages = history
+    final_messages = list(input_messages)
     current_source = ""
     mid_line = False
     in_tool_call = False
+    config = {"configurable": {"thread_id": thread_id}} if thread_id else None
 
     def writeln(text: str = "") -> None:
         nonlocal mid_line
@@ -323,7 +324,8 @@ def stream_agent_turn(
 
     for chunk in _iter_agent_stream(
         agent,
-        history,
+        input_messages,
+        config=config,
         stream_mode=["messages", "values"],
         subgraphs=True,
         version="v2",

@@ -7,15 +7,21 @@ Usage:
 
 Type 'exit' or Ctrl-D to quit. Type '/reset' to clear conversation history
 (the sandbox filesystem persists across turns within one run either way).
+Conversation history is persisted under ``data/checkpoints.sqlite`` (see
+``DEEPAGENT_DATA_DIR``).
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from agent import _default_workdir, build_agent
+from session_persistence import CheckpointManager
 from streaming import DEFAULT_STYLE, stream_agent_turn
+
+CLI_THREAD_ID = os.environ.get("DEEPAGENT_CLI_THREAD_ID", "cli")
 
 
 def main() -> None:
@@ -29,7 +35,13 @@ def main() -> None:
     network = True if args.network else None
 
     try:
-        agent, sandbox, mcp_meta = build_agent(model_name=args.model, network=network, workdir=workdir)
+        checkpointer = CheckpointManager.get().checkpointer
+        agent, sandbox, mcp_meta = build_agent(
+            model_name=args.model,
+            network=network,
+            workdir=workdir,
+            checkpointer=checkpointer,
+        )
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -43,7 +55,6 @@ def main() -> None:
         print(f"  mcp tools  : {', '.join(mcp_meta['tool_names'])}")
     print("Type your request, '/reset' to clear history, or 'exit' to quit.\n")
 
-    history: list[dict] = []
     try:
         while True:
             try:
@@ -55,12 +66,16 @@ def main() -> None:
             if user_input.lower() in {"exit", "quit"}:
                 break
             if user_input == "/reset":
-                history = []
+                CheckpointManager.get().delete_thread(CLI_THREAD_ID)
                 print("History cleared (sandbox files are untouched).\n")
                 continue
 
-            history.append({"role": "user", "content": user_input})
-            history = stream_agent_turn(agent, history, style=DEFAULT_STYLE)
+            stream_agent_turn(
+                agent,
+                [{"role": "user", "content": user_input}],
+                thread_id=CLI_THREAD_ID,
+                style=DEFAULT_STYLE,
+            )
 
     finally:
         sandbox.cleanup()
