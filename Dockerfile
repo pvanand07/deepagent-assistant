@@ -20,7 +20,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY agent.py streaming.py bubblewrap_sandbox.py openrouter_model.py cli.py ./
+COPY agent.py streaming.py bubblewrap_sandbox.py openrouter_model.py mcp_tools.py pwd_middleware.py cli.py api.py api_models.py sessions.py ./
+COPY frontend ./frontend
 
 ENV DEEPAGENT_WORKDIR=/workspace
 ENV CODEX_GUI_WORKSPACE=/workspace

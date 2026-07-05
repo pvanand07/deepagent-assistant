@@ -158,7 +158,7 @@ Inside the REPL:
 from agent import build_agent
 from streaming import stream_agent_turn
 
-agent, sandbox = build_agent(model_name="anthropic/claude-sonnet-4.5", network=False)
+agent, sandbox, mcp_meta = build_agent(model_name="anthropic/claude-sonnet-4.5", network=False)
 history = [{"role": "user", "content": "Write and run a fibonacci script"}]
 history = stream_agent_turn(agent, history)  # token-level streaming to stdout
 sandbox.cleanup()

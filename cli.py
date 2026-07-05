@@ -29,7 +29,7 @@ def main() -> None:
     network = True if args.network else None
 
     try:
-        agent, sandbox = build_agent(model_name=args.model, network=network, workdir=workdir)
+        agent, sandbox, mcp_meta = build_agent(model_name=args.model, network=network, workdir=workdir)
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -38,6 +38,9 @@ def main() -> None:
     print(f"  sandbox id : {sandbox.id}")
     print(f"  workdir    : {sandbox._workdir}")
     print(f"  network    : {sandbox.network}")
+    if mcp_meta["servers"]:
+        print(f"  mcp        : {', '.join(mcp_meta['servers'])}")
+        print(f"  mcp tools  : {', '.join(mcp_meta['tool_names'])}")
     print("Type your request, '/reset' to clear history, or 'exit' to quit.\n")
 
     history: list[dict] = []

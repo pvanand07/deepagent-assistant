@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full antialiased">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deep Agent</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style type="text/tailwindcss">
+    @theme {
+      --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+      --font-mono: "Geist Mono", ui-monospace, monospace;
+
+      --color-background: var(--background);
+      --color-foreground: var(--foreground);
+      --color-card: var(--card);
+      --color-card-foreground: var(--card-foreground);
+      --color-popover: var(--popover);
+      --color-popover-foreground: var(--popover-foreground);
+      --color-primary: var(--primary);
+      --color-primary-foreground: var(--primary-foreground);
+      --color-secondary: var(--secondary);
+      --color-secondary-foreground: var(--secondary-foreground);
+      --color-muted: var(--muted);
+      --color-muted-foreground: var(--muted-foreground);
+      --color-accent: var(--accent);
+      --color-accent-foreground: var(--accent-foreground);
+      --color-destructive: var(--destructive);
+      --color-border: var(--border);
+      --color-input: var(--input);
+      --color-ring: var(--ring);
+
+      --radius-lg: 0.625rem;
+    }
+
+    :root {
+      --background: oklch(1 0 0);
+      --foreground: oklch(0.145 0 0);
+      --card: oklch(1 0 0);
+      --card-foreground: oklch(0.145 0 0);
+      --popover: oklch(1 0 0);
+      --popover-foreground: oklch(0.145 0 0);
+      --primary: oklch(0.205 0 0);
+      --primary-foreground: oklch(0.985 0 0);
+      --secondary: oklch(0.97 0 0);
+      --secondary-foreground: oklch(0.205 0 0);
+      --muted: oklch(0.97 0 0);
+      --muted-foreground: oklch(0.556 0 0);
+      --accent: oklch(0.97 0 0);
+      --accent-foreground: oklch(0.205 0 0);
+      --destructive: oklch(0.577 0.245 27.325);
+      --border: oklch(0.922 0 0);
+      --input: oklch(0.922 0 0);
+      --ring: oklch(0.708 0 0);
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(-25%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
+      50% { transform: translateY(0); animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }
+    }
+
+    .animate-spin { animation: spin 1s linear infinite; }
+    .animate-bounce { animation: bounce 1s infinite; }
+  </style>
+</head>
+<body class="h-full bg-background text-foreground font-sans">
+
+  <main class="flex h-screen gap-0 bg-background p-0">
+
+    <!-- Sidebar -->
+    <aside class="flex h-full w-64 shrink-0 flex-col border-r border-border bg-muted/30">
+
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <div class="flex flex-col gap-1 px-2 pt-2">
+
+          <div class="mb-1 flex items-center gap-1">
+            <button
+              id="btn-new-chat"
+              type="button"
+              class="inline-flex h-7 min-w-0 flex-1 items-center justify-start gap-1 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 256 256" class="shrink-0">
+                <path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"></path>
+              </svg>
+              New chat
+            </button>
+            <button
+              id="btn-refresh-files"
+              type="button"
+              class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label="Refresh workspace files"
+              title="Refresh workspace files"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256">
+                <path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div
+            id="session-card"
+            class="relative flex h-auto w-full flex-col items-start justify-start rounded-md bg-muted px-2 py-1.5 text-left text-foreground"
+          >
+            <span class="min-w-0 flex-1">
+              <span class="flex min-w-0 items-center gap-1.5 text-sm font-medium text-foreground">
+                <span id="sidebar-title" class="truncate">Connecting…</span>
+              </span>
+              <span id="sidebar-subtitle" class="block truncate text-xs font-normal text-muted-foreground/80">
+                Starting session
+              </span>
+            </span>
+          </div>
+
+          <div class="mt-3 px-1">
+            <p class="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">Workspace</p>
+            <ul id="file-list" class="flex flex-col gap-0.5 text-xs text-muted-foreground">
+              <li class="px-1 py-0.5 text-muted-foreground/60">Loading files…</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-2 border-t border-border py-2 pl-4 pr-2">
+        <div class="min-w-0 flex-1">
+          <p id="status-line" class="truncate text-xs font-medium text-muted-foreground" title="">
+            Initializing…
+          </p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Chat panel -->
+    <div class="flex h-full min-w-0 flex-1 flex-col overflow-hidden border-0 py-0 shadow-none">
+
+      <div class="relative mx-auto flex min-h-0 w-full flex-1 flex-col" style="max-width: 800px;">
+
+        <div class="flex min-h-10 items-center justify-between gap-2 border-b border-border px-3 py-1.5">
+          <div class="min-w-0">
+            <p id="chat-title" class="truncate text-sm font-semibold text-foreground">Deep Agent</p>
+            <p id="chat-subtitle" class="truncate text-xs text-muted-foreground">Sandboxed workspace</p>
+          </div>
+          <button
+            id="btn-session-info"
+            type="button"
+            class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Session information"
+            title="Session information"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256">
+              <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div id="messages-scroll" class="min-h-0 flex-1 overflow-y-auto">
+          <div id="messages" class="flex min-h-full flex-col justify-end gap-2.5 p-3 pb-48"></div>
+        </div>
+
+        <div id="error-banner" class="absolute inset-x-4 bottom-36 z-30 hidden rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"></div>
+
+        <form id="composer-form" class="absolute inset-x-0 bottom-0 z-20 bg-linear-to-t from-background via-background/95 to-transparent px-4 pb-4 pt-12">
+          <div class="rounded-xl border border-border bg-background p-3 shadow-sm">
+            <textarea
+              id="composer-input"
+              rows="1"
+              placeholder="What do you want to build?"
+              class="max-h-40 min-h-16 w-full resize-none border-0 bg-transparent px-1 py-0 text-base shadow-none outline-none placeholder:text-muted-foreground"
+            ></textarea>
+
+            <div class="flex items-center justify-between gap-2 pt-3 text-xs text-muted-foreground">
+              <div class="flex min-w-0 items-center gap-2">
+                <span id="model-label" class="inline-flex h-9 max-w-56 items-center gap-1.5 rounded-full border border-transparent px-2.5 text-sm font-normal leading-5 text-muted-foreground">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" class="shrink-0">
+                    <path d="M248,124a59.92,59.92,0,0,0-29.85-51.85,44,44,0,0,0-86.3,0A59.92,59.92,0,0,0,8,124a60.07,60.07,0,0,0,40,56.44V192a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8v-11.56A60.07,60.07,0,0,0,248,124ZM172,200H84V181.56a8,8,0,0,0-2.67-6A44,44,0,0,1,52.17,140.17a8,8,0,0,0-6-2.67,44,44,0,0,1,0-19A8,8,0,0,0,52.17,115.83a44,44,0,0,1,29.16-35.39,8,8,0,0,0,6-2.67,44,44,0,0,1,19,0,8,8,0,0,0,6,2.67A44,44,0,0,1,141.83,115.83a8,8,0,0,0,6,2.67,44,44,0,0,1,0,19,8,8,0,0,0-2.67,6A44,44,0,0,1,116,175.56a8,8,0,0,0-2.67,6Z"></path>
+                  </svg>
+                  <span class="min-w-0 truncate">Loading model…</span>
+                </span>
+                <div id="pwd-picker" class="relative max-w-48 min-w-0">
+                  <button
+                    id="pwd-select-trigger"
+                    type="button"
+                    class="group/pwd inline-flex h-9 w-full min-w-0 items-center gap-1.5 rounded-full border border-transparent px-2.5 text-sm font-normal leading-5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    aria-controls="pwd-select-menu"
+                    title="Working directory for this message"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" class="pointer-events-none shrink-0 text-muted-foreground/80" aria-hidden="true">
+                      <path d="M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72Zm0,128H40V56H92.69l27.32,27.32A15.86,15.86,0,0,0,131.31,88H216Z"></path>
+                    </svg>
+                    <span id="pwd-select-label" class="min-w-0 flex-1 truncate text-left">Workspace</span>
+                    <svg id="pwd-select-chevron" xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 256 256" class="pointer-events-none shrink-0 text-muted-foreground/60 transition-transform duration-150" aria-hidden="true">
+                      <path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"></path>
+                    </svg>
+                  </button>
+                  <div
+                    id="pwd-select-menu"
+                    class="absolute bottom-full left-0 z-40 mb-2 hidden min-w-full overflow-hidden rounded-xl border border-border bg-muted p-1 shadow-md"
+                    role="listbox"
+                    aria-label="Working directory"
+                  >
+                    <ul id="pwd-select-list" class="flex max-h-56 flex-col gap-0.5 overflow-y-auto"></ul>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex shrink-0 items-center gap-2">
+                <button
+                  id="btn-send"
+                  type="submit"
+                  class="inline-flex size-7 items-center justify-center rounded-full bg-foreground text-background hover:bg-foreground/90 disabled:opacity-40"
+                  aria-label="Send message"
+                  disabled
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256">
+                    <path d="M205.66,117.66l-72-72a8,8,0,0,0-11.32,0l-72,72A8,8,0,0,0,56,136H120v80a8,8,0,0,0,16,0V136h64a8,8,0,0,0,5.66-18.34Z"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+
+      </div>
+    </div>
+
+    <!-- Workspace preview -->
+    <aside
+      id="preview-panel"
+      class="flex h-full w-14 shrink-0 flex-col overflow-hidden border-l border-border bg-background transition-all duration-200"
+      aria-label="Workspace preview"
+    >
+      <div class="flex min-h-10 items-center justify-between gap-2 border-b border-border px-2 py-1.5">
+        <button
+          id="btn-preview-toggle"
+          type="button"
+          class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          aria-label="Show workspace preview"
+          title="Show workspace preview"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256">
+            <path d="M216,48H40A16,16,0,0,0,24,64V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V64A16,16,0,0,0,216,48Zm0,144H40V64H216V192ZM176,88a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,88Zm0,40a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,128Zm0,40a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,168Z"></path>
+          </svg>
+        </button>
+        <div id="preview-header" class="hidden min-w-0 flex-1 items-center gap-2">
+          <div class="min-w-0 flex-1">
+            <p id="preview-title" class="truncate text-sm font-semibold text-foreground">Workspace preview</p>
+            <p id="preview-subtitle" class="truncate text-xs text-muted-foreground">Select a file to preview</p>
+          </div>
+          <button
+            id="btn-preview-expand"
+            type="button"
+            class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Expand workspace preview"
+            title="Expand preview"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256">
+              <path d="M216,48V96a8,8,0,0,1-16,0V67.31l-42.34,42.35a8,8,0,0,1-11.32-11.32L188.69,56H160a8,8,0,0,1,0-16h48A8,8,0,0,1,216,48ZM98.34,146.34,56,188.69V160a8,8,0,0,0-16,0v48a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16H67.31l42.35-42.34a8,8,0,0,0-11.32-11.32ZM208,152a8,8,0,0,0-8,8v28.69l-42.34-42.35a8,8,0,0,0-11.32,11.32L188.69,200H160a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V160A8,8,0,0,0,208,152ZM67.31,56H96a8,8,0,0,0,0-16H48a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31l42.34,42.35a8,8,0,0,0,11.32-11.32Z"></path>
+            </svg>
+          </button>
+          <button
+            id="btn-preview-open"
+            type="button"
+            class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-35"
+            aria-label="Open preview in a new tab"
+            title="Open in new tab"
+            disabled
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256">
+              <path d="M224,104a8,8,0,0,1-16,0V59.31l-82.34,82.35a8,8,0,0,1-11.32-11.32L196.69,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"></path>
+            </svg>
+          </button>
+          <button
+            id="btn-preview-download"
+            type="button"
+            class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-35"
+            aria-label="Download previewed file"
+            title="Download file"
+            disabled
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256">
+              <path d="M224,152v56a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V152a8,8,0,0,1,16,0v56H208V152a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,132.69V40a8,8,0,0,0-16,0v92.69L93.66,106.34a8,8,0,0,0-11.32,11.32Z"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div id="preview-body" class="hidden min-h-0 flex-1 bg-muted/20">
+        <div id="preview-empty" class="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+          Select a workspace file to preview it here.
+        </div>
+        <iframe id="preview-frame" class="hidden h-full w-full border-0 bg-background" title="Workspace file preview"></iframe>
+        <pre id="preview-text" class="hidden h-full overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-5 text-foreground"></pre>
+      </div>
+    </aside>
+
+  </main>
+
+  <script>
+    const API = window.location.origin;
+    const SESSION_KEY = "deepagent_session_id";
+
+    const els = {
+      messages: document.getElementById("messages"),
+      messagesScroll: document.getElementById("messages-scroll"),
+      composerForm: document.getElementById("composer-form"),
+      composerInput: document.getElementById("composer-input"),
+      btnSend: document.getElementById("btn-send"),
+      btnNewChat: document.getElementById("btn-new-chat"),
+      btnRefreshFiles: document.getElementById("btn-refresh-files"),
+      btnSessionInfo: document.getElementById("btn-session-info"),
+      chatTitle: document.getElementById("chat-title"),
+      chatSubtitle: document.getElementById("chat-subtitle"),
+      sidebarTitle: document.getElementById("sidebar-title"),
+      sidebarSubtitle: document.getElementById("sidebar-subtitle"),
+      statusLine: document.getElementById("status-line"),
+      modelLabel: document.getElementById("model-label"),
+      pwdPicker: document.getElementById("pwd-picker"),
+      pwdSelectTrigger: document.getElementById("pwd-select-trigger"),
+      pwdSelectLabel: document.getElementById("pwd-select-label"),
+      pwdSelectMenu: document.getElementById("pwd-select-menu"),
+      pwdSelectList: document.getElementById("pwd-select-list"),
+      pwdSelectChevron: document.getElementById("pwd-select-chevron"),
+      fileList: document.getElementById("file-list"),
+      errorBanner: document.getElementById("error-banner"),
+      previewPanel: document.getElementById("preview-panel"),
+      previewHeader: document.getElementById("preview-header"),
+      previewBody: document.getElementById("preview-body"),
+      previewEmpty: document.getElementById("preview-empty"),
+      previewFrame: document.getElementById("preview-frame"),
+      previewText: document.getElementById("preview-text"),
+      previewTitle: document.getElementById("preview-title"),
+      previewSubtitle: document.getElementById("preview-subtitle"),
+      btnPreviewToggle: document.getElementById("btn-preview-toggle"),
+      btnPreviewExpand: document.getElementById("btn-preview-expand"),
+      btnPreviewOpen: document.getElementById("btn-preview-open"),
+      btnPreviewDownload: document.getElementById("btn-preview-download"),
+    };
+
+    let sessionId = null;
+    let sessionInfo = null;
+    let config = null;
+    let streaming = false;
+    let thinkingEl = null;
+    let usageEl = null;
+    let runningEl = null;
+    let runningTimer = null;
+    let runningToolName = null;
+    let runningStartedAt = 0;
+    let lastTurnUsage = null;
+    let usageEstimate = null;
+    let previewCollapsed = true;
+    let previewExpanded = false;
+    let previewFile = null;
+    let previewBlobUrl = null;
+    let fileTreeCache = new Map();
+    let expandedFolders = new Set();
+    let selectedPwd = "";
+    let pwdMenuOpen = false;
+    let workspaceFolders = [""];
+
+    const PWD_FOLDER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" class="shrink-0 text-muted-foreground/80" aria-hidden="true"><path d="M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72Zm0,128H40V56H92.69l27.32,27.32A15.86,15.86,0,0,0,131.31,88H216Z"></path></svg>`;
+
+    function showError(message) {
+      els.errorBanner.textContent = message;
+      els.errorBanner.classList.remove("hidden");
+      setTimeout(() => els.errorBanner.classList.add("hidden"), 8000);
+    }
+
+    function setStatus(text) {
+      els.statusLine.textContent = text;
+      els.statusLine.title = text;
+    }
+
+    function shortModel(name) {
+      if (!name) return "Unknown model";
+      const parts = name.split("/");
+      return parts[parts.length - 1].replace(/-/g, " ");
+    }
+
+    function formatPwdMenuLabel(path) {
+      if (!path) return "Workspace";
+      const parts = path.split("/");
+      return parts[parts.length - 1];
+    }
+
+    function formatPwdTriggerLabel(path) {
+      return path || "Workspace";
+    }
+
+    function getSelectedPwd() {
+      return selectedPwd || null;
+    }
+
+    function setSelectedPwd(path = "") {
+      selectedPwd = path || "";
+      els.pwdSelectLabel.textContent = formatPwdTriggerLabel(selectedPwd);
+      renderPwdMenu();
+    }
+
+    function closePwdMenu() {
+      pwdMenuOpen = false;
+      els.pwdSelectMenu.classList.add("hidden");
+      els.pwdSelectTrigger.setAttribute("aria-expanded", "false");
+      els.pwdSelectChevron.classList.remove("rotate-180");
+    }
+
+    function openPwdMenu() {
+      pwdMenuOpen = true;
+      els.pwdSelectMenu.classList.remove("hidden");
+      els.pwdSelectTrigger.setAttribute("aria-expanded", "true");
+      els.pwdSelectChevron.classList.add("rotate-180");
+    }
+
+    function togglePwdMenu() {
+      if (els.pwdSelectTrigger.disabled) return;
+      if (pwdMenuOpen) closePwdMenu();
+      else openPwdMenu();
+    }
+
+    function renderPwdMenu() {
+      els.pwdSelectList.innerHTML = "";
+      for (const folder of workspaceFolders) {
+        const depth = folder ? folder.split("/").length - 1 : 0;
+        const li = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.role = "option";
+        btn.dataset.path = folder;
+        btn.setAttribute("aria-selected", folder === selectedPwd ? "true" : "false");
+        btn.className = [
+          "flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm leading-5 text-foreground",
+          "hover:bg-background/80",
+          folder === selectedPwd ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+        ].join(" ");
+        btn.style.paddingLeft = `${depth * 0.75 + 0.625}rem`;
+        btn.innerHTML = `${PWD_FOLDER_ICON}<span class="min-w-0 truncate">${formatPwdMenuLabel(folder)}</span>`;
+        btn.addEventListener("click", () => {
+          setSelectedPwd(folder);
+          closePwdMenu();
+        });
+        li.appendChild(btn);
+        els.pwdSelectList.appendChild(li);
+      }
+    }
+
+    async function loadWorkspaceFolders() {
+      if (!sessionId) return;
+      const previous = selectedPwd;
+      try {
+        const data = await api(`/api/sessions/${sessionId}/folders`);
+        workspaceFolders = data.folders?.length ? data.folders : [""];
+        if (!workspaceFolders.includes(previous)) {
+          setSelectedPwd("");
+        } else {
+          setSelectedPwd(previous);
+        }
+      } catch (_) {
+        workspaceFolders = [""];
+        setSelectedPwd("");
+      }
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(`${API}${path}`, {
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+        ...options,
+      });
+      if (res.status === 204) return null;
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const body = await res.json();
+          detail = body.detail || JSON.stringify(body);
+        } catch (_) {}
+        throw new Error(detail);
+      }
+      return res.json();
+    }
+
+    function messageContent(msg) {
+      const data = msg.data || msg;
+      const content = data.content ?? msg.content ?? "";
+      if (typeof content === "string") return content;
+      if (Array.isArray(content)) {
+        return content.map((block) => {
+          if (typeof block === "string") return block;
+          if (block?.type === "text") return block.text || "";
+          return "";
+        }).join("");
+      }
+      return String(content ?? "");
+    }
+
+    function messageRole(msg) {
+      return msg.type || msg.role || (msg.data && msg.data.type) || "";
+    }
+
+    function truncate(text, max = 48) {
+      const t = (text || "").trim();
+      if (t.length <= max) return t || "New chat";
+      return t.slice(0, max - 1) + "…";
+    }
+
+    function scrollToBottom() {
+      els.messagesScroll.scrollTop = els.messagesScroll.scrollHeight;
+    }
+
+    function fileName(path) {
+      return (path || "").split("/").filter(Boolean).pop() || "file";
+    }
+
+    function contentTypeFor(path) {
+      const ext = fileName(path).toLowerCase().split(".").pop();
+      if (ext === "html" || ext === "htm") return "text/html";
+      if (ext === "css") return "text/css";
+      if (ext === "js" || ext === "mjs") return "text/javascript";
+      if (ext === "json") return "application/json";
+      if (ext === "svg") return "image/svg+xml";
+      if (ext === "md") return "text/markdown";
+      return "text/plain";
+    }
+
+    function setPreviewCollapsed(collapsed) {
+      previewCollapsed = collapsed;
+      els.previewPanel.style.width = collapsed ? "3.5rem" : (previewExpanded ? "min(52vw, 760px)" : "min(38vw, 520px)");
+      els.previewHeader.classList.toggle("hidden", collapsed);
+      els.previewHeader.classList.toggle("flex", !collapsed);
+      els.previewBody.classList.toggle("hidden", collapsed);
+      els.btnPreviewToggle.setAttribute("aria-label", collapsed ? "Show workspace preview" : "Hide workspace preview");
+      els.btnPreviewToggle.title = collapsed ? "Show workspace preview" : "Hide workspace preview";
+    }
+
+    function setPreviewExpanded(expanded) {
+      previewExpanded = expanded;
+      if (!previewCollapsed) {
+        els.previewPanel.style.width = expanded ? "min(52vw, 760px)" : "min(38vw, 520px)";
+      }
+      els.btnPreviewExpand.setAttribute("aria-label", expanded ? "Shrink workspace preview" : "Expand workspace preview");
+      els.btnPreviewExpand.title = expanded ? "Shrink preview" : "Expand preview";
+    }
+
+    function setPreviewActionsEnabled(enabled) {
+      els.btnPreviewOpen.disabled = !enabled;
+      els.btnPreviewDownload.disabled = !enabled;
+    }
+
+    function clearPreviewBlobUrl() {
+      if (previewBlobUrl) {
+        URL.revokeObjectURL(previewBlobUrl);
+        previewBlobUrl = null;
+      }
+    }
+
+    async function loadFileContent(path) {
+      return api(`/api/sessions/${sessionId}/files/content?path=${encodeURIComponent(path)}`);
+    }
+
+    async function previewWorkspaceFile(path) {
+      if (!sessionId) return;
+      setPreviewCollapsed(false);
+      setPreviewActionsEnabled(false);
+      els.previewTitle.textContent = fileName(path);
+      els.previewSubtitle.textContent = path;
+      els.previewEmpty.classList.remove("hidden");
+      els.previewEmpty.textContent = "Loading preview…";
+      els.previewFrame.classList.add("hidden");
+      els.previewText.classList.add("hidden");
+      clearPreviewBlobUrl();
+
+      try {
+        const data = await loadFileContent(path);
+        const type = contentTypeFor(data.path);
+        const blob = new Blob([data.content], { type });
+        previewBlobUrl = URL.createObjectURL(blob);
+        previewFile = { path: data.path, content: data.content, type };
+
+        els.previewEmpty.classList.add("hidden");
+        if (type === "text/html" || type === "image/svg+xml") {
+          els.previewFrame.srcdoc = data.content;
+          els.previewFrame.classList.remove("hidden");
+        } else {
+          els.previewText.textContent = data.content;
+          els.previewText.classList.remove("hidden");
+        }
+        els.previewSubtitle.textContent = `${data.path} · ${Number(data.size || 0).toLocaleString()} bytes`;
+        setPreviewActionsEnabled(true);
+      } catch (e) {
+        previewFile = null;
+        els.previewEmpty.textContent = e.message || "Preview unavailable";
+        els.previewEmpty.classList.remove("hidden");
+        setPreviewActionsEnabled(false);
+      }
+    }
+
+    async function downloadWorkspaceFile(path) {
+      if (!sessionId || !path) return;
+      const data = previewFile?.path === path ? previewFile : await loadFileContent(path);
+      const blob = new Blob([data.content], { type: data.type || contentTypeFor(data.path) });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName(data.path);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function formatUsage(turn, estimate) {
+      const parts = [];
+      const confirmedTotal = Number(turn?.total_tokens || 0);
+      const confirmedOut = Number(turn?.output_tokens || 0);
+      const estOut = Number(estimate?.estimated_output_tokens || 0);
+
+      if (estimate && estOut) {
+        const liveTotal = confirmedTotal + estOut;
+        const liveOut = confirmedOut + estOut;
+        parts.push(`~${liveTotal.toLocaleString()} tokens`);
+        parts.push(`in ${Number(turn?.input_tokens || 0).toLocaleString()}`);
+        parts.push(`out ~${liveOut.toLocaleString()}`);
+        if (estimate.phase === "tool_args" && estimate.tool_name) {
+          parts.push(`${estimate.tool_name} args ${Number(estimate.chars || 0).toLocaleString()} chars`);
+        } else if (estimate.phase === "text") {
+          parts.push("text streaming");
+        }
+      } else if (turn?.model_calls) {
+        parts.push(`${confirmedTotal.toLocaleString()} tokens`);
+        parts.push(`in ${Number(turn.input_tokens || 0).toLocaleString()}`);
+        parts.push(`out ${confirmedOut.toLocaleString()}`);
+        if (turn.cache_read) {
+          parts.push(`cache ${Number(turn.cache_read).toLocaleString()}`);
+        }
+        if (turn.model_calls > 1) {
+          parts.push(`${turn.model_calls} model calls`);
+        }
+      }
+
+      return parts.join(" · ");
+    }
+
+    function ensureRunningLine() {
+      if (!runningEl) {
+        runningEl = document.createElement("div");
+        runningEl.id = "running-line";
+        runningEl.className = "py-0.5 pl-1 text-[11px] leading-4 text-muted-foreground/80";
+      }
+      return runningEl;
+    }
+
+    function showToolRunning(name) {
+      stopToolRunning(false);
+      runningToolName = name;
+      runningStartedAt = Date.now();
+      const el = ensureRunningLine();
+      el.innerHTML = `<span class="inline-flex items-center gap-1.5"><span class="size-1.5 animate-pulse rounded-full bg-muted-foreground/60"></span><span class="running-label">Running ${name}… 0.0s</span></span>`;
+      els.messages.appendChild(el);
+      pinStatusLines();
+      runningTimer = setInterval(() => {
+        if (!runningEl || !runningToolName) return;
+        const secs = ((Date.now() - runningStartedAt) / 1000).toFixed(1);
+        const label = runningEl.querySelector(".running-label");
+        if (label) label.textContent = `Running ${runningToolName}… ${secs}s`;
+      }, 100);
+    }
+
+    function stopToolRunning(removeLine = true) {
+      if (runningTimer) {
+        clearInterval(runningTimer);
+        runningTimer = null;
+      }
+      runningToolName = null;
+      if (removeLine && runningEl) {
+        runningEl.remove();
+        runningEl = null;
+      }
+    }
+
+    function pinStatusLines() {
+      if (usageEl && usageEl.textContent) els.messages.appendChild(usageEl);
+      if (runningEl) els.messages.appendChild(runningEl);
+    }
+
+    function refreshUsageLine() {
+      const text = formatUsage(lastTurnUsage, usageEstimate);
+      if (!text) return;
+      const el = ensureUsageLine();
+      el.textContent = text;
+      pinStatusLines();
+    }
+
+    function ensureUsageLine() {
+      if (!usageEl) {
+        usageEl = document.createElement("div");
+        usageEl.id = "usage-line";
+        usageEl.className = "py-0.5 pl-1 text-[11px] font-mono leading-4 text-muted-foreground/65";
+        usageEl.setAttribute("aria-live", "polite");
+      }
+      return usageEl;
+    }
+
+    function pinUsageLine() {
+      pinStatusLines();
+    }
+
+    function appendEvent(el) {
+      els.messages.appendChild(el);
+      pinStatusLines();
+    }
+
+    function updateUsageLine(turn, estimate = null) {
+      if (turn?.model_calls) {
+        lastTurnUsage = turn;
+        if (!estimate) usageEstimate = null;
+      }
+      if (estimate) usageEstimate = estimate;
+      refreshUsageLine();
+      scrollToBottom();
+    }
+
+    function clearUsageLine() {
+      stopToolRunning();
+      if (usageEl) {
+        usageEl.remove();
+        usageEl = null;
+      }
+      lastTurnUsage = null;
+      usageEstimate = null;
+    }
+
+    function elUserBubble(text) {
+      const div = document.createElement("div");
+      div.className = "flex w-fit max-w-[85%] flex-col gap-1 self-end rounded-md bg-muted/80 px-3 py-2 text-sm leading-6 text-foreground";
+      const p = document.createElement("p");
+      p.className = "whitespace-pre-wrap break-words";
+      p.textContent = text;
+      div.appendChild(p);
+      return div;
+    }
+
+    function elAssistantBubble() {
+      const wrap = document.createElement("div");
+      wrap.className = "flex flex-col gap-1 py-1 text-sm leading-6 text-foreground";
+      const inner = document.createElement("div");
+      inner.className = "max-w-none whitespace-pre-wrap break-words text-sm leading-6 text-foreground";
+      wrap.appendChild(inner);
+      wrap._content = inner;
+      return wrap;
+    }
+
+    function elActivity(label, iconPath) {
+      const div = document.createElement("div");
+      div.className = "flex flex-col gap-1 py-px text-xs leading-5 text-muted-foreground/85";
+      div.innerHTML = `
+        <div class="flex items-center gap-1.5">
+          <span aria-hidden="true" class="grid size-4 shrink-0 place-items-center rounded-sm bg-muted/70 text-muted-foreground/80">
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 256 256">
+              <path d="${iconPath}"></path>
+            </svg>
+          </span>
+          <span class="min-w-0 truncate text-muted-foreground/85 activity-label"></span>
+        </div>`;
+      div.querySelector(".activity-label").textContent = label;
+      return div;
+    }
+
+    const ICONS = {
+      tool: "M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM93.66,141.66a8,8,0,0,1-11.32,0l-32-32a8,8,0,0,1,0-11.32l32-32a8,8,0,0,1,11.32,11.32L75.31,104l17.35,17.34A8,8,0,0,1,93.66,141.66Zm58.68,17.66H152a8,8,0,0,1,0-16h8a8,8,0,0,1,0,16Z",
+      subagent: "M248,124a59.92,59.92,0,0,0-29.85-51.85,44,44,0,0,0-86.3,0A59.92,59.92,0,0,0,8,124a60.07,60.07,0,0,0,40,56.44V192a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8v-11.56A60.07,60.07,0,0,0,248,124ZM172,200H84V181.56a8,8,0,0,0-2.67-6A44,44,0,0,1,52.17,140.17a8,8,0,0,0-6-2.67,44,44,0,0,1,0-19A8,8,0,0,0,52.17,115.83a44,44,0,0,1,29.16-35.39,8,8,0,0,0,6-2.67,44,44,0,0,1,19,0,8,8,0,0,0,6,2.67A44,44,0,0,1,141.83,115.83a8,8,0,0,0,6,2.67,44,44,0,0,1,0,19,8,8,0,0,0-2.67,6A44,44,0,0,1,116,175.56a8,8,0,0,0-2.67,6Z",
+    };
+
+    function showThinking() {
+      hideThinking();
+      thinkingEl = document.createElement("div");
+      thinkingEl.className = "flex flex-col gap-1 py-1 text-sm leading-6 text-foreground";
+      thinkingEl.setAttribute("aria-label", "Assistant is thinking");
+      thinkingEl.innerHTML = `
+        <div class="flex items-center gap-1 py-1 text-muted-foreground">
+          <span class="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay:0ms"></span>
+          <span class="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay:120ms"></span>
+          <span class="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay:240ms"></span>
+        </div>`;
+      els.messages.appendChild(thinkingEl);
+      pinUsageLine();
+      scrollToBottom();
+    }
+
+    function hideThinking() {
+      if (thinkingEl) {
+        thinkingEl.remove();
+        thinkingEl = null;
+      }
+    }
+
+    function renderHistory(messages) {
+      els.messages.innerHTML = "";
+      usageEl = null;
+      for (const msg of messages) {
+        const role = messageRole(msg);
+        const text = messageContent(msg);
+        if (!text) continue;
+        if (role === "human" || role === "user") {
+          els.messages.appendChild(elUserBubble(text));
+        } else if (role === "ai" || role === "assistant") {
+          const bubble = elAssistantBubble();
+          bubble._content.textContent = text;
+          els.messages.appendChild(bubble);
+        }
+      }
+      scrollToBottom();
+    }
+
+    function updateChrome() {
+      const model = sessionInfo?.model || config?.default_model || "";
+      const modelText = shortModel(model);
+      els.modelLabel.querySelector("span").textContent = modelText;
+      els.chatSubtitle.textContent = sessionInfo
+        ? `Sandbox ${sessionInfo.sandbox_id} · network ${sessionInfo.network ? "on" : "off"}`
+        : "Sandboxed workspace";
+      setStatus(sessionInfo ? `Session ${sessionId.slice(0, 8)}…` : "No session");
+    }
+
+    function fileTreeKey(path = "") {
+      return path && path !== "." ? path : "";
+    }
+
+    async function fetchFileEntries(path = "") {
+      const key = fileTreeKey(path);
+      const q = key ? `?path=${encodeURIComponent(key)}` : "";
+      const data = await api(`/api/sessions/${sessionId}/files${q}`);
+      fileTreeCache.set(key, data.entries || []);
+      return data.entries || [];
+    }
+
+    function renderFileTreeEntry(entry, depth) {
+      const li = document.createElement("li");
+      li.className = "flex flex-col gap-0.5";
+      li.title = entry.path;
+
+      const row = document.createElement("div");
+      row.className = "group flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted";
+      row.style.paddingLeft = `${depth * 0.75 + 0.25}rem`;
+
+      const name = document.createElement("button");
+      name.type = "button";
+      name.className = "min-w-0 flex-1 truncate text-left";
+
+      if (entry.is_dir) {
+        const isExpanded = expandedFolders.has(entry.path);
+        name.textContent = `${isExpanded ? "▾" : "▸"} 📁 ${entry.name}`;
+        name.setAttribute("aria-expanded", String(isExpanded));
+        name.addEventListener("click", async () => {
+          if (expandedFolders.has(entry.path)) {
+            expandedFolders.delete(entry.path);
+            renderWorkspaceTree();
+            return;
+          }
+
+          expandedFolders.add(entry.path);
+          renderWorkspaceTree();
+          try {
+            if (!fileTreeCache.has(entry.path)) {
+              await fetchFileEntries(entry.path);
+            }
+            renderWorkspaceTree();
+          } catch (e) {
+            expandedFolders.delete(entry.path);
+            renderWorkspaceTree();
+            showError(e.message || "Folder unavailable");
+          }
+        });
+      } else {
+        name.textContent = `📄 ${entry.name}`;
+        name.addEventListener("click", () => {
+          previewWorkspaceFile(entry.path).catch((e) => showError(e.message));
+        });
+      }
+
+      row.appendChild(name);
+      if (!entry.is_dir) {
+        const download = document.createElement("button");
+        download.type = "button";
+        download.className = "hidden shrink-0 rounded px-1 text-[10px] text-muted-foreground hover:bg-background hover:text-foreground group-hover:inline-flex";
+        download.textContent = "Download";
+        download.title = `Download ${entry.path}`;
+        download.addEventListener("click", (e) => {
+          e.stopPropagation();
+          downloadWorkspaceFile(entry.path).catch((err) => showError(err.message));
+        });
+        row.appendChild(download);
+      }
+      li.appendChild(row);
+
+      if (entry.is_dir && expandedFolders.has(entry.path)) {
+        const children = fileTreeCache.get(entry.path);
+        const childList = document.createElement("ul");
+        childList.className = "flex flex-col gap-0.5";
+        if (children) {
+          if (children.length) {
+            for (const child of children) {
+              childList.appendChild(renderFileTreeEntry(child, depth + 1));
+            }
+          } else {
+            const empty = document.createElement("li");
+            empty.className = "px-1 py-0.5 text-muted-foreground/60";
+            empty.style.paddingLeft = `${(depth + 1) * 0.75 + 0.25}rem`;
+            empty.textContent = "Empty folder";
+            childList.appendChild(empty);
+          }
+        } else {
+          const loading = document.createElement("li");
+          loading.className = "px-1 py-0.5 text-muted-foreground/60";
+          loading.style.paddingLeft = `${(depth + 1) * 0.75 + 0.25}rem`;
+          loading.textContent = "Loading…";
+          childList.appendChild(loading);
+        }
+        li.appendChild(childList);
+      }
+
+      return li;
+    }
+
+    function renderWorkspaceTree() {
+      const rootEntries = fileTreeCache.get("");
+      els.fileList.innerHTML = "";
+      if (!rootEntries) {
+        els.fileList.innerHTML = `<li class="px-1 py-0.5 text-muted-foreground/60">Loading files…</li>`;
+        return;
+      }
+      if (!rootEntries.length) {
+        els.fileList.innerHTML = `<li class="px-1 py-0.5 text-muted-foreground/60">Empty workspace</li>`;
+        return;
+      }
+      for (const entry of rootEntries) {
+        els.fileList.appendChild(renderFileTreeEntry(entry, 0));
+      }
+    }
+
+    async function preloadExpandedFolders(path = "") {
+      const entries = fileTreeCache.get(fileTreeKey(path)) || [];
+      for (const entry of entries) {
+        if (!entry.is_dir || !expandedFolders.has(entry.path)) continue;
+        await fetchFileEntries(entry.path);
+        await preloadExpandedFolders(entry.path);
+      }
+    }
+
+    async function loadFiles() {
+      if (!sessionId) return;
+      try {
+        fileTreeCache = new Map();
+        renderWorkspaceTree();
+        await fetchFileEntries("");
+        await preloadExpandedFolders("");
+        renderWorkspaceTree();
+        await loadWorkspaceFolders();
+      } catch (e) {
+        els.fileList.innerHTML = `<li class="px-1 py-0.5 text-destructive/80">Files unavailable</li>`;
+      }
+    }
+
+    async function createSession() {
+      sessionInfo = await api("/api/sessions", { method: "POST", body: "{}" });
+      sessionId = sessionInfo.id;
+      sessionStorage.setItem(SESSION_KEY, sessionId);
+      updateChrome();
+      await loadFiles();
+      els.btnSend.disabled = false;
+    }
+
+    async function ensureSession() {
+      config = await api("/api/config");
+      els.modelLabel.querySelector("span").textContent = shortModel(config.default_model);
+
+      const saved = sessionStorage.getItem(SESSION_KEY);
+      if (saved) {
+        try {
+          sessionInfo = await api(`/api/sessions/${saved}`);
+          sessionId = saved;
+          const { messages } = await api(`/api/sessions/${sessionId}/messages`);
+          renderHistory(messages);
+          const firstUser = messages.find((m) => ["human", "user"].includes(messageRole(m)));
+          const title = firstUser ? truncate(messageContent(firstUser)) : "Resumed chat";
+          els.chatTitle.textContent = title;
+          els.sidebarTitle.textContent = title;
+          els.sidebarSubtitle.textContent = `${messages.length} messages`;
+          updateChrome();
+          await loadFiles();
+          els.btnSend.disabled = false;
+          return;
+        } catch (_) {
+          sessionStorage.removeItem(SESSION_KEY);
+        }
+      }
+      await createSession();
+      els.chatTitle.textContent = "New chat";
+      els.sidebarTitle.textContent = "New chat";
+      els.sidebarSubtitle.textContent = "What do you want to build?";
+    }
+
+    async function resetChat() {
+      if (!sessionId) return;
+      if (streaming) return;
+      await api(`/api/sessions/${sessionId}/reset`, { method: "POST" });
+      els.messages.innerHTML = "";
+      clearUsageLine();
+      els.chatTitle.textContent = "New chat";
+      els.sidebarTitle.textContent = "New chat";
+      els.sidebarSubtitle.textContent = "History cleared";
+      await loadFiles();
+    }
+
+    async function newChat() {
+      if (streaming) return;
+      if (sessionId) {
+        try { await api(`/api/sessions/${sessionId}`, { method: "DELETE" }); } catch (_) {}
+      }
+      sessionStorage.removeItem(SESSION_KEY);
+      sessionId = null;
+      sessionInfo = null;
+      els.messages.innerHTML = "";
+      clearUsageLine();
+      await createSession();
+      els.chatTitle.textContent = "New chat";
+      els.sidebarTitle.textContent = "New chat";
+      els.sidebarSubtitle.textContent = "What do you want to build?";
+    }
+
+    function parseSseEvents(buffer) {
+      const events = [];
+      const blocks = buffer.split("\n\n");
+      const rest = blocks.pop() || "";
+      for (const block of blocks) {
+        if (!block.trim()) continue;
+        let eventType = "message";
+        let data = "";
+        for (const line of block.split("\n")) {
+          if (line.startsWith("event:")) eventType = line.slice(6).trim();
+          if (line.startsWith("data:")) data += line.slice(5).trim();
+        }
+        if (data) {
+          try {
+            events.push({ event: eventType, data: JSON.parse(data) });
+          } catch (_) {}
+        }
+      }
+      return { events, rest };
+    }
+
+    async function streamChat(message) {
+      streaming = true;
+      els.btnSend.disabled = true;
+      els.composerInput.disabled = true;
+      els.pwdSelectTrigger.disabled = true;
+      closePwdMenu();
+
+      els.messages.appendChild(elUserBubble(message));
+      pinUsageLine();
+      els.chatTitle.textContent = truncate(message);
+      els.sidebarTitle.textContent = truncate(message);
+      els.sidebarSubtitle.textContent = "Running…";
+      showThinking();
+
+      let assistantEl = null;
+      let toolActivity = null;
+      let toolArgs = "";
+      clearUsageLine();
+
+      const res = await fetch(`${API}/api/sessions/${sessionId}/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message,
+          pwd: getSelectedPwd(),
+        }),
+      });
+
+      if (!res.ok) {
+        hideThinking();
+        throw new Error(`Stream failed (${res.status})`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parsed = parseSseEvents(buffer);
+        buffer = parsed.rest;
+
+        for (const { data } of parsed.events) {
+          switch (data.type) {
+            case "source_start":
+              hideThinking();
+              if (data.is_subagent) {
+                appendEvent(elActivity(`Sub-agent: ${data.source}`, ICONS.subagent));
+              }
+              if (!assistantEl) {
+                assistantEl = elAssistantBubble();
+                appendEvent(assistantEl);
+              }
+              break;
+            case "token":
+              hideThinking();
+              if (!assistantEl) {
+                assistantEl = elAssistantBubble();
+                appendEvent(assistantEl);
+              }
+              assistantEl._content.textContent += data.text;
+              pinUsageLine();
+              scrollToBottom();
+              break;
+            case "tool_call_start":
+              hideThinking();
+              toolArgs = "";
+              toolActivity = elActivity(`Calling ${data.name}(…)`, ICONS.tool);
+              toolActivity._name = data.name;
+              appendEvent(toolActivity);
+              scrollToBottom();
+              break;
+            case "tool_call_args":
+              toolArgs += data.args || "";
+              if (toolActivity) {
+                toolActivity.querySelector(".activity-label").textContent =
+                  `Calling ${toolActivity._name}(${toolArgs})`;
+              }
+              pinStatusLines();
+              scrollToBottom();
+              break;
+            case "tool_call_end":
+              if (toolActivity) {
+                const label = toolArgs
+                  ? `Calling ${toolActivity._name}(${toolArgs})`
+                  : `Calling ${toolActivity._name}()`;
+                toolActivity.querySelector(".activity-label").textContent = label;
+              }
+              toolActivity = null;
+              assistantEl = null;
+              pinStatusLines();
+              break;
+            case "tool_running":
+              showToolRunning(data.name);
+              break;
+            case "tool_result":
+              hideThinking();
+              stopToolRunning();
+              usageEstimate = null;
+              const preview = (data.content || "").slice(0, 200);
+              appendEvent(elActivity(
+                `${data.name}: ${preview}${data.content?.length > 200 ? "…" : ""}`,
+                ICONS.tool
+              ));
+              assistantEl = null;
+              scrollToBottom();
+              break;
+            case "usage":
+              updateUsageLine(data.turn);
+              break;
+            case "usage_estimate":
+              updateUsageLine(data.turn, data);
+              break;
+            case "done":
+              hideThinking();
+              stopToolRunning();
+              usageEstimate = null;
+              if (!assistantEl && data.reply) {
+                assistantEl = elAssistantBubble();
+                assistantEl._content.textContent = data.reply;
+                appendEvent(assistantEl);
+              }
+              if (data.usage) updateUsageLine(data.usage);
+              els.sidebarSubtitle.textContent = `${data.messages?.length || 0} messages`;
+              await loadFiles();
+              break;
+          }
+        }
+      }
+
+      hideThinking();
+      streaming = false;
+      els.btnSend.disabled = false;
+      els.composerInput.disabled = false;
+      els.pwdSelectTrigger.disabled = false;
+      els.composerInput.focus();
+    }
+
+    els.composerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = els.composerInput.value.trim();
+      if (!text || streaming || !sessionId) return;
+      els.composerInput.value = "";
+      try {
+        await streamChat(text);
+      } catch (err) {
+        showError(err.message || "Request failed");
+        streaming = false;
+        els.btnSend.disabled = false;
+        els.composerInput.disabled = false;
+        els.pwdSelectTrigger.disabled = false;
+      }
+    });
+
+    els.composerInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        els.composerForm.requestSubmit();
+      }
+    });
+
+    els.btnNewChat.addEventListener("click", () => newChat().catch((e) => showError(e.message)));
+    els.btnRefreshFiles.addEventListener("click", () => loadFiles().catch((e) => showError(e.message)));
+    els.pwdSelectTrigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      togglePwdMenu();
+    });
+    document.addEventListener("click", (e) => {
+      if (!pwdMenuOpen) return;
+      if (!els.pwdPicker.contains(e.target)) closePwdMenu();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closePwdMenu();
+    });
+    renderPwdMenu();
+    els.btnPreviewToggle.addEventListener("click", () => setPreviewCollapsed(!previewCollapsed));
+    els.btnPreviewExpand.addEventListener("click", () => setPreviewExpanded(!previewExpanded));
+    els.btnPreviewOpen.addEventListener("click", () => {
+      if (!previewBlobUrl) return;
+      window.open(previewBlobUrl, "_blank", "noopener,noreferrer");
+    });
+    els.btnPreviewDownload.addEventListener("click", () => {
+      if (!previewFile) return;
+      downloadWorkspaceFile(previewFile.path).catch((e) => showError(e.message));
+    });
+    els.btnSessionInfo.addEventListener("click", () => {
+      if (!sessionInfo) return;
+      alert(
+        `Session: ${sessionInfo.id}\n` +
+        `Sandbox: ${sessionInfo.sandbox_id}\n` +
+        `Workdir: ${sessionInfo.workdir}\n` +
+        `Model: ${sessionInfo.model}\n` +
+        `Network: ${sessionInfo.network}\n` +
+        `Messages: ${sessionInfo.message_count}`
+      );
+    });
+
+    window.addEventListener("beforeunload", () => {
+      /* session persists server-side until deleted or server restart */
+    });
+
+    ensureSession().catch((e) => {
+      showError(e.message || "Failed to connect to API");
+      setStatus("Disconnected");
+      els.sidebarTitle.textContent = "Offline";
+      els.sidebarSubtitle.textContent = "Start API on port 8010";
+    });
+  </script>
+
+</body>
+</html>

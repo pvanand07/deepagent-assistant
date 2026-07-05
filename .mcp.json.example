@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "iresearcher": {
+      "url": "https://iresearcher-mcp.elevatics.site/mcp",
+      "bearer_token": "${IRESEARCHER_MCP_BEARER_TOKEN}"
+    },
+    "context7": {
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}
