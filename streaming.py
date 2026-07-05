@@ -1,0 +1,171 @@
+"""Token-level streaming helpers for deepagents.
+
+Uses LangGraph v2 stream chunks with ``stream_mode=["messages", "values"]`` so
+callers get live LLM tokens *and* the final message list for conversation
+history. See https://docs.langchain.com/oss/python/deepagents/streaming
+"""
+
+from __future__ import annotations
+
+import sys
+from collections.abc import Callable
+from typing import Any
+
+from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage, ToolMessageChunk
+
+# ANSI styling (override via ``style=`` on ``stream_agent_turn`` for tests/TTY checks)
+DEFAULT_STYLE = {
+    "cyan": "\033[36m",
+    "gray": "\033[90m",
+    "bold": "\033[1m",
+    "reset": "\033[0m",
+}
+
+
+def _source_label(ns: tuple[str, ...]) -> tuple[bool, str]:
+    """Map a v2 namespace tuple to (is_subagent, display_label)."""
+    for segment in ns:
+        if segment.startswith("tools:"):
+            return True, segment.split(":", 1)[-1]
+    return False, "main"
+
+
+def _token_text(token: Any) -> str:
+    """Extract printable text from a streamed message chunk."""
+    text = getattr(token, "text", None)
+    if text is not None:
+        return str(text)
+    content = getattr(token, "content", None)
+    if isinstance(content, str):
+        return content
+    return ""
+
+
+def _is_ai_token(token: Any) -> bool:
+    return isinstance(token, (AIMessage, AIMessageChunk))
+
+
+def _is_tool_token(token: Any) -> bool:
+    return isinstance(token, (ToolMessage, ToolMessageChunk))
+
+
+def stream_agent_turn(
+    agent: Any,
+    history: list,
+    *,
+    write: Callable[[str], None] | None = None,
+    style: dict[str, str] | None = None,
+    tool_preview_len: int = 500,
+) -> list:
+    """Run one agent turn with token-level streaming.
+
+    Streams individual LLM tokens, tool-call chunks, and tool results from the
+    main agent and any subagents (``subgraphs=True``). Returns the updated
+    ``messages`` list from the final ``values`` chunk for conversation history.
+
+    Args:
+        agent: A ``create_deep_agent`` compiled graph.
+        history: Current conversation messages (including the latest user turn).
+        write: Optional sink for streamed output; defaults to stdout with flush.
+        style: Optional ANSI color map; pass empty dict to disable colors.
+        tool_preview_len: Max chars shown for tool results.
+
+    Returns:
+        The full message list after the turn completes.
+    """
+    colors = DEFAULT_STYLE if style is None else style
+    cyan = colors.get("cyan", "")
+    gray = colors.get("gray", "")
+    bold = colors.get("bold", "")
+    reset = colors.get("reset", "")
+
+    sink = write or (lambda text: (sys.stdout.write(text), sys.stdout.flush()))
+
+    final_messages = history
+    current_source = ""
+    mid_line = False
+    in_tool_call = False
+
+    def writeln(text: str = "") -> None:
+        nonlocal mid_line
+        sink(text + "\n")
+        mid_line = False
+
+    def write_inline(text: str) -> None:
+        nonlocal mid_line
+        sink(text)
+        mid_line = bool(text) and not text.endswith("\n")
+
+    for chunk in agent.stream(
+        {"messages": history},
+        stream_mode=["messages", "values"],
+        subgraphs=True,
+        version="v2",
+    ):
+        chunk_type = chunk["type"]
+        ns = chunk.get("ns", ())
+
+        if chunk_type == "values":
+            final_messages = chunk["data"]["messages"]
+            continue
+
+        if chunk_type != "messages":
+            continue
+
+        token, _metadata = chunk["data"]
+        is_subagent, source = _source_label(ns)
+        tool_call_chunks = getattr(token, "tool_call_chunks", None) or []
+
+        # Tool results (check before tool_call_chunks — ToolMessage has no such attr)
+        if _is_tool_token(token):
+            if in_tool_call:
+                write_inline(")")
+                in_tool_call = False
+            if mid_line:
+                writeln()
+            content = _token_text(token) or str(token.content)
+            if len(content) > tool_preview_len:
+                content = content[:tool_preview_len] + " …[truncated]"
+            tool_name = getattr(token, "name", "tool")
+            writeln(f"  {gray}← [{source}] {tool_name}: {content}{reset}")
+            continue
+
+        # Streaming tool invocations (name + args arrive in chunks)
+        if tool_call_chunks:
+            for tc in tool_call_chunks:
+                if tc.get("name"):
+                    if mid_line:
+                        writeln()
+                    if in_tool_call:
+                        write_inline(")")
+                    in_tool_call = True
+                    write_inline(f"  {cyan}→ [{source}] calling {tc['name']}(")
+                if tc.get("args"):
+                    write_inline(tc["args"])
+            continue
+
+        # AI tokens (skip tool-call-only chunks and metadata-only chunks)
+        if _is_ai_token(token) and not tool_call_chunks:
+            text = _token_text(token)
+            if not text:
+                continue
+            if in_tool_call:
+                write_inline(")")
+                in_tool_call = False
+            if source != current_source:
+                if mid_line:
+                    writeln()
+                if is_subagent:
+                    writeln(f"\n{gray}--- [{source}] ---{reset}")
+                else:
+                    write_inline(f"\n{bold}Agent:{reset} ")
+                current_source = source
+            write_inline(text)
+
+    if in_tool_call:
+        write_inline(")")
+    if mid_line:
+        writeln()
+    writeln()
+
+    return final_messages

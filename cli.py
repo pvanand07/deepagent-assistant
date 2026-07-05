@@ -15,28 +15,7 @@ import argparse
 import sys
 
 from agent import _default_workdir, build_agent
-
-CYAN = "\033[36m"
-GRAY = "\033[90m"
-BOLD = "\033[1m"
-RESET = "\033[0m"
-
-
-def _print_new_messages(messages: list, already_printed: int) -> int:
-    """Print messages beyond `already_printed`, return the new count."""
-    for msg in messages[already_printed:]:
-        msg_type = type(msg).__name__
-        tool_calls = getattr(msg, "tool_calls", None)
-        if tool_calls:
-            for tc in tool_calls:
-                print(f"  {CYAN}→ calling {tc['name']}({tc['args']}){RESET}")
-        elif msg_type == "ToolMessage":
-            content = str(getattr(msg, "content", ""))
-            preview = content if len(content) < 500 else content[:500] + " …[truncated]"
-            print(f"  {GRAY}← {preview}{RESET}")
-        elif msg_type == "AIMessage" and getattr(msg, "content", None):
-            print(f"\n{BOLD}Agent:{RESET} {msg.content}\n")
-    return len(messages)
+from streaming import DEFAULT_STYLE, stream_agent_turn
 
 
 def main() -> None:
@@ -78,13 +57,7 @@ def main() -> None:
                 continue
 
             history.append({"role": "user", "content": user_input})
-
-            printed = len(history) - 1  # don't re-print the human message we just added
-            final_messages = history
-            for state in agent.stream({"messages": history}, stream_mode="values"):
-                final_messages = state["messages"]
-                printed = _print_new_messages(final_messages, printed)
-            history = final_messages
+            history = stream_agent_turn(agent, history, style=DEFAULT_STYLE)
 
     finally:
         sandbox.cleanup()

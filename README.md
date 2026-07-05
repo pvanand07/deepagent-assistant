@@ -30,7 +30,8 @@ runs in a fresh `bwrap` sandbox with:
 | `bubblewrap_sandbox.py` | `BubblewrapSandbox` — the sandboxed backend (`BaseSandbox` impl) |
 | `openrouter_model.py`   | Builds a `ChatOpenAI` client pointed at OpenRouter               |
 | `agent.py`              | Wires model + sandbox into a `deepagents` agent (+ example sub-agent) |
-| `cli.py`                | Interactive terminal chat loop                                  |
+| `cli.py`                | Interactive terminal chat loop (token-level streaming)          |
+| `streaming.py`          | Reusable `stream_agent_turn()` helper for v2 message streaming  |
 | `Dockerfile`            | Linux runtime image with bubblewrap and CLI tools               |
 | `docker-compose.yml`    | Runs the agent with namespace-friendly security opts            |
 | `workspace/`            | Host directory mounted as the agent's writable `/workspace`   |
@@ -155,11 +156,19 @@ Inside the REPL:
 
 ```python
 from agent import build_agent
+from streaming import stream_agent_turn
 
 agent, sandbox = build_agent(model_name="anthropic/claude-sonnet-4.5", network=False)
-result = agent.invoke({"messages": [{"role": "user", "content": "Write and run a fibonacci script"}]})
-print(result["messages"][-1].content)
+history = [{"role": "user", "content": "Write and run a fibonacci script"}]
+history = stream_agent_turn(agent, history)  # token-level streaming to stdout
 sandbox.cleanup()
+```
+
+For a one-shot result without streaming:
+
+```python
+result = agent.invoke({"messages": history})
+print(result["messages"][-1].content)
 ```
 
 ## Customizing
