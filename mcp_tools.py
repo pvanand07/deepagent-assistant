@@ -161,4 +161,12 @@ def load_mcp_tools(
     connections: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[list[BaseTool], list[str]]:
     """Synchronous wrapper around :func:`aload_mcp_tools`."""
-    return asyncio.run(aload_mcp_tools(connections))
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(aload_mcp_tools(connections))
+
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, aload_mcp_tools(connections)).result()

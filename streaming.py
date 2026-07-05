@@ -7,8 +7,9 @@ history. See https://docs.langchain.com/oss/python/deepagents/streaming
 
 from __future__ import annotations
 
+import asyncio
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any
 
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage, ToolMessageChunk
@@ -108,6 +109,29 @@ def _usage_estimate_event(
     }
 
 
+def _iter_agent_stream(agent: Any, history: list, **stream_kwargs: Any) -> Iterator[Any]:
+    """Iterate LangGraph v2 stream chunks using ``astream`` (required for async MCP tools)."""
+
+    async def _chunks() -> AsyncIterator[Any]:
+        async for chunk in agent.astream({"messages": history}, **stream_kwargs):
+            yield chunk
+
+    agen = _chunks()
+    loop = asyncio.new_event_loop()
+    try:
+        while True:
+            try:
+                yield loop.run_until_complete(agen.__anext__())
+            except StopAsyncIteration:
+                break
+    finally:
+        try:
+            loop.run_until_complete(agen.aclose())
+        except (RuntimeError, StopAsyncIteration):
+            pass
+        loop.close()
+
+
 def iter_agent_turn_events(
     agent: Any,
     history: list,
@@ -163,7 +187,7 @@ def iter_agent_turn_events(
     if pwd:
         stream_kwargs["context"] = {"pwd": pwd}
 
-    for chunk in agent.stream({"messages": history}, **stream_kwargs):
+    for chunk in _iter_agent_stream(agent, history, **stream_kwargs):
         chunk_type = chunk["type"]
         ns = chunk.get("ns", ())
 
@@ -297,8 +321,9 @@ def stream_agent_turn(
         sink(text)
         mid_line = bool(text) and not text.endswith("\n")
 
-    for chunk in agent.stream(
-        {"messages": history},
+    for chunk in _iter_agent_stream(
+        agent,
+        history,
         stream_mode=["messages", "values"],
         subgraphs=True,
         version="v2",
