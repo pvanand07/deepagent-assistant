@@ -973,6 +973,7 @@ createApp({
         { label: "Workdir", value: s.workdir },
         { label: "Model", value: s.model },
         { label: "Network", value: s.network ? "on" : "off" },
+        { label: "Subagents", value: (s.subagent_names || []).join(", ") || "none" },
         { label: "Messages", value: String(s.message_count ?? timeline.value.length) },
       ];
     });

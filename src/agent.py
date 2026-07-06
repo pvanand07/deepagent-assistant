@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import atexit
 import os
+import tomllib
+from pathlib import Path
 from typing import Any
 
 from deepagents import SubAgent, create_deep_agent
@@ -104,23 +106,38 @@ UI preview buttons:
   - Do not wrap the tag in code fences — it must appear as raw markup in prose.
 """
 
-# Example of a predefined, on-demand sub-agent (see the task-delegation
-# pattern from deep-agents-from-scratch) -- remove or extend this list as
-# needed. Sub-agents share the same sandboxed backend/tools as the parent.
-SUBAGENTS: list[SubAgent] = [
-    {
-        "name": "code-reviewer",
-        "description": (
-            "Reviews code in the sandbox for correctness, style, and bugs. "
-            "Use for a second-opinion pass after writing or editing code."
-        ),
-        "system_prompt": (
-            "You are a meticulous code reviewer. Read the relevant files with "
-            "read_file, run any tests with execute, and report concrete, "
-            "actionable issues. Do not rewrite the code yourself unless asked."
-        ),
-    },
-]
+_AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
+
+
+def load_subagents_from_toml(agents_dir: Path | None = None) -> list[SubAgent]:
+    """Load codex-style agent TOML definitions as deepagents SubAgent specs."""
+    root = agents_dir or _AGENTS_DIR
+    subagents: list[SubAgent] = []
+
+    for path in sorted(root.glob("*.toml")):
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        system_prompt = data.get("system_prompt") or data.get("developer_instructions")
+        if not system_prompt:
+            msg = f"{path}: missing system_prompt"
+            raise ValueError(msg)
+
+        subagent: SubAgent = {
+            "name": data["name"],
+            "description": data["description"],
+            "system_prompt": system_prompt.strip(),
+        }
+
+        model_name = data.get("model")
+        reasoning_effort = data.get("model_reasoning_effort")
+        if model_name or reasoning_effort:
+            subagent["model"] = get_openrouter_model(
+                model=model_name,
+                reasoning_effort=reasoning_effort,
+            )
+
+        subagents.append(subagent)
+
+    return subagents
 
 
 def build_agent(
@@ -160,11 +177,13 @@ def build_agent(
     else:
         resolved_servers = list(mcp_servers or [])
 
+    subagents = load_subagents_from_toml() if with_subagents else []
+
     agent = create_deep_agent(
         model=model,
         backend=sandbox,
         system_prompt=MAIN_SYSTEM_PROMPT,
-        subagents=SUBAGENTS if with_subagents else None,
+        subagents=subagents or None,
         tools=mcp_tools or None,
         middleware=[PwdContextMiddleware()],
         context_schema=AgentContext,
@@ -173,6 +192,7 @@ def build_agent(
     mcp_meta = {
         "servers": resolved_servers,
         "tool_names": [getattr(t, "name", str(t)) for t in (mcp_tools or [])],
+        "subagent_names": [s["name"] for s in subagents],
     }
     return agent, sandbox, mcp_meta
 

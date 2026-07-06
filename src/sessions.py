@@ -30,6 +30,7 @@ class AgentSession:
     model: str
     mcp_servers: list[str] = field(default_factory=list)
     mcp_tool_names: list[str] = field(default_factory=list)
+    subagent_names: list[str] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -74,6 +75,7 @@ class SessionStore:
             model=meta.model,
             mcp_servers=mcp_meta["servers"],
             mcp_tool_names=mcp_meta["tool_names"],
+            subagent_names=mcp_meta.get("subagent_names", []),
             created_at=meta.created_at,
             updated_at=meta.updated_at,
         )

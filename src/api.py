@@ -103,6 +103,7 @@ def _session_response(session) -> SessionResponse:
         message_count=len(messages),
         mcp_servers=session.mcp_servers,
         mcp_tool_names=session.mcp_tool_names,
+        subagent_names=session.subagent_names,
     )
 
 

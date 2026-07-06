@@ -27,6 +27,7 @@ class SessionResponse(BaseModel):
     message_count: int
     mcp_servers: list[str] = Field(default_factory=list)
     mcp_tool_names: list[str] = Field(default_factory=list)
+    subagent_names: list[str] = Field(default_factory=list)
 
 
 class SessionSummary(BaseModel):

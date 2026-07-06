@@ -28,6 +28,7 @@ def get_openrouter_model(
     model: str | None = None,
     *,
     temperature: float | None = None,
+    reasoning_effort: str | None = None,
 ) -> ChatOpenAI:
     """Build a `ChatOpenAI` client routed through OpenRouter.
 
@@ -60,10 +61,13 @@ def get_openrouter_model(
         else float(os.environ.get("OPENROUTER_TEMPERATURE", "0.3"))
     )
 
-    return ChatOpenAI(
-        model=resolved_model,
-        api_key=api_key,
-        base_url=OPENROUTER_BASE_URL,
-        temperature=resolved_temperature,
-        default_headers=default_headers or None,
-    )
+    kwargs: dict = {
+        "model": resolved_model,
+        "api_key": api_key,
+        "base_url": OPENROUTER_BASE_URL,
+        "temperature": resolved_temperature,
+        "default_headers": default_headers or None,
+    }
+    if reasoning_effort is not None:
+        kwargs["reasoning_effort"] = reasoning_effort
+    return ChatOpenAI(**kwargs)

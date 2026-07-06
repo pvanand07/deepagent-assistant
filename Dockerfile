@@ -21,10 +21,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
+COPY agents/ ./agents/
 COPY frontend ./frontend
 COPY AGENT.md /app/seed/AGENT.md
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+  && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV PYTHONPATH=/app/src
 ENV DEEPAGENT_WORKDIR=/workspace
