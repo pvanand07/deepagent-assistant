@@ -20,6 +20,8 @@ services:
       IRESEARCHER_MCP_BEARER_TOKEN: ${IRESEARCHER_MCP_BEARER_TOKEN:-}
     volumes:
       - ./workspace:/workspace
+      - ./src:/app/src
+      - ./agents:/app/agents
     security_opt:
       - apparmor:unconfined
       - seccomp:unconfined
@@ -50,6 +52,8 @@ services:
       - ./workspace:/workspace
       - ./data:/app/data
       - ./frontend:/app/frontend
+      - ./src:/app/src
+      - ./agents:/app/agents
     security_opt:
       - apparmor:unconfined
       - seccomp:unconfined
