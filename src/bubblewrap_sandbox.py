@@ -278,9 +278,14 @@ class BubblewrapSandbox(BaseSandbox):
             if os.path.exists(host_path):
                 argv += ["--ro-bind", host_path, host_path]
 
-        # Standard pseudo-filesystems.
+        # Pseudo-filesystems. Use a read-only bind of the host /proc instead of
+        # `--proc`, which mounts a fresh procfs and fails inside Docker even
+        # with apparmor/seccomp unconfined ("Can't mount proc on /newroot/proc:
+        # Operation not permitted"). A ro-bind is enough for python3/shell
+        # tooling; PID isolation still comes from --unshare-all.
+        if os.path.exists("/proc"):
+            argv += ["--ro-bind", "/proc", "/proc"]
         argv += [
-            "--proc", "/proc",
             "--dev", "/dev",
             "--tmpfs", "/tmp",
         ]

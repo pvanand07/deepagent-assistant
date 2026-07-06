@@ -190,6 +190,23 @@ codex-v2/
    docker compose up --build codex-service
    ```
 
+### `bwrap: Can't mount proc on /newroot/proc: Operation not permitted`
+
+This happens when bubblewrap runs **inside** a Docker container and tries to
+mount a fresh procfs with `--proc /proc`. Linux denies that nested mount even
+with `security_opt` relaxed.
+
+**Fix (deepagent-assistant):** `BubblewrapSandbox` uses `--ro-bind /proc /proc`
+instead of `--proc`. Rebuild and restart after updating:
+
+```sh
+docker compose up --build api
+```
+
+Symptoms when unfixed: every `execute`, `ls`, `grep`, `glob`, and `write_file`
+call fails with the proc mount error (writes that only use `upload_files` may
+still partially work, but `write_file` runs a preflight check via `execute`).
+
 ### Network fails inside sandbox (pip, curl, git clone)
 
 - Verify `CODEX_GUI_NETWORK_ACCESS=true` in docker-compose environment
