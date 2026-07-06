@@ -1547,6 +1547,14 @@ createApp({
 
     /* ---------- streaming chat ---------- */
     function stopStream() {
+      if (!streaming.value) return;
+      const sid = sessionId.value;
+      if (sid) {
+        // Fire-and-forget: asks the server to cancel the in-flight agent turn
+        // and roll its checkpoint back to the last completed message, in
+        // parallel with tearing down the client-side SSE reader below.
+        fetch(`${API}/api/sessions/${sid}/chat/stop`, { method: "POST" }).catch(() => {});
+      }
       if (abortController) abortController.abort();
     }
 
@@ -1576,6 +1584,12 @@ createApp({
       lastTurnUsage.value = null;
       usageEstimate.value = null;
 
+      // Snapshot everything this turn will touch so a cancellation can roll
+      // the UI back to exactly how it looked right after the last completed
+      // agent message (mirrors the server-side checkpoint rollback).
+      const turnStartIndex = timeline.value.length;
+      const prevTitle = chatTitleOverride.value;
+
       pushItem({ kind: "user", text: message });
       chatTitleOverride.value = truncate(message);
       sidebarSubtitle.value = "Running…";
@@ -1585,26 +1599,42 @@ createApp({
       let toolItem = null;
       let toolName = "";
       let toolArgs = "";
+      let reader = null;
+      let rolledBack = false;
 
-      abortController = new AbortController();
-      const res = await fetch(`${API}/api/sessions/${sessionId.value}/chat/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, pwd: selectedPwd.value || null }),
-        signal: abortController.signal,
-      });
-      if (!res.ok || !res.body) throw new Error(`Stream failed (${res.status})`);
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      const feed = createSseParser();
-
-      const ensureAssistant = () => {
-        if (!assistantItem) assistantItem = pushItem({ kind: "assistant", text: "" });
-        return assistantItem;
+      // Undo everything this turn added to the timeline and hand the
+      // original text back to the composer, mirroring the server-side
+      // checkpoint rollback triggered by /chat/stop.
+      const rollBackTurn = () => {
+        if (rolledBack) return;
+        rolledBack = true;
+        timeline.value.length = turnStartIndex;
+        draft.value = message;
+        chatTitleOverride.value = prevTitle;
+        sidebarSubtitle.value = "Stopped — message restored";
+        nextTick(() => autoGrow());
       };
 
+      abortController = new AbortController();
+
       try {
+        const res = await fetch(`${API}/api/sessions/${sessionId.value}/chat/stream`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message, pwd: selectedPwd.value || null }),
+          signal: abortController.signal,
+        });
+        if (!res.ok || !res.body) throw new Error(`Stream failed (${res.status})`);
+
+        reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        const feed = createSseParser();
+
+        const ensureAssistant = () => {
+          if (!assistantItem) assistantItem = pushItem({ kind: "assistant", text: "" });
+          return assistantItem;
+        };
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -1685,18 +1715,24 @@ createApp({
                 loadFiles({ silent: true, force: true }).catch(() => {});
                 loadSessionList().catch(() => {});
                 break;
+
+              case "cancelled":
+                thinking.value = false;
+                stopToolTimer();
+                usageEstimate.value = null;
+                rollBackTurn();
+                break;
             }
           }
         }
       } catch (e) {
         if (e.name === "AbortError") {
-          pushItem({ kind: "activity", icon: "stop", label: "Generation stopped" });
-          sidebarSubtitle.value = "Stopped";
+          rollBackTurn();
         } else {
           throw e;
         }
       } finally {
-        try { reader.releaseLock(); } catch {}
+        if (reader) { try { reader.releaseLock(); } catch {} }
       }
     }
 

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import os
 import threading
 import time
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, TypeVar
@@ -73,20 +74,43 @@ class AsyncLoopRunner:
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         return future.result()
 
-    def iter_async_generator(self, agen: AsyncIterator[Any]) -> Any:
+    def iter_async_generator(
+        self,
+        agen: AsyncIterator[Any],
+        *,
+        on_future: Callable[[concurrent.futures.Future | None], None] | None = None,
+    ) -> Any:
+        """Drive an async generator from a sync context, chunk by chunk.
+
+        If ``on_future`` is given, it is called with the in-flight
+        ``concurrent.futures.Future`` for each pending ``__anext__()`` call
+        (and with ``None`` once the generator is fully closed). Callers can
+        stash that future elsewhere and call ``future.cancel()`` from another
+        thread to cooperatively cancel the underlying coroutine mid-flight --
+        cancelling the future propagates an ``asyncio.CancelledError`` into
+        whatever the coroutine is currently awaiting, even if it has already
+        started running.
+        """
+
         async def _anext() -> Any:
             return await agen.__anext__()
 
         try:
             while True:
+                future = asyncio.run_coroutine_threadsafe(_anext(), self._loop)
+                if on_future is not None:
+                    on_future(future)
                 try:
-                    yield self.run(_anext())
+                    result = future.result()
                 except StopAsyncIteration:
                     break
+                yield result
         finally:
+            if on_future is not None:
+                on_future(None)
             try:
                 self.run(agen.aclose())
-            except (RuntimeError, StopAsyncIteration, GeneratorExit):
+            except (RuntimeError, StopAsyncIteration, GeneratorExit, concurrent.futures.CancelledError):
                 pass
 
     def close(self) -> None:

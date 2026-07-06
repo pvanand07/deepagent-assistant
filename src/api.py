@@ -284,6 +284,7 @@ def chat_stream(session_id: str, body: ChatRequest) -> StreamingResponse:
                 user_turn,
                 thread_id=session.id,
                 pwd=pwd,
+                on_future=session.set_stream_future,
             ):
                 if event["type"] == "done":
                     session.touch()
@@ -294,6 +295,10 @@ def chat_stream(session_id: str, body: ChatRequest) -> StreamingResponse:
                         "reply": _last_assistant_text(event["messages"]),
                         "usage": event.get("usage"),
                     }
+                elif event["type"] == "cancelled":
+                    session.touch()
+                    store.sync_chat_summary(session_id)
+                    payload = {"type": "cancelled"}
                 else:
                     payload = event
                 yield f"event: {payload['type']}\ndata: {json.dumps(payload)}\n\n"
@@ -307,6 +312,18 @@ def chat_stream(session_id: str, body: ChatRequest) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post("/api/sessions/{session_id}/chat/stop")
+def stop_chat_stream(session_id: str) -> dict[str, bool]:
+    """Cancel the in-flight streaming turn, if any, and roll back its state.
+
+    The stream generator (see ``chat_stream``) detects the cancellation,
+    reverts the checkpoint to its state as of the last completed agent
+    message, and emits a ``cancelled`` SSE event before closing.
+    """
+    session = _require_session(session_id)
+    return {"stopped": session.request_stop()}
 
 
 @app.get("/api/sessions/{session_id}/files", response_model=FileListResponse)

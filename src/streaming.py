@@ -7,11 +7,18 @@ history. See https://docs.langchain.com/oss/python/deepagents/streaming
 
 from __future__ import annotations
 
+import concurrent.futures
 import sys
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any
 
-from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage, ToolMessageChunk
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    RemoveMessage,
+    ToolMessage,
+    ToolMessageChunk,
+)
 
 from session_persistence import get_async_runner
 
@@ -115,6 +122,7 @@ def _iter_agent_stream(
     input_messages: list,
     *,
     config: dict[str, Any] | None = None,
+    on_future: Callable[[concurrent.futures.Future | None], None] | None = None,
     **stream_kwargs: Any,
 ) -> Iterator[Any]:
     """Iterate LangGraph v2 stream chunks using ``astream`` (required for async MCP tools)."""
@@ -128,7 +136,28 @@ def _iter_agent_stream(
             yield chunk
 
     agen = _chunks()
-    yield from get_async_runner().iter_async_generator(agen)
+    yield from get_async_runner().iter_async_generator(agen, on_future=on_future)
+
+
+async def _rollback_uncommitted_turn(
+    agent: Any,
+    config: dict[str, Any],
+    baseline_ids: set[str],
+) -> None:
+    """Strip messages written to the checkpoint after a cancelled turn started.
+
+    Restores the thread to its state as of the last completed agent message:
+    any human/AI/tool messages this turn wrote (including the triggering user
+    message) are tombstoned via ``RemoveMessage`` so the next turn starts from
+    a clean, un-truncated history. See
+    https://docs.langchain.com/oss/python/langgraph/checkpointers (time travel
+    / ``update_state``) for the underlying mechanism.
+    """
+    state = await agent.aget_state(config)
+    current = list((state.values or {}).get("messages") or [])
+    stray = [m for m in current if getattr(m, "id", None) and m.id not in baseline_ids]
+    if stray:
+        await agent.aupdate_state(config, {"messages": [RemoveMessage(id=m.id) for m in stray]})
 
 
 def iter_agent_turn_events(
@@ -138,11 +167,20 @@ def iter_agent_turn_events(
     thread_id: str | None = None,
     pwd: str | None = None,
     tool_preview_len: int = 500,
+    on_future: Callable[[concurrent.futures.Future | None], None] | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Yield structured stream events for API/SSE consumers.
 
     When ``thread_id`` is set, ``input_messages`` should contain only the new
     user turn; prior history is loaded from the LangGraph checkpointer.
+
+    ``on_future`` (optional) receives the in-flight ``concurrent.futures.Future``
+    driving the current stream step; a caller on another thread can call
+    ``future.cancel()`` on it to cooperatively stop the turn mid-flight. When
+    that happens, this generator rolls the checkpoint back to its state as of
+    the last completed agent message (undoing the triggering user message and
+    any partial output) and yields a single ``cancelled`` event instead of
+    ``done``.
 
     Event types:
         source_start  - agent/subagent began producing output
@@ -152,8 +190,54 @@ def iter_agent_turn_events(
         usage         - token usage update (per model call + turn cumulative)
         usage_estimate- live output-token estimate while model streams
         tool_running  - sandbox tool execution started (after model finishes)
+        cancelled     - turn was stopped mid-flight and rolled back
         done          - final message list (serialized via caller)
     """
+    stream_kwargs: dict[str, Any] = {
+        "stream_mode": ["messages", "values"],
+        "subgraphs": True,
+        "version": "v2",
+    }
+    if pwd:
+        stream_kwargs["context"] = {"pwd": pwd}
+    config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+
+    baseline_ids: set[str] = set()
+    if config is not None:
+        try:
+            baseline_state = get_async_runner().run(agent.aget_state(config))
+            baseline_ids = {
+                m.id
+                for m in (baseline_state.values or {}).get("messages", [])
+                if getattr(m, "id", None)
+            }
+        except Exception:
+            baseline_ids = set()
+
+    try:
+        yield from _iter_agent_turn_events_inner(
+            agent,
+            input_messages,
+            config=config,
+            on_future=on_future,
+            tool_preview_len=tool_preview_len,
+            stream_kwargs=stream_kwargs,
+        )
+    except concurrent.futures.CancelledError:
+        if config is not None:
+            get_async_runner().run(_rollback_uncommitted_turn(agent, config, baseline_ids))
+        yield {"type": "cancelled"}
+
+
+def _iter_agent_turn_events_inner(
+    agent: Any,
+    input_messages: list,
+    *,
+    config: dict[str, Any] | None,
+    on_future: Callable[[concurrent.futures.Future | None], None] | None,
+    tool_preview_len: int,
+    stream_kwargs: dict[str, Any],
+) -> Iterator[dict[str, Any]]:
     final_messages = list(input_messages)
     current_source = ""
     in_tool_call = False
@@ -182,19 +266,11 @@ def iter_agent_turn_events(
         current_tool_name = None
         step_stream_chars = 0
 
-    stream_kwargs: dict[str, Any] = {
-        "stream_mode": ["messages", "values"],
-        "subgraphs": True,
-        "version": "v2",
-    }
-    if pwd:
-        stream_kwargs["context"] = {"pwd": pwd}
-    config = {"configurable": {"thread_id": thread_id}} if thread_id else None
-
     for chunk in _iter_agent_stream(
         agent,
         input_messages,
         config=config,
+        on_future=on_future,
         **stream_kwargs,
     ):
         chunk_type = chunk["type"]

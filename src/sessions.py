@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import threading
 import time
@@ -34,10 +35,30 @@ class AgentSession:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    _stream_future: concurrent.futures.Future | None = field(
+        default=None, repr=False, compare=False
+    )
+    _stream_future_lock: threading.Lock = field(
+        default_factory=threading.Lock, repr=False, compare=False
+    )
 
     def touch(self) -> None:
         self.updated_at = time.time()
         metadata_store.touch(self.id)
+
+    def set_stream_future(self, future: concurrent.futures.Future | None) -> None:
+        """Track the in-flight future for the current agent-turn step (or clear it)."""
+        with self._stream_future_lock:
+            self._stream_future = future
+
+    def request_stop(self) -> bool:
+        """Cooperatively cancel the in-flight agent turn, if one is running.
+
+        Returns True if a cancellation was actually issued.
+        """
+        with self._stream_future_lock:
+            future = self._stream_future
+        return future is not None and not future.done() and future.cancel()
 
     def cleanup(self) -> None:
         self.sandbox.cleanup()
