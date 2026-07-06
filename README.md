@@ -51,12 +51,16 @@ Compose v2) is required.
 cp .env.example .env
 # edit .env and set OPENROUTER_API_KEY
 
-# 2. Build and start the interactive REPL
-docker compose up --build
+# 2. Build and start the web API (default)
+docker compose up -d --build
+
+# Open http://localhost:8011 for the GUI.
+
+# Optional: interactive terminal REPL
+docker compose run --rm cli
 ```
 
-Inside the container you get the same `src/cli.py` REPL as native Linux. Type your
-request, `/reset` to clear history, or `exit` to quit.
+Inside the CLI container, type your request, `/reset` to clear history, or `exit` to quit.
 
 ### Workspace
 
@@ -71,7 +75,7 @@ To allow pip, curl, git clone, etc., either:
 
 ```bash
 # one-off
-DEEPAGENT_NETWORK_ACCESS=true docker compose up --build
+DEEPAGENT_NETWORK_ACCESS=true docker compose up -d --build
 
 # or add to .env
 DEEPAGENT_NETWORK_ACCESS=true
@@ -94,12 +98,12 @@ Compose passes these from your `.env` file:
 Model and flags can also be passed at runtime:
 
 ```bash
-docker compose run --rm deepagent python src/cli.py --model "openai/gpt-5"
-docker compose run --rm deepagent python src/cli.py --network
+docker compose run --rm cli python src/cli.py --model "openai/gpt-5"
+docker compose run --rm cli python src/cli.py --network
 ```
 
-Use `docker compose up` for an attached interactive session; use
-`docker compose run --rm` for one-off commands.
+Use `docker compose up -d` for the API in the background; use
+`docker compose run --rm cli` for an interactive terminal session.
 
 ### How it works
 
