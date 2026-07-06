@@ -351,7 +351,12 @@ def _iter_agent_turn_events_inner(
                     "is_subagent": is_subagent,
                 }
                 current_source = source
-            yield {"type": "token", "source": source, "text": text}
+            yield {
+                "type": "token",
+                "source": source,
+                "text": text,
+                "is_subagent": is_subagent,
+            }
 
     yield from _finish_tool_call(current_source or "main")
 

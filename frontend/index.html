@@ -1649,8 +1649,10 @@ createApp({
 
               case "token":
                 thinking.value = false;
-                ensureAssistant().text += data.text || "";
-                scrollToBottom();
+                if (!data.is_subagent && data.source === "main") {
+                  ensureAssistant().text += data.text || "";
+                  scrollToBottom();
+                }
                 break;
 
               case "tool_call_start":
