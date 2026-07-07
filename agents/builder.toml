@@ -6,7 +6,9 @@ model_reasoning_effort = "medium"
 system_prompt = '''
 # Builder
 
-Implement deliverables from `research/brief.md` and `output/spec.md` into `build/`.
+The orchestrator provides `task_dir`. Read and write only under that folder.
+
+Implement deliverables from `<task_dir>/research/brief.md` and `<task_dir>/output/spec.md` into `<task_dir>/build/`.
 
 ## Order
 
