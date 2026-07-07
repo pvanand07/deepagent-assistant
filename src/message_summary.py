@@ -15,6 +15,36 @@ def serialize_messages(messages: list) -> list[dict[str, Any]]:
     return messages_to_dict(messages)
 
 
+def message_id(msg: dict[str, Any]) -> str | None:
+    data = msg.get("data", msg)
+    mid = data.get("id")
+    return str(mid) if mid else None
+
+
+def messages_after_baseline(
+    messages: list, baseline_ids: set[str]
+) -> list[dict[str, Any]]:
+    """Messages written during one agent turn (excludes pre-turn checkpoint state)."""
+    out: list[dict[str, Any]] = []
+    for msg in serialize_messages(messages):
+        mid = message_id(msg)
+        if mid and mid in baseline_ids:
+            continue
+        out.append(msg)
+    return out
+
+
+def user_message_payload(content: str, message_id: str) -> dict[str, Any]:
+    return {
+        "type": "human",
+        "data": {
+            "content": content,
+            "type": "human",
+            "id": message_id,
+        },
+    }
+
+
 def _truncate_text(text: str, limit: int) -> str:
     text = " ".join(text.split())
     if not text:

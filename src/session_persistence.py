@@ -1,9 +1,12 @@
-"""Async persistence: LangGraph checkpoints + app DB (sessions, runs, run events).
+"""Async persistence: LangGraph checkpoints + app DB + UI message store.
 
 Everything runs on the FastAPI event loop -- the old ``AsyncLoopRunner``
-sync/async bridge is gone. Two SQLite files under the data dir:
+sync/async bridge is gone. Three SQLite files under the data dir:
 
-- ``checkpoints.sqlite`` -- LangGraph ``AsyncSqliteSaver`` (conversation state).
+- ``checkpoints.sqlite`` -- LangGraph ``AsyncSqliteSaver`` (LLM working context;
+                            may be compacted by summarization middleware).
+- ``messages.sqlite``    -- append-only UI chat history (never read from
+                            checkpoints for display).
 - ``app.sqlite``         -- session metadata, runs, and the append-only
                             per-run event log that powers stream resume.
 """
@@ -41,6 +44,13 @@ def app_db_path() -> Path:
     if override:
         return Path(override)
     return default_data_dir() / "app.sqlite"
+
+
+def messages_db_path() -> Path:
+    override = os.environ.get("DEEPAGENT_MESSAGES_DB")
+    if override:
+        return Path(override)
+    return default_data_dir() / "messages.sqlite"
 
 
 def thread_config(thread_id: str) -> dict[str, Any]:
@@ -127,15 +137,6 @@ class CheckpointManager:
     async def delete_thread(self, thread_id: str) -> None:
         assert self.checkpointer is not None
         await self.checkpointer.adelete_thread(thread_id)
-
-    async def read_messages(self, thread_id: str) -> list[Any]:
-        """Read the latest checkpointed messages for a thread (no agent required)."""
-        assert self.checkpointer is not None
-        tup = await self.checkpointer.aget_tuple(thread_config(thread_id))
-        if tup is None:
-            return []
-        channel_values = tup.checkpoint.get("channel_values") or {}
-        return list(channel_values.get("messages") or [])
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -304,6 +305,23 @@ class AppDB:
             row = await cur.fetchone()
         return RunRecord.from_row(row) if row else None
 
+    async def list_done_runs(self, session_id: str) -> list[tuple[str, set[str]]]:
+        async with self._conn.execute(
+            "SELECT id, baseline_ids FROM runs "
+            "WHERE session_id = ? AND status = 'done' ORDER BY created_at",
+            (session_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        out: list[tuple[str, set[str]]] = []
+        for row in rows:
+            baseline = (
+                set(json.loads(row["baseline_ids"]))
+                if row["baseline_ids"]
+                else set()
+            )
+            out.append((row["id"], baseline))
+        return out
+
     async def mark_interrupted_runs(self) -> None:
         """On startup: any run still queued/running belonged to a dead process."""
         await self._conn.execute(
@@ -344,3 +362,143 @@ class AppDB:
         ) as cur:
             rows = await cur.fetchall()
         return [json.loads(r["payload"]) for r in rows]
+
+
+_MESSAGES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS session_messages (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    run_id     TEXT,
+    role       TEXT NOT NULL,
+    payload    TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    seq        INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_session_messages_session
+    ON session_messages(session_id, seq);
+"""
+
+
+class MessageDB:
+    """Append-only UI chat history. Never query LangGraph checkpoints for display."""
+
+    _instance: MessageDB | None = None
+    _init_lock = asyncio.Lock()
+
+    def __init__(self) -> None:
+        self._conn: aiosqlite.Connection | None = None
+
+    async def _open(self) -> None:
+        path = messages_db_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn = await aiosqlite.connect(str(path))
+        self._conn.row_factory = aiosqlite.Row
+        await self._conn.execute("PRAGMA journal_mode=WAL")
+        await self._conn.execute("PRAGMA busy_timeout=5000")
+        await self._conn.executescript(_MESSAGES_SCHEMA)
+        await self._conn.commit()
+
+    @classmethod
+    async def get(cls) -> MessageDB:
+        async with cls._init_lock:
+            if cls._instance is None:
+                instance = cls()
+                await instance._open()
+                cls._instance = instance
+            return cls._instance
+
+    async def close(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
+            self._conn = None
+        type(self)._instance = None
+
+    @staticmethod
+    def _role_from_payload(payload: dict[str, Any]) -> str:
+        data = payload.get("data", payload)
+        return str(payload.get("type") or payload.get("role") or data.get("type") or "unknown")
+
+    @staticmethod
+    def _id_from_payload(payload: dict[str, Any]) -> str | None:
+        data = payload.get("data", payload)
+        mid = data.get("id")
+        return str(mid) if mid else None
+
+    async def _next_seq(self, session_id: str) -> int:
+        async with self._conn.execute(
+            "SELECT COALESCE(MAX(seq), 0) + 1 FROM session_messages WHERE session_id = ?",
+            (session_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        return int(row[0])
+
+    async def append(
+        self,
+        session_id: str,
+        payload: dict[str, Any],
+        *,
+        run_id: str | None = None,
+        message_id: str | None = None,
+    ) -> bool:
+        """Insert one UI message. Returns False if ``message_id`` already exists."""
+        mid = message_id or self._id_from_payload(payload)
+        if not mid:
+            return False
+        async with self._conn.execute(
+            "SELECT 1 FROM session_messages WHERE id = ?", (mid,)
+        ) as cur:
+            if await cur.fetchone():
+                return False
+        seq = await self._next_seq(session_id)
+        now = time.time()
+        await self._conn.execute(
+            """INSERT INTO session_messages
+               (id, session_id, run_id, role, payload, created_at, seq)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                mid,
+                session_id,
+                run_id,
+                self._role_from_payload(payload),
+                json.dumps(payload),
+                now,
+                seq,
+            ),
+        )
+        await self._conn.commit()
+        return True
+
+    async def append_many(
+        self,
+        session_id: str,
+        payloads: list[dict[str, Any]],
+        *,
+        run_id: str | None = None,
+    ) -> int:
+        inserted = 0
+        for payload in payloads:
+            if await self.append(session_id, payload, run_id=run_id):
+                inserted += 1
+        return inserted
+
+    async def list_messages(self, session_id: str) -> list[dict[str, Any]]:
+        async with self._conn.execute(
+            "SELECT payload FROM session_messages WHERE session_id = ? ORDER BY seq",
+            (session_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [json.loads(r["payload"]) for r in rows]
+
+    async def count_messages(self, session_id: str) -> int:
+        async with self._conn.execute(
+            "SELECT COUNT(*) FROM session_messages WHERE session_id = ?",
+            (session_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        return int(row[0])
+
+    async def delete_session(self, session_id: str) -> None:
+        await self._conn.execute(
+            "DELETE FROM session_messages WHERE session_id = ?", (session_id,)
+        )
+        await self._conn.commit()

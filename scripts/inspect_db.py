@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "data" / "app.sqlite"
+MSG = ROOT / "data" / "messages.sqlite"
 CKPT = ROOT / "data" / "checkpoints.sqlite"
 
 
@@ -38,6 +39,20 @@ def main() -> None:
         conn.close()
     else:
         print("no app.sqlite")
+
+    if MSG.exists():
+        conn = sqlite3.connect(MSG)
+        conn.row_factory = sqlite3.Row
+        print("\n=== session_messages ===")
+        for r in conn.execute(
+            "SELECT session_id, id, role, seq, created_at FROM session_messages ORDER BY seq DESC LIMIT 10"
+        ):
+            d = dict(r)
+            d["session_id"] = d["session_id"][:8]
+            print(d)
+        conn.close()
+    else:
+        print("no messages.sqlite")
 
     if CKPT.exists():
         conn = sqlite3.connect(CKPT)

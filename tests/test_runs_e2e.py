@@ -246,10 +246,13 @@ async def test_messages_and_summary_after_completed_run(
 
     messages = await client.get(f"/api/sessions/{session_id}/messages")
     assert messages.status_code == 200
-    # Stub turn does not write to the real checkpointer; summary still updates.
+    assert len(messages.json()["messages"]) == 2
+
     listed = await client.get("/api/sessions")
     summary = next(item for item in listed.json()["sessions"] if item["id"] == session_id)
-    assert summary["message_count"] >= 0
+    assert summary["message_count"] == 2
+    assert summary["title"] == "summarize"
+    assert "Hello from tests" in summary["preview"]
 
 
 @pytest.mark.asyncio

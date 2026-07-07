@@ -11,12 +11,13 @@ from typing import Any
 from agent import _default_network, _default_workdir, build_agent
 from bubblewrap_sandbox import BubblewrapSandbox
 from mcp_tools import load_mcp_tools
-from message_summary import summary_from_messages
+from message_summary import messages_after_baseline, summary_from_messages
 from openrouter_model import DEFAULT_MODEL
 from runs import RunManager
 from session_persistence import (
     AppDB,
     CheckpointManager,
+    MessageDB,
     RunRecord,
     SessionMeta,
     thread_config,
@@ -57,6 +58,7 @@ class SessionStore:
         self._sessions: dict[str, AgentSession] = {}
         self._hydration_locks: dict[str, asyncio.Lock] = {}
         self._db: AppDB | None = None
+        self._messages: MessageDB | None = None
         self._checkpoints: CheckpointManager | None = None
         self.runs: RunManager | None = None
         self._mcp_cache: tuple[list, list[str]] | None = None
@@ -66,9 +68,10 @@ class SessionStore:
 
     async def startup(self) -> None:
         self._db = await AppDB.get()
+        self._messages = await MessageDB.get()
         self._checkpoints = await CheckpointManager.get()
         await self._db.mark_interrupted_runs()
-        self.runs = RunManager(self._db)
+        self.runs = RunManager(self._db, self._messages)
 
     async def close(self) -> None:
         if self.runs is not None:
@@ -78,6 +81,8 @@ class SessionStore:
         self._sessions.clear()
         if self._checkpoints is not None:
             await self._checkpoints.close()
+        if self._messages is not None:
+            await self._messages.close()
         if self._db is not None:
             await self._db.close()
 
@@ -184,8 +189,26 @@ class SessionStore:
         return await self._db.list_sessions()
 
     async def read_messages(self, session_id: str) -> list[Any]:
-        """Read checkpointed history without hydrating an agent."""
-        return await self._checkpoints.read_messages(session_id)
+        """Read UI history from the append-only message store."""
+        messages = await self._messages.list_messages(session_id)
+        if messages:
+            return messages
+        return await self._backfill_messages_from_runs(session_id)
+
+    async def _backfill_messages_from_runs(self, session_id: str) -> list[Any]:
+        """One-time migration for sessions created before the message store existed."""
+        for run_id, baseline_ids in await self._db.list_done_runs(session_id):
+            events = await self._db.read_run_events(run_id, after_seq=0)
+            for event in reversed(events):
+                if event.get("type") != "done":
+                    continue
+                payloads = messages_after_baseline(
+                    event.get("messages") or [], baseline_ids
+                )
+                if payloads:
+                    await self._messages.append_many(session_id, payloads, run_id=run_id)
+                break
+        return await self._messages.list_messages(session_id)
 
     async def sync_chat_summary(
         self, session_id: str, messages: list[Any] | None = None
@@ -206,20 +229,31 @@ class SessionStore:
         await self._rollback_interrupted(session)
         await self._db.touch_session(session_id)
 
-        async def on_terminal(status: str, final_messages: list | None) -> None:
-            await self.sync_chat_summary(session_id, final_messages)
+        user_message_id = uuid.uuid4().hex
+
+        async def on_terminal(
+            status: str,
+            final_messages: list | None,
+            *,
+            baseline_ids: set[str],
+            run_id: str,
+        ) -> None:
+            del status, final_messages, baseline_ids, run_id
+            await self.sync_chat_summary(session_id)
 
         return await self.runs.start(
             agent=session.agent,
             session_id=session_id,
             message=message,
             pwd=pwd,
+            user_message_id=user_message_id,
             on_terminal=on_terminal,
         )
 
     async def reset_thread(self, session_id: str) -> None:
         await self.runs.cancel_session(session_id)
         await self._checkpoints.delete_thread(session_id)
+        await self._messages.delete_session(session_id)
         await self._db.update_chat_summary(
             session_id, title="New chat", preview="No session yet", message_count=0
         )
@@ -231,6 +265,7 @@ class SessionStore:
         deleted = await self._db.delete_session(session_id)
         if not deleted and session is None:
             return False
+        await self._messages.delete_session(session_id)
         await self._checkpoints.delete_thread(session_id)
         if session is not None:
             session.cleanup()

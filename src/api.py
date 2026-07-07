@@ -114,14 +114,14 @@ async def _require_run(session_id: str, run_id: str):
 
 
 async def _session_response(session) -> SessionResponse:
-    messages = await store.read_messages(session.id)
+    message_count = await store._messages.count_messages(session.id)  # noqa: SLF001
     return SessionResponse(
         id=session.id,
         sandbox_id=session.sandbox.id,
         workdir=str(session.sandbox._workdir),
         network=session.sandbox.network,
         model=session.model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
-        message_count=len(messages),
+        message_count=message_count,
         mcp_servers=session.mcp_servers,
         mcp_tool_names=session.mcp_tool_names,
         subagent_names=session.subagent_names,

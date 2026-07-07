@@ -66,12 +66,14 @@ async def success_turn(
     tool_preview_len: int = 500,
 ) -> AsyncIterator[dict[str, Any]]:
     del agent, thread_id, pwd, tool_preview_len
-    user_text = input_messages[0]["content"] if input_messages else ""
+    user_msg = input_messages[0] if input_messages else {}
+    user_text = user_msg.get("content", "") if isinstance(user_msg, dict) else ""
+    user_id = user_msg.get("id", "user-test-1") if isinstance(user_msg, dict) else "user-test-1"
     yield {"type": "source_start", "source": "main", "is_subagent": False}
     for piece in ("Hello", " ", "from", " ", "tests"):
         yield {"type": "token", "source": "main", "text": piece, "is_subagent": False}
     messages = [
-        HumanMessage(content=user_text, id="user-test-1"),
+        HumanMessage(content=user_text, id=user_id),
         AIMessage(content="Hello from tests", id="ai-test-1"),
     ]
     yield {"type": "done", "messages": messages, "usage": None}

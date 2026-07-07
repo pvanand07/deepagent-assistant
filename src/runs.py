@@ -25,8 +25,13 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from message_summary import last_assistant_text, serialize_messages
-from session_persistence import AppDB, RunRecord, thread_config
+from message_summary import (
+    last_assistant_text,
+    messages_after_baseline,
+    serialize_messages,
+    user_message_payload,
+)
+from session_persistence import AppDB, MessageDB, RunRecord, thread_config
 from streaming import (
     capture_baseline_ids,
     iter_agent_turn_events,
@@ -66,13 +71,14 @@ class _RunHandle:
     pending: dict[str, Any] | None = None
 
 
-# on_terminal(status, final_messages_or_None) -- awaited after the run settles.
-TerminalCallback = Callable[[str, list | None], Awaitable[None]]
+# on_terminal(status, final_messages, *, baseline_ids, run_id) -- after run settles.
+TerminalCallback = Callable[..., Awaitable[None]]
 
 
 class RunManager:
-    def __init__(self, db: AppDB) -> None:
+    def __init__(self, db: AppDB, messages: MessageDB) -> None:
         self._db = db
+        self._messages = messages
         self._handles: dict[str, _RunHandle] = {}
         self._active_by_session: dict[str, str] = {}
         self._sem = asyncio.Semaphore(_max_concurrent_runs())
@@ -89,6 +95,7 @@ class RunManager:
         session_id: str,
         message: str,
         pwd: str | None,
+        user_message_id: str,
         on_terminal: TerminalCallback,
     ) -> RunRecord:
         existing = self._active_by_session.get(session_id)
@@ -97,11 +104,24 @@ class RunManager:
 
         run_id = uuid.uuid4().hex
         record = await self._db.insert_run(run_id, session_id)
+        await self._messages.append(
+            session_id,
+            user_message_payload(message, user_message_id),
+            run_id=run_id,
+            message_id=user_message_id,
+        )
         handle = _RunHandle(run_id=run_id, session_id=session_id)
         self._handles[run_id] = handle
         self._active_by_session[session_id] = run_id
         handle.task = asyncio.create_task(
-            self._execute(handle, agent, message, pwd, on_terminal),
+            self._execute(
+                handle,
+                agent,
+                message,
+                pwd,
+                user_message_id,
+                on_terminal,
+            ),
             name=f"run-{run_id}",
         )
         return record
@@ -219,6 +239,7 @@ class RunManager:
         agent: Any,
         message: str,
         pwd: str | None,
+        user_message_id: str,
         on_terminal: TerminalCallback,
     ) -> None:
         config = thread_config(handle.session_id)
@@ -233,7 +254,9 @@ class RunManager:
                 baseline_ids = await capture_baseline_ids(agent, config)
                 await self._db.set_run_baseline(handle.run_id, baseline_ids)
 
-                user_turn = [{"role": "user", "content": message}]
+                user_turn = [
+                    {"role": "user", "content": message, "id": user_message_id}
+                ]
                 async for event in iter_agent_turn_events(
                     agent,
                     user_turn,
@@ -242,6 +265,12 @@ class RunManager:
                 ):
                     if event["type"] == "done":
                         final_messages = event["messages"]
+                        turn_messages = messages_after_baseline(
+                            final_messages, baseline_ids
+                        )
+                        await self._messages.append_many(
+                            handle.session_id, turn_messages, run_id=handle.run_id
+                        )
                         event = {
                             "type": "done",
                             "messages": serialize_messages(final_messages),
@@ -284,6 +313,11 @@ class RunManager:
                 del self._active_by_session[handle.session_id]
             self._handles.pop(handle.run_id, None)
             try:
-                await on_terminal(status, final_messages)
+                await on_terminal(
+                    status,
+                    final_messages,
+                    baseline_ids=baseline_ids,
+                    run_id=handle.run_id,
+                )
             except Exception:
                 pass
