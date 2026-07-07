@@ -1,22 +1,25 @@
-"""Disk-backed LangGraph checkpoints and session metadata."""
+"""Async persistence: LangGraph checkpoints + app DB (sessions, runs, run events).
+
+Everything runs on the FastAPI event loop -- the old ``AsyncLoopRunner``
+sync/async bridge is gone. Two SQLite files under the data dir:
+
+- ``checkpoints.sqlite`` -- LangGraph ``AsyncSqliteSaver`` (conversation state).
+- ``app.sqlite``         -- session metadata, runs, and the append-only
+                            per-run event log that powers stream resume.
+"""
 
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import json
 import os
-import threading
 import time
-from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 import aiosqlite
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-
-T = TypeVar("T")
 
 
 def default_data_dir() -> Path:
@@ -33,95 +36,15 @@ def checkpoint_db_path() -> Path:
     return default_data_dir() / "checkpoints.sqlite"
 
 
-def sessions_meta_path() -> Path:
-    return default_data_dir() / "sessions.json"
+def app_db_path() -> Path:
+    override = os.environ.get("DEEPAGENT_APP_DB")
+    if override:
+        return Path(override)
+    return default_data_dir() / "app.sqlite"
 
 
 def thread_config(thread_id: str) -> dict[str, Any]:
     return {"configurable": {"thread_id": thread_id}}
-
-
-class AsyncLoopRunner:
-    """Single background event loop for AsyncSqliteSaver and agent.astream()."""
-
-    _instance: AsyncLoopRunner | None = None
-    _init_lock = threading.Lock()
-
-    def __init__(self) -> None:
-        self._loop = asyncio.new_event_loop()
-        self._ready = threading.Event()
-        self._thread = threading.Thread(
-            target=self._run,
-            name="deepagent-async",
-            daemon=True,
-        )
-        self._thread.start()
-        self._ready.wait()
-
-    def _run(self) -> None:
-        asyncio.set_event_loop(self._loop)
-        self._ready.set()
-        self._loop.run_forever()
-
-    @classmethod
-    def get(cls) -> AsyncLoopRunner:
-        with cls._init_lock:
-            if cls._instance is None:
-                cls._instance = cls()
-            return cls._instance
-
-    def run(self, coro: Coroutine[Any, Any, T]) -> T:
-        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result()
-
-    def iter_async_generator(
-        self,
-        agen: AsyncIterator[Any],
-        *,
-        on_future: Callable[[concurrent.futures.Future | None], None] | None = None,
-    ) -> Any:
-        """Drive an async generator from a sync context, chunk by chunk.
-
-        If ``on_future`` is given, it is called with the in-flight
-        ``concurrent.futures.Future`` for each pending ``__anext__()`` call
-        (and with ``None`` once the generator is fully closed). Callers can
-        stash that future elsewhere and call ``future.cancel()`` from another
-        thread to cooperatively cancel the underlying coroutine mid-flight --
-        cancelling the future propagates an ``asyncio.CancelledError`` into
-        whatever the coroutine is currently awaiting, even if it has already
-        started running.
-        """
-
-        async def _anext() -> Any:
-            return await agen.__anext__()
-
-        try:
-            while True:
-                future = asyncio.run_coroutine_threadsafe(_anext(), self._loop)
-                if on_future is not None:
-                    on_future(future)
-                try:
-                    result = future.result()
-                except StopAsyncIteration:
-                    break
-                yield result
-        finally:
-            if on_future is not None:
-                on_future(None)
-            try:
-                self.run(agen.aclose())
-            except (RuntimeError, StopAsyncIteration, GeneratorExit, concurrent.futures.CancelledError):
-                pass
-
-    def close(self) -> None:
-        if not self._loop.is_running():
-            return
-        self._loop.call_soon_threadsafe(self._loop.stop)
-        self._thread.join(timeout=5)
-
-
-def get_async_runner() -> AsyncLoopRunner:
-    return AsyncLoopRunner.get()
 
 
 @dataclass
@@ -138,18 +61,39 @@ class SessionMeta:
     message_count: int = 0
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> SessionMeta:
+    def from_row(cls, row: aiosqlite.Row) -> SessionMeta:
         return cls(
-            id=str(data["id"]),
-            model=str(data["model"]),
-            network=bool(data.get("network", False)),
-            workdir=data.get("workdir"),
-            with_subagents=bool(data.get("with_subagents", True)),
-            created_at=float(data.get("created_at", time.time())),
-            updated_at=float(data.get("updated_at", time.time())),
-            title=str(data.get("title") or "New chat"),
-            preview=str(data.get("preview") or "No session yet"),
-            message_count=int(data.get("message_count") or 0),
+            id=row["id"],
+            model=row["model"],
+            network=bool(row["network"]),
+            workdir=row["workdir"],
+            with_subagents=bool(row["with_subagents"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            title=row["title"] or "New chat",
+            preview=row["preview"] or "No session yet",
+            message_count=row["message_count"] or 0,
+        )
+
+
+@dataclass
+class RunRecord:
+    id: str
+    session_id: str
+    status: str  # queued | running | done | cancelled | error | interrupted
+    created_at: float
+    updated_at: float
+    error: str | None = None
+
+    @classmethod
+    def from_row(cls, row: aiosqlite.Row) -> RunRecord:
+        return cls(
+            id=row["id"],
+            session_id=row["session_id"],
+            status=row["status"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            error=row["error"],
         )
 
 
@@ -157,136 +101,246 @@ class CheckpointManager:
     """Process-wide async SQLite checkpointer (thread_id == session id)."""
 
     _instance: CheckpointManager | None = None
-    _init_lock = threading.Lock()
+    _init_lock = asyncio.Lock()
 
     def __init__(self) -> None:
-        path = checkpoint_db_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self.db_path = path
-        self._runner = get_async_runner()
+        self.db_path = checkpoint_db_path()
         self._conn: aiosqlite.Connection | None = None
         self.checkpointer: AsyncSqliteSaver | None = None
-        self._runner.run(self._open())
 
     async def _open(self) -> None:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = await aiosqlite.connect(str(self.db_path))
+        await self._conn.execute("PRAGMA journal_mode=WAL")
         self.checkpointer = AsyncSqliteSaver(self._conn)
         await self.checkpointer.setup()
 
     @classmethod
-    def get(cls) -> CheckpointManager:
-        with cls._init_lock:
+    async def get(cls) -> CheckpointManager:
+        async with cls._init_lock:
             if cls._instance is None:
-                cls._instance = cls()
+                instance = cls()
+                await instance._open()
+                cls._instance = instance
             return cls._instance
 
-    def close(self) -> None:
-        if self._conn is not None:
-            self._runner.run(self._conn.close())
-            self._conn = None
-            self.checkpointer = None
-
-    def delete_thread(self, thread_id: str) -> None:
+    async def delete_thread(self, thread_id: str) -> None:
         assert self.checkpointer is not None
-        self._runner.run(self.checkpointer.adelete_thread(thread_id))
+        await self.checkpointer.adelete_thread(thread_id)
 
-    def read_messages(self, thread_id: str) -> list[Any]:
+    async def read_messages(self, thread_id: str) -> list[Any]:
         """Read the latest checkpointed messages for a thread (no agent required)."""
         assert self.checkpointer is not None
+        tup = await self.checkpointer.aget_tuple(thread_config(thread_id))
+        if tup is None:
+            return []
+        channel_values = tup.checkpoint.get("channel_values") or {}
+        return list(channel_values.get("messages") or [])
 
-        async def _read() -> list[Any]:
-            tup = await self.checkpointer.aget_tuple(thread_config(thread_id))
-            if tup is None:
-                return []
-            channel_values = tup.checkpoint.get("channel_values") or {}
-            messages = channel_values.get("messages") or []
-            return list(messages)
-
-        return self._runner.run(_read())
-
-    def message_count(self, thread_id: str) -> int:
-        return len(self.read_messages(thread_id))
+    async def close(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
+            self._conn = None
+            self.checkpointer = None
+        type(self)._instance = None
 
 
-class SessionMetadataStore:
-    """JSON file storing per-session config (model, workdir, etc.)."""
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS sessions (
+    id             TEXT PRIMARY KEY,
+    model          TEXT NOT NULL,
+    network        INTEGER NOT NULL DEFAULT 0,
+    workdir        TEXT,
+    with_subagents INTEGER NOT NULL DEFAULT 1,
+    created_at     REAL NOT NULL,
+    updated_at     REAL NOT NULL,
+    title          TEXT NOT NULL DEFAULT 'New chat',
+    preview        TEXT NOT NULL DEFAULT 'No session yet',
+    message_count  INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS runs (
+    id           TEXT PRIMARY KEY,
+    session_id   TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    created_at   REAL NOT NULL,
+    updated_at   REAL NOT NULL,
+    error        TEXT,
+    baseline_ids TEXT,
+    rolled_back  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_runs_session ON runs(session_id, created_at);
+
+CREATE TABLE IF NOT EXISTS run_events (
+    run_id  TEXT NOT NULL,
+    seq     INTEGER NOT NULL,
+    type    TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (run_id, seq)
+);
+"""
+
+
+class AppDB:
+    """Async SQLite store for session metadata, runs, and run events."""
+
+    _instance: AppDB | None = None
+    _init_lock = asyncio.Lock()
 
     def __init__(self) -> None:
-        self._path = sessions_meta_path()
-        self._lock = threading.Lock()
-        self._sessions: dict[str, SessionMeta] = {}
-        self._load()
+        self._conn: aiosqlite.Connection | None = None
 
-    def _load(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        if not self._path.exists():
-            self._sessions = {}
-            return
-        try:
-            raw = json.loads(self._path.read_text(encoding="utf-8"))
-            items = raw.get("sessions") or {}
-            self._sessions = {
-                sid: SessionMeta.from_dict(meta)
-                for sid, meta in items.items()
-            }
-        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
-            self._sessions = {}
+    async def _open(self) -> None:
+        path = app_db_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn = await aiosqlite.connect(str(path))
+        self._conn.row_factory = aiosqlite.Row
+        await self._conn.execute("PRAGMA journal_mode=WAL")
+        await self._conn.execute("PRAGMA busy_timeout=5000")
+        await self._conn.executescript(_SCHEMA)
+        await self._conn.commit()
 
-    def _save(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "sessions": {sid: asdict(meta) for sid, meta in self._sessions.items()},
-        }
-        tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        tmp.replace(self._path)
+    @classmethod
+    async def get(cls) -> AppDB:
+        async with cls._init_lock:
+            if cls._instance is None:
+                instance = cls()
+                await instance._open()
+                cls._instance = instance
+            return cls._instance
 
-    def get(self, session_id: str) -> SessionMeta | None:
-        with self._lock:
-            return self._sessions.get(session_id)
+    async def close(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
+            self._conn = None
+        type(self)._instance = None
 
-    def upsert(self, meta: SessionMeta) -> None:
-        with self._lock:
-            self._sessions[meta.id] = meta
-            self._save()
+    # -- sessions ---------------------------------------------------------
 
-    def touch(self, session_id: str) -> None:
-        with self._lock:
-            meta = self._sessions.get(session_id)
-            if meta is None:
-                return
-            meta.updated_at = time.time()
-            self._save()
+    async def upsert_session(self, meta: SessionMeta) -> None:
+        d = asdict(meta)
+        await self._conn.execute(
+            """INSERT INTO sessions (id, model, network, workdir, with_subagents,
+                                     created_at, updated_at, title, preview, message_count)
+               VALUES (:id, :model, :network, :workdir, :with_subagents,
+                       :created_at, :updated_at, :title, :preview, :message_count)
+               ON CONFLICT(id) DO UPDATE SET
+                   model=:model, network=:network, workdir=:workdir,
+                   with_subagents=:with_subagents, updated_at=:updated_at,
+                   title=:title, preview=:preview, message_count=:message_count""",
+            d,
+        )
+        await self._conn.commit()
 
-    def update_chat_summary(
-        self,
-        session_id: str,
-        *,
-        title: str,
-        preview: str,
-        message_count: int,
+    async def get_session(self, session_id: str) -> SessionMeta | None:
+        async with self._conn.execute(
+            "SELECT * FROM sessions WHERE id = ?", (session_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        return SessionMeta.from_row(row) if row else None
+
+    async def list_sessions(self) -> list[SessionMeta]:
+        async with self._conn.execute(
+            "SELECT * FROM sessions ORDER BY updated_at DESC"
+        ) as cur:
+            rows = await cur.fetchall()
+        return [SessionMeta.from_row(r) for r in rows]
+
+    async def touch_session(self, session_id: str) -> None:
+        await self._conn.execute(
+            "UPDATE sessions SET updated_at = ? WHERE id = ?",
+            (time.time(), session_id),
+        )
+        await self._conn.commit()
+
+    async def update_chat_summary(
+        self, session_id: str, *, title: str, preview: str, message_count: int
     ) -> None:
-        with self._lock:
-            meta = self._sessions.get(session_id)
-            if meta is None:
-                return
-            meta.title = title
-            meta.preview = preview
-            meta.message_count = message_count
-            meta.updated_at = time.time()
-            self._save()
+        await self._conn.execute(
+            """UPDATE sessions SET title = ?, preview = ?, message_count = ?,
+                                   updated_at = ? WHERE id = ?""",
+            (title, preview, message_count, time.time(), session_id),
+        )
+        await self._conn.commit()
 
-    def delete(self, session_id: str) -> bool:
-        with self._lock:
-            if session_id not in self._sessions:
-                return False
-            del self._sessions[session_id]
-            self._save()
-            return True
+    async def delete_session(self, session_id: str) -> bool:
+        cur = await self._conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        await self._conn.execute(
+            "DELETE FROM run_events WHERE run_id IN (SELECT id FROM runs WHERE session_id = ?)",
+            (session_id,),
+        )
+        await self._conn.execute("DELETE FROM runs WHERE session_id = ?", (session_id,))
+        await self._conn.commit()
+        return cur.rowcount > 0
 
-    def list_all(self) -> list[SessionMeta]:
-        with self._lock:
-            return sorted(self._sessions.values(), key=lambda s: s.updated_at, reverse=True)
+    # -- runs ---------------------------------------------------------------
 
+    async def insert_run(self, run_id: str, session_id: str) -> RunRecord:
+        now = time.time()
+        await self._conn.execute(
+            "INSERT INTO runs (id, session_id, status, created_at, updated_at) "
+            "VALUES (?, ?, 'queued', ?, ?)",
+            (run_id, session_id, now, now),
+        )
+        await self._conn.commit()
+        return RunRecord(run_id, session_id, "queued", now, now)
 
-metadata_store = SessionMetadataStore()
+    async def set_run_status(self, run_id: str, status: str, *, error: str | None = None) -> None:
+        await self._conn.execute(
+            "UPDATE runs SET status = ?, error = ?, updated_at = ? WHERE id = ?",
+            (status, error, time.time(), run_id),
+        )
+        await self._conn.commit()
+
+    async def set_run_baseline(self, run_id: str, baseline_ids: set[str]) -> None:
+        await self._conn.execute(
+            "UPDATE runs SET baseline_ids = ? WHERE id = ?",
+            (json.dumps(sorted(baseline_ids)), run_id),
+        )
+        await self._conn.commit()
+
+    async def get_run(self, run_id: str) -> RunRecord | None:
+        async with self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)) as cur:
+            row = await cur.fetchone()
+        return RunRecord.from_row(row) if row else None
+
+    async def mark_interrupted_runs(self) -> None:
+        """On startup: any run still queued/running belonged to a dead process."""
+        await self._conn.execute(
+            "UPDATE runs SET status = 'interrupted', updated_at = ? "
+            "WHERE status IN ('queued', 'running')",
+            (time.time(),),
+        )
+        await self._conn.commit()
+
+    async def interrupted_unrolled_runs(self, session_id: str) -> list[tuple[str, set[str]]]:
+        """(run_id, baseline_ids) for interrupted runs whose checkpoint wasn't rolled back."""
+        async with self._conn.execute(
+            "SELECT id, baseline_ids FROM runs "
+            "WHERE session_id = ? AND status = 'interrupted' AND rolled_back = 0 "
+            "AND baseline_ids IS NOT NULL ORDER BY created_at",
+            (session_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [(r["id"], set(json.loads(r["baseline_ids"]))) for r in rows]
+
+    async def mark_run_rolled_back(self, run_id: str) -> None:
+        await self._conn.execute("UPDATE runs SET rolled_back = 1 WHERE id = ?", (run_id,))
+        await self._conn.commit()
+
+    # -- run events -----------------------------------------------------------
+
+    async def append_run_event(self, run_id: str, seq: int, type_: str, payload: str) -> None:
+        await self._conn.execute(
+            "INSERT OR REPLACE INTO run_events (run_id, seq, type, payload) VALUES (?, ?, ?, ?)",
+            (run_id, seq, type_, payload),
+        )
+        await self._conn.commit()
+
+    async def read_run_events(self, run_id: str, after_seq: int) -> list[dict[str, Any]]:
+        async with self._conn.execute(
+            "SELECT payload FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq",
+            (run_id, after_seq),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [json.loads(r["payload"]) for r in rows]

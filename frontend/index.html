@@ -175,7 +175,7 @@
         </span>
         <span class="truncate text-sm font-semibold tracking-tight">Deep Agent</span>
         <div class="ml-auto flex items-center gap-0.5">
-          <button type="button" @click="newChat" :disabled="streaming" :class="iconBtn"
+          <button type="button" @click="newChat" :class="iconBtn"
             title="New chat" aria-label="New chat">
             <p-icon name="plus" :size="13" />
           </button>
@@ -196,17 +196,21 @@
             <li v-for="chat in sessionList" :key="chat.id">
               <div class="group flex items-center gap-0.5 rounded-lg transition-colors"
                 :class="chat.id === sessionId ? 'border border-border bg-background shadow-xs' : 'hover:bg-muted/80'">
-                <button type="button" @click="switchSession(chat.id)" :disabled="streaming"
-                  class="flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left disabled:pointer-events-none disabled:opacity-50"
+                <button type="button" @click="switchSession(chat.id)"
+                  class="flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left"
                   :title="chat.preview && chat.preview !== 'No session yet' ? chat.preview : chat.title">
-                  <span class="truncate"
-                    :class="chat.id === sessionId ? 'font-medium text-black' : 'text-black'">
-                    {{ chat.title }}
+                  <span class="flex min-w-0 items-center gap-1.5">
+                    <span v-if="isRunning(chat.id)" class="size-1.5 shrink-0 animate-pulse rounded-full bg-accent"
+                      title="Agent running" aria-label="Agent running"></span>
+                    <span class="truncate"
+                      :class="chat.id === sessionId ? 'font-medium text-black' : 'text-black'">
+                      {{ chat.title }}
+                    </span>
                   </span>
-                  <span class="truncate text-muted-foreground/60">{{ chat.preview || 'No session yet' }}</span>
+                  <span class="truncate text-muted-foreground/60">{{ isRunning(chat.id) ? 'Running…' : (chat.preview || 'No session yet') }}</span>
                 </button>
-                <button type="button" @click.stop="deleteSession(chat.id)" :disabled="streaming"
-                  class="mr-1 hidden size-6 shrink-0 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-destructive-soft hover:text-destructive group-hover:grid disabled:pointer-events-none disabled:opacity-50"
+                <button type="button" @click.stop="deleteSession(chat.id)"
+                  class="mr-1 hidden size-6 shrink-0 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-destructive-soft hover:text-destructive group-hover:grid"
                   :title="'Delete chat'" :aria-label="'Delete chat ' + chat.title">
                   <p-icon name="x" :size="11" />
                 </button>
@@ -516,6 +520,7 @@ const { createApp, ref, reactive, computed, nextTick, onMounted, onBeforeUnmount
 
 const API = window.location.origin;
 const SESSION_KEY = "deepagent_session_id";
+const TERMINAL_RUN_EVENTS = new Set(["done", "cancelled", "error"]);
 
 /* One coherent icon set (Phosphor, 256 viewBox), rendered by <p-icon>. */
 const ICON_PATHS = {
@@ -892,17 +897,30 @@ createApp({
     const sessionList = ref([]);
     const sessionListLoading = ref(false);
 
+    /* ---------- runs ----------
+       activeRuns maps sessionId -> run_id for every run the server reports
+       as in flight. The agent turn executes server-side as a background run,
+       so it keeps going when we switch sessions, close the SSE reader, or
+       reload the page; this map is what lets any session's UI know there is
+       something to reattach to. Exactly one SSE reader is open at a time --
+       the one observing the currently visible session. */
+    const activeRuns = reactive({});
+    let runAbort = null;   // AbortController for the visible SSE reader
+    let turnCtx = null;    // render state for the currently attached run
+
     /* ---------- chat ---------- */
     const timeline = ref([]);
     const draft = ref("");
-    const streaming = ref(false);
     const thinking = ref(false);
     const errorMessage = ref("");
     const sidebarSubtitle = ref("Starting session");
     const chatTitleOverride = ref("");
     let itemId = 0;
     let errorTimer = null;
-    let abortController = null;
+
+    /* `streaming` is now per-session: true only when the *visible* session
+       has a run in flight. Other sessions stay fully interactive. */
+    const streaming = computed(() => !!(sessionId.value && activeRuns[sessionId.value]));
 
     /* ---------- usage ---------- */
     const lastTurnUsage = ref(null);
@@ -1007,6 +1025,10 @@ createApp({
     });
 
     /* ---------- small helpers ---------- */
+    function isRunning(id) {
+      return !!activeRuns[id];
+    }
+
     function showError(message) {
       errorMessage.value = message || "Something went wrong";
       clearTimeout(errorTimer);
@@ -1048,7 +1070,9 @@ createApp({
         let detail = res.statusText;
         try {
           const body = await res.json();
-          detail = body.detail || JSON.stringify(body);
+          detail = typeof body.detail === "string"
+            ? body.detail
+            : JSON.stringify(body.detail ?? body);
         } catch {}
         throw new Error(detail);
       }
@@ -1395,12 +1419,339 @@ createApp({
       }
     }
 
+    /* ---------- run streaming (run-based API) ----------
+       POST /chat returns 202 {run_id}; the turn executes server-side as a
+       background run. We attach a *pure observer* SSE reader to
+       GET /runs/{run_id}/events. Closing the reader (switching sessions,
+       reloading) never affects the run; only POST /runs/{id}/cancel does.
+       Every event carries a monotonic `seq`, so a dropped connection
+       resumes with ?after=<lastSeq>, and a full reattach replays from 0. */
+
+    function abortRunReader() {
+      if (runAbort) {
+        runAbort.abort();
+        runAbort = null;
+      }
+      turnCtx = null;
+    }
+
+    function newTurnCtx(sid, runId, { startIndex, originalMessage = null }) {
+      return {
+        sessionId: sid,
+        runId,
+        startIndex,          // timeline index of this turn's user bubble
+        originalMessage,     // restored to the composer on cancellation
+        prevTitle: chatTitleOverride.value,
+        assistantItem: null,
+        toolItem: null,
+        toolName: "",
+        toolArgs: "",
+        lastSeq: 0,
+        gotTerminal: false,
+      };
+    }
+
+    /* Undo everything this turn added to the timeline and hand the original
+       text back to the composer -- mirrors the server-side checkpoint
+       rollback that a cancelled run performs. */
+    function rollBackTurn(ctx) {
+      if (timeline.value.length > ctx.startIndex) {
+        timeline.value.length = ctx.startIndex;
+      }
+      if (ctx.originalMessage != null && !draft.value.trim()) {
+        draft.value = ctx.originalMessage;
+        nextTick(() => autoGrow());
+      }
+      chatTitleOverride.value = ctx.prevTitle;
+      sidebarSubtitle.value = "Stopped — message restored";
+    }
+
+    function finishRun(ctx) {
+      ctx.gotTerminal = true;
+      if (activeRuns[ctx.sessionId] === ctx.runId) delete activeRuns[ctx.sessionId];
+      loadSessionList().catch(() => {});
+    }
+
+    function ensureAssistant(ctx) {
+      if (!ctx.assistantItem) ctx.assistantItem = pushItem({ kind: "assistant", text: "" });
+      return ctx.assistantItem;
+    }
+
+    function processRunEvent(ctx, data) {
+      switch (data.type) {
+        case "source_start":
+          thinking.value = false;
+          if (data.is_subagent) {
+            pushItem({ kind: "activity", icon: "subagent", name: "Sub-agent", detail: data.source });
+          }
+          break;
+
+        case "token":
+          thinking.value = false;
+          if (!data.is_subagent && data.source === "main") {
+            ensureAssistant(ctx).text += data.text || "";
+            scrollToBottom();
+          }
+          break;
+
+        case "tool_call_start":
+          thinking.value = false;
+          ctx.toolName = data.name || "tool";
+          ctx.toolArgs = "";
+          ctx.toolItem = pushItem({ kind: "activity", icon: "terminal", name: ctx.toolName, detail: "(…)" });
+          break;
+
+        case "tool_call_args":
+          ctx.toolArgs += data.args || "";
+          if (ctx.toolItem) ctx.toolItem.detail = `(${ctx.toolArgs})`;
+          break;
+
+        case "tool_call_end":
+          if (ctx.toolItem) ctx.toolItem.detail = `(${ctx.toolArgs || ""})`;
+          ctx.toolItem = null;
+          ctx.assistantItem = null;
+          break;
+
+        case "tool_running":
+          startToolTimer(data.name || ctx.toolName);
+          break;
+
+        case "tool_result": {
+          thinking.value = false;
+          stopToolTimer();
+          usageEstimate.value = null;
+          const content = data.content || "";
+          const previewText = content.slice(0, 200) + (content.length > 200 ? "…" : "");
+          pushItem({ kind: "activity", icon: "terminal", name: data.name, detail: `→ ${previewText}` });
+          ctx.assistantItem = null;
+          break;
+        }
+
+        case "usage":
+          if (data.turn?.model_calls) {
+            lastTurnUsage.value = data.turn;
+            usageEstimate.value = null;
+          }
+          break;
+
+        case "usage_estimate":
+          if (data.turn?.model_calls) lastTurnUsage.value = data.turn;
+          usageEstimate.value = data;
+          break;
+
+        case "done":
+          thinking.value = false;
+          stopToolTimer();
+          usageEstimate.value = null;
+          if (!ctx.assistantItem && data.reply) {
+            pushItem({ kind: "assistant", text: data.reply });
+          }
+          if (data.usage?.model_calls) lastTurnUsage.value = data.usage;
+          sidebarSubtitle.value = `${data.messages?.length || 0} messages`;
+          if (session.value?.id === ctx.sessionId) {
+            session.value.message_count = data.messages?.length || 0;
+          }
+          loadFiles({ silent: true, force: true }).catch(() => {});
+          finishRun(ctx);
+          break;
+
+        case "cancelled":
+          thinking.value = false;
+          stopToolTimer();
+          usageEstimate.value = null;
+          rollBackTurn(ctx);
+          finishRun(ctx);
+          break;
+
+        case "error":
+          thinking.value = false;
+          stopToolTimer();
+          usageEstimate.value = null;
+          showError(data.error || data.message || "Agent error");
+          finishRun(ctx);
+          break;
+      }
+    }
+
+    /* Observe a run's event stream until its terminal event. Reconnects
+       from ctx.lastSeq if the connection drops without a terminal event
+       (the durable event log makes resume exact -- no duplicates, no gaps).
+       Returns when the run ends or the reader is aborted (session switch). */
+    async function attachRun(ctx) {
+      let attempts = 0;
+      while (!ctx.gotTerminal && attempts < 30) {
+        attempts += 1;
+        runAbort = new AbortController();
+        try {
+          const res = await fetch(
+            `${API}/api/sessions/${ctx.sessionId}/runs/${ctx.runId}/events?after=${ctx.lastSeq}`,
+            { signal: runAbort.signal }
+          );
+          if (!res.ok || !res.body) throw new Error(`Stream failed (${res.status})`);
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          const feed = createSseParser();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            for (const { data } of feed(decoder.decode(value, { stream: true }))) {
+              if (typeof data.seq === "number") ctx.lastSeq = Math.max(ctx.lastSeq, data.seq);
+              processRunEvent(ctx, data);
+              attempts = 0; // healthy stream: reset the retry budget
+              if (ctx.gotTerminal) return;
+            }
+          }
+        } catch (e) {
+          if (e.name === "AbortError") return; // switched away / page teardown
+        }
+        if (ctx.gotTerminal) return;
+        // Dropped without a terminal event -- back off, then resume from lastSeq.
+        await new Promise((r) => setTimeout(r, Math.min(500 * attempts, 5000)));
+      }
+      if (!ctx.gotTerminal) {
+        showError("Lost connection to the run stream. Reload or reopen this chat to reattach.");
+      }
+    }
+
+    /* Attach the visible UI to an already-running turn (page reload or
+       switching back to a session whose run is still going). History is
+       trimmed to end at the run's triggering user message -- everything
+       after it is this run's partial output, which the seq-0 replay
+       reconstructs exactly. */
+    function reattachToRun(sid, runId, messages) {
+      let lastHuman = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (["human", "user"].includes(messageRole(messages[i]))) { lastHuman = i; break; }
+      }
+      renderHistory(lastHuman >= 0 ? messages.slice(0, lastHuman + 1) : messages);
+
+      const hasUserBubble = lastHuman >= 0 && timeline.value.length > 0;
+      const ctx = newTurnCtx(sid, runId, {
+        startIndex: hasUserBubble ? timeline.value.length - 1 : timeline.value.length,
+        originalMessage: lastHuman >= 0 ? messageContent(messages[lastHuman]) : null,
+      });
+      activeRuns[sid] = runId;
+      sidebarSubtitle.value = "Running…";
+      thinking.value = true;
+      turnCtx = ctx;
+      attachRun(ctx).finally(() => {
+        if (turnCtx === ctx) turnCtx = null;
+        if (sessionId.value === sid) {
+          thinking.value = false;
+          stopToolTimer();
+        }
+      });
+    }
+
+    /* Stop = explicit server-side cancel. We do NOT abort the reader here:
+       the `cancelled` event arrives through the stream, triggers the UI
+       rollback, and closes the reader -- keeping client and checkpoint
+       rollback in lockstep. */
+    async function stopStream() {
+      const sid = sessionId.value;
+      const rid = sid && activeRuns[sid];
+      if (!rid) return;
+      try {
+        await api(`/api/sessions/${sid}/runs/${rid}/cancel`, { method: "POST" });
+      } catch (e) {
+        // Server unreachable or run unknown: tear down locally.
+        if (turnCtx && turnCtx.runId === rid) rollBackTurn(turnCtx);
+        delete activeRuns[sid];
+        abortRunReader();
+        thinking.value = false;
+        stopToolTimer();
+        showError(e.message || "Failed to cancel the run");
+      }
+    }
+
+    async function submit() {
+      const text = draft.value.trim();
+      if (!text || streaming.value || !sessionId.value) return;
+      const sid = sessionId.value;
+      draft.value = "";
+      await nextTick();
+      autoGrow();
+      closePwdMenu();
+      sessionInfoOpen.value = false;
+      lastTurnUsage.value = null;
+      usageEstimate.value = null;
+
+      const ctx = newTurnCtx(sid, null, {
+        startIndex: timeline.value.length,
+        originalMessage: text,
+      });
+      pushItem({ kind: "user", text });
+      chatTitleOverride.value = truncate(text);
+      sidebarSubtitle.value = "Running…";
+      thinking.value = true;
+
+      // Start the turn as a background run (202 { run_id }).
+      let res;
+      try {
+        res = await fetch(`${API}/api/sessions/${sid}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, pwd: selectedPwd.value || null }),
+        });
+      } catch (e) {
+        thinking.value = false;
+        rollBackTurn(ctx);
+        showError(e.message || "Request failed");
+        return;
+      }
+
+      if (res.status === 409) {
+        // A run is already in flight for this session (e.g. started in
+        // another tab). Restore the composer and reattach to it.
+        thinking.value = false;
+        rollBackTurn(ctx);
+        let activeId = null;
+        try { activeId = (await res.json())?.detail?.active_run_id || null; } catch {}
+        if (activeId && sessionId.value === sid) {
+          try {
+            const { messages } = await api(`/api/sessions/${sid}/messages`);
+            reattachToRun(sid, activeId, messages);
+          } catch {}
+        }
+        showError("A run is already in flight for this chat — reattached to it.");
+        return;
+      }
+
+      if (!res.ok) {
+        thinking.value = false;
+        rollBackTurn(ctx);
+        let detail = res.statusText;
+        try {
+          const body = await res.json();
+          detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail ?? body);
+        } catch {}
+        showError(detail || "Request failed");
+        return;
+      }
+
+      const created = await res.json();
+      ctx.runId = created.run_id;
+      activeRuns[sid] = created.run_id;
+      turnCtx = ctx;
+      try {
+        await attachRun(ctx);
+      } finally {
+        if (turnCtx === ctx) turnCtx = null;
+        if (sessionId.value === sid) {
+          thinking.value = false;
+          stopToolTimer();
+          nextTick(() => inputEl.value?.focus());
+        }
+      }
+    }
+
     /* ---------- session lifecycle ---------- */
     function resetChatUi() {
       timeline.value = [];
       itemId = 0;
       lastTurnUsage.value = null;
       usageEstimate.value = null;
+      thinking.value = false;
       stopToolTimer();
       clearPreviewBlob();
       previewCollapsed.value = true;
@@ -1423,6 +1774,12 @@ createApp({
       try {
         const data = await api("/api/sessions");
         sessionList.value = data.sessions || [];
+        // Sync the active-run map from the server (it is the source of truth
+        // for runs started in other tabs or before a reload).
+        for (const s of sessionList.value) {
+          if (s.active_run_id) activeRuns[s.id] = s.active_run_id;
+          else if (!(turnCtx && turnCtx.sessionId === s.id)) delete activeRuns[s.id];
+        }
       } catch {
         sessionList.value = [];
       } finally {
@@ -1432,16 +1789,30 @@ createApp({
 
     async function loadSessionState(id) {
       if (sessionId.value && sessionId.value !== id) snapshotWorkspace(sessionId.value);
+      // Detach the observer from whatever we were watching. The server-side
+      // run (if any) keeps executing; we reattach when we come back.
+      abortRunReader();
+
       session.value = await api(`/api/sessions/${id}`);
       sessionId.value = id;
       sessionStorage.setItem(SESSION_KEY, id);
       const { messages } = await api(`/api/sessions/${id}/messages`);
       resetChatUi();
       const hadCache = restoreWorkspace(id);
-      renderHistory(messages);
+
+      const runId = session.value.active_run_id || activeRuns[id] || null;
+      if (runId) {
+        reattachToRun(id, runId, messages);
+      } else {
+        delete activeRuns[id];
+        renderHistory(messages);
+      }
+
       const firstUser = messages.find((m) => ["human", "user"].includes(messageRole(m)));
       chatTitleOverride.value = firstUser ? truncate(messageContent(firstUser)) : "New chat";
-      sidebarSubtitle.value = messages.length ? `${messages.length} messages` : "Ready";
+      sidebarSubtitle.value = runId
+        ? "Running…"
+        : messages.length ? `${messages.length} messages` : "Ready";
       if (hadCache) {
         loadFiles({ silent: true, force: true }).catch(() => {});
       } else {
@@ -1451,7 +1822,7 @@ createApp({
     }
 
     async function switchSession(id) {
-      if (streaming.value || !id || id === sessionId.value) return;
+      if (!id || id === sessionId.value) return;
       sessionInfoOpen.value = false;
       try {
         await loadSessionState(id);
@@ -1462,14 +1833,20 @@ createApp({
     }
 
     async function deleteSession(id) {
-      if (streaming.value || !id) return;
-      if (!confirm("Delete this chat and its sandbox workspace?")) return;
+      if (!id) return;
+      const running = isRunning(id);
+      const prompt = running
+        ? "This chat has a run in progress. Deleting it cancels the run and removes its sandbox workspace. Continue?"
+        : "Delete this chat and its sandbox workspace?";
+      if (!confirm(prompt)) return;
+      if (id === sessionId.value) abortRunReader();
       try {
         await api(`/api/sessions/${id}`, { method: "DELETE" });
       } catch (e) {
         showError(e.message || "Failed to delete chat");
         return;
       }
+      delete activeRuns[id];
       workspaceCache.delete(id);
       if (id === sessionId.value) {
         sessionStorage.removeItem(SESSION_KEY);
@@ -1496,6 +1873,7 @@ createApp({
 
     async function createSession() {
       if (sessionId.value) snapshotWorkspace(sessionId.value);
+      abortRunReader();
       session.value = await api("/api/sessions", { method: "POST", body: "{}" });
       sessionId.value = session.value.id;
       sessionStorage.setItem(SESSION_KEY, sessionId.value);
@@ -1534,7 +1912,6 @@ createApp({
     }
 
     async function newChat() {
-      if (streaming.value) return;
       sessionInfoOpen.value = false;
       try {
         await createSession();
@@ -1542,199 +1919,6 @@ createApp({
         sidebarSubtitle.value = "Ready";
       } catch (e) {
         showError(e.message);
-      }
-    }
-
-    /* ---------- streaming chat ---------- */
-    function stopStream() {
-      if (!streaming.value) return;
-      const sid = sessionId.value;
-      if (sid) {
-        // Fire-and-forget: asks the server to cancel the in-flight agent turn
-        // and roll its checkpoint back to the last completed message, in
-        // parallel with tearing down the client-side SSE reader below.
-        fetch(`${API}/api/sessions/${sid}/chat/stop`, { method: "POST" }).catch(() => {});
-      }
-      if (abortController) abortController.abort();
-    }
-
-    async function submit() {
-      const text = draft.value.trim();
-      if (!text || streaming.value || !sessionId.value) return;
-      draft.value = "";
-      await nextTick();
-      autoGrow();
-      try {
-        await streamChat(text);
-      } catch (e) {
-        if (e.name !== "AbortError") showError(e.message || "Request failed");
-      } finally {
-        streaming.value = false;
-        thinking.value = false;
-        stopToolTimer();
-        abortController = null;
-        nextTick(() => inputEl.value?.focus());
-      }
-    }
-
-    async function streamChat(message) {
-      streaming.value = true;
-      closePwdMenu();
-      sessionInfoOpen.value = false;
-      lastTurnUsage.value = null;
-      usageEstimate.value = null;
-
-      // Snapshot everything this turn will touch so a cancellation can roll
-      // the UI back to exactly how it looked right after the last completed
-      // agent message (mirrors the server-side checkpoint rollback).
-      const turnStartIndex = timeline.value.length;
-      const prevTitle = chatTitleOverride.value;
-
-      pushItem({ kind: "user", text: message });
-      chatTitleOverride.value = truncate(message);
-      sidebarSubtitle.value = "Running…";
-      thinking.value = true;
-
-      let assistantItem = null;
-      let toolItem = null;
-      let toolName = "";
-      let toolArgs = "";
-      let reader = null;
-      let rolledBack = false;
-
-      // Undo everything this turn added to the timeline and hand the
-      // original text back to the composer, mirroring the server-side
-      // checkpoint rollback triggered by /chat/stop.
-      const rollBackTurn = () => {
-        if (rolledBack) return;
-        rolledBack = true;
-        timeline.value.length = turnStartIndex;
-        draft.value = message;
-        chatTitleOverride.value = prevTitle;
-        sidebarSubtitle.value = "Stopped — message restored";
-        nextTick(() => autoGrow());
-      };
-
-      abortController = new AbortController();
-
-      try {
-        const res = await fetch(`${API}/api/sessions/${sessionId.value}/chat/stream`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message, pwd: selectedPwd.value || null }),
-          signal: abortController.signal,
-        });
-        if (!res.ok || !res.body) throw new Error(`Stream failed (${res.status})`);
-
-        reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        const feed = createSseParser();
-
-        const ensureAssistant = () => {
-          if (!assistantItem) assistantItem = pushItem({ kind: "assistant", text: "" });
-          return assistantItem;
-        };
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          for (const { data } of feed(decoder.decode(value, { stream: true }))) {
-            switch (data.type) {
-              case "source_start":
-                thinking.value = false;
-                if (data.is_subagent) {
-                  pushItem({ kind: "activity", icon: "subagent", name: "Sub-agent", detail: data.source });
-                }
-                break;
-
-              case "token":
-                thinking.value = false;
-                if (!data.is_subagent && data.source === "main") {
-                  ensureAssistant().text += data.text || "";
-                  scrollToBottom();
-                }
-                break;
-
-              case "tool_call_start":
-                thinking.value = false;
-                toolName = data.name || "tool";
-                toolArgs = "";
-                toolItem = pushItem({ kind: "activity", icon: "terminal", name: toolName, detail: "(…)" });
-                break;
-
-              case "tool_call_args":
-                toolArgs += data.args || "";
-                if (toolItem) toolItem.detail = `(${toolArgs})`;
-                break;
-
-              case "tool_call_end":
-                if (toolItem) toolItem.detail = `(${toolArgs || ""})`;
-                toolItem = null;
-                assistantItem = null;
-                break;
-
-              case "tool_running":
-                startToolTimer(data.name || toolName);
-                break;
-
-              case "tool_result": {
-                thinking.value = false;
-                stopToolTimer();
-                usageEstimate.value = null;
-                const content = data.content || "";
-                const previewText = content.slice(0, 200) + (content.length > 200 ? "…" : "");
-                pushItem({ kind: "activity", icon: "terminal", name: data.name, detail: `→ ${previewText}` });
-                assistantItem = null;
-                break;
-              }
-
-              case "usage":
-                if (data.turn?.model_calls) {
-                  lastTurnUsage.value = data.turn;
-                  usageEstimate.value = null;
-                }
-                break;
-
-              case "usage_estimate":
-                if (data.turn?.model_calls) lastTurnUsage.value = data.turn;
-                usageEstimate.value = data;
-                break;
-
-              case "error":
-                showError(data.message || "Agent error");
-                break;
-
-              case "done":
-                thinking.value = false;
-                stopToolTimer();
-                usageEstimate.value = null;
-                if (!assistantItem && data.reply) {
-                  pushItem({ kind: "assistant", text: data.reply });
-                }
-                if (data.usage?.model_calls) lastTurnUsage.value = data.usage;
-                sidebarSubtitle.value = `${data.messages?.length || 0} messages`;
-                if (session.value) session.value.message_count = data.messages?.length || 0;
-                loadFiles({ silent: true, force: true }).catch(() => {});
-                loadSessionList().catch(() => {});
-                break;
-
-              case "cancelled":
-                thinking.value = false;
-                stopToolTimer();
-                usageEstimate.value = null;
-                rollBackTurn();
-                break;
-            }
-          }
-        }
-      } catch (e) {
-        if (e.name === "AbortError") {
-          rollBackTurn();
-        } else {
-          throw e;
-        }
-      } finally {
-        if (reader) { try { reader.releaseLock(); } catch {} }
       }
     }
 
@@ -1790,7 +1974,8 @@ createApp({
       document.removeEventListener("keydown", onKeydown);
       stopToolTimer();
       clearPreviewBlob();
-      if (abortController) abortController.abort();
+      // Detach the observer only -- the server-side run keeps going.
+      abortRunReader();
     });
 
     return {
@@ -1799,7 +1984,7 @@ createApp({
       session, sessionId, sessionList, sessionListLoading, chatTitle, chatSubtitle, modelLabel, sidebarSubtitle,
       username, userInitial,
       sessionInfoOpen, sessionInfoEl, sessionInfoRows,
-      loadSessionList, switchSession, deleteSession,
+      loadSessionList, switchSession, deleteSession, isRunning,
       // chat
       timeline, draft, streaming, thinking, errorMessage, canSend,
       submit, stopStream, newChat, renderMarkdown, autoGrow,

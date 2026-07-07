@@ -1,28 +1,42 @@
 """FastAPI HTTP API for the sandboxed deep agent (HTML GUI backend).
 
 Run (from repo root):
-    PYTHONPATH=src uvicorn api:app --host 0.0.0.0 --port 8010 --reload
+    PYTHONPATH=src uvicorn api:app --host 0.0.0.0 --port 8010
+
+Chat contract (run-based):
+    POST /api/sessions/{sid}/chat                     -> 202 {run_id}   (starts a background run)
+    GET  /api/sessions/{sid}/runs/{run_id}/events     -> SSE stream; resumable via
+                                                         ?after=<seq> or Last-Event-ID header
+    POST /api/sessions/{sid}/runs/{run_id}/cancel     -> cancel + checkpoint rollback
+    GET  /api/sessions/{sid}/runs/active              -> reconnect discovery
+    GET  /api/sessions/{sid}/runs/{run_id}            -> run status
+
+The run keeps executing when the SSE client disconnects; only an explicit
+cancel stops it. Reconnecting clients replay missed events from the durable
+event log, then tail live events.
 """
 
 from __future__ import annotations
 
+import asyncio
+import getpass
 import json
 import mimetypes
 import os
-import getpass
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from agent import _default_workdir
 from api_models import (
+    ActiveRunResponse,
+    CancelResponse,
     ChatRequest,
-    ChatResponse,
     CreateFolderRequest,
     CreateSessionRequest,
     FileContentResponse,
@@ -33,27 +47,31 @@ from api_models import (
     HealthResponse,
     MessagesResponse,
     ResetResponse,
+    RunResponse,
     SessionListResponse,
     SessionResponse,
     SessionSummary,
 )
 from mcp_tools import load_mcp_connections
-from message_summary import last_assistant_text, serialize_messages
+from message_summary import serialize_messages
 from openrouter_model import DEFAULT_MODEL
+from runs import RunConflictError
 from sessions import store
-from streaming import iter_agent_turn_events
+
+_SSE_HEARTBEAT_SECONDS = 15
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    await store.startup()
     yield
-    store.close()
+    await store.close()
 
 
 app = FastAPI(
     title="Deep Agent API",
     description="HTTP API for the bubblewrap-sandboxed deep agent GUI.",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -66,8 +84,7 @@ app.add_middleware(
 )
 
 
-def _serialize_messages(messages: list) -> list[dict[str, Any]]:
-    return serialize_messages(messages)
+# -- helpers -----------------------------------------------------------------
 
 
 def _session_summary(meta) -> SessionSummary:
@@ -78,22 +95,26 @@ def _session_summary(meta) -> SessionSummary:
         message_count=meta.message_count or 0,
         model=meta.model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
         updated_at=meta.updated_at,
+        active_run_id=store.runs.active_run_id(meta.id),
     )
 
 
-def _last_assistant_text(messages: list) -> str:
-    return last_assistant_text(messages)
-
-
-def _require_session(session_id: str):
-    session = store.get(session_id)
+async def _require_session(session_id: str):
+    session = await store.get(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
 
 
-def _session_response(session) -> SessionResponse:
-    messages = session.get_messages()
+async def _require_run(session_id: str, run_id: str):
+    run = await store._db.get_run(run_id)  # noqa: SLF001 -- thin API-layer access
+    if run is None or run.session_id != session_id:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
+
+
+async def _session_response(session) -> SessionResponse:
+    messages = await store.read_messages(session.id)
     return SessionResponse(
         id=session.id,
         sandbox_id=session.sandbox.id,
@@ -104,6 +125,7 @@ def _session_response(session) -> SessionResponse:
         mcp_servers=session.mcp_servers,
         mcp_tool_names=session.mcp_tool_names,
         subagent_names=session.subagent_names,
+        active_run_id=store.runs.active_run_id(session.id),
     )
 
 
@@ -122,7 +144,6 @@ _PREVIEWABLE_IMAGE_SUFFIXES = {
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".avif",
 }
 
-# Directory names skipped when listing workspace folders for the pwd picker.
 _SKIP_FOLDER_NAMES = frozenset({
     "__pycache__",
     "node_modules",
@@ -151,7 +172,6 @@ def _validate_folder_name(name: str) -> str:
 
 
 def _list_workspace_folders(workdir: Path) -> list[str]:
-    """Return workspace-relative folder paths, pruning hidden and cache trees."""
     root = workdir.resolve()
     folders = [""]
     stack: list[Path] = [root]
@@ -196,20 +216,24 @@ def _validate_pwd(session, pwd: str | None) -> str | None:
     return rel if rel != "." else ""
 
 
+# -- health / sessions --------------------------------------------------------
+
+
 @app.get("/health", response_model=HealthResponse)
-def health() -> HealthResponse:
+async def health() -> HealthResponse:
     return HealthResponse()
 
 
 @app.get("/api/sessions", response_model=SessionListResponse)
-def list_sessions() -> SessionListResponse:
-    return SessionListResponse(sessions=[_session_summary(m) for m in store.list_all()])
+async def list_sessions() -> SessionListResponse:
+    metas = await store.list_all()
+    return SessionListResponse(sessions=[_session_summary(m) for m in metas])
 
 
 @app.post("/api/sessions", response_model=SessionResponse, status_code=201)
-def create_session(body: CreateSessionRequest) -> SessionResponse:
+async def create_session(body: CreateSessionRequest) -> SessionResponse:
     try:
-        session = store.create(
+        session = await store.create(
             model=body.model,
             network=body.network,
             workdir=body.workdir,
@@ -217,91 +241,134 @@ def create_session(body: CreateSessionRequest) -> SessionResponse:
         )
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
-    return _session_response(session)
+    return await _session_response(session)
 
 
 @app.get("/api/sessions/{session_id}", response_model=SessionResponse)
-def get_session(session_id: str) -> SessionResponse:
-    return _session_response(_require_session(session_id))
+async def get_session(session_id: str) -> SessionResponse:
+    session = await _require_session(session_id)
+    return await _session_response(session)
 
 
 @app.delete("/api/sessions/{session_id}", status_code=204)
-def delete_session(session_id: str) -> None:
-    if not store.delete(session_id):
+async def delete_session(session_id: str) -> Response:
+    if not await store.delete(session_id):
         raise HTTPException(status_code=404, detail="Session not found")
+    return Response(status_code=204)
 
 
 @app.get("/api/sessions/{session_id}/messages", response_model=MessagesResponse)
-def get_messages(session_id: str) -> MessagesResponse:
-    _require_session(session_id)
-    messages = store.read_messages(session_id)
-    store.sync_chat_summary(session_id, messages)
-    return MessagesResponse(messages=_serialize_messages(messages))
+async def get_messages(session_id: str) -> MessagesResponse:
+    if await store.get_meta(session_id) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    messages = await store.read_messages(session_id)
+    await store.sync_chat_summary(session_id, messages)
+    return MessagesResponse(messages=serialize_messages(messages))
 
 
 @app.post("/api/sessions/{session_id}/reset", response_model=ResetResponse)
-def reset_history(session_id: str) -> ResetResponse:
-    _require_session(session_id)
-    store.reset_thread(session_id)
+async def reset_history(session_id: str) -> ResetResponse:
+    if await store.get_meta(session_id) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    await store.reset_thread(session_id)
     return ResetResponse()
 
 
-@app.post("/api/sessions/{session_id}/chat", response_model=ChatResponse)
-def chat(session_id: str, body: ChatRequest) -> ChatResponse:
-    session = _require_session(session_id)
+# -- chat runs -------------------------------------------------------------
+
+
+@app.post("/api/sessions/{session_id}/chat", response_model=RunResponse, status_code=202)
+async def chat(session_id: str, body: ChatRequest) -> RunResponse:
+    """Start one chat turn as a background run and return immediately.
+
+    The run keeps executing even if no client is watching. Attach to
+    ``GET .../runs/{run_id}/events`` to stream it.
+    """
+    session = await _require_session(session_id)
     pwd = _validate_pwd(session, body.pwd)
-    user_turn = [{"role": "user", "content": body.message}]
-    with session.lock:
-        session.touch()
-        final_messages = user_turn
-        for event in iter_agent_turn_events(
-            session.agent,
-            user_turn,
-            thread_id=session.id,
-            pwd=pwd,
-        ):
-            if event["type"] == "done":
-                final_messages = event["messages"]
-        session.touch()
-        store.sync_chat_summary(session_id, final_messages)
-        return ChatResponse(
-            reply=_last_assistant_text(final_messages),
-            messages=_serialize_messages(final_messages),
-        )
+    try:
+        record = await store.start_chat(session_id, message=body.message, pwd=pwd)
+    except RunConflictError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": "A run is already in flight", "active_run_id": e.active_run_id},
+        ) from e
+    return RunResponse(run_id=record.id, session_id=session_id, status=record.status)
 
 
-@app.post("/api/sessions/{session_id}/chat/stream")
-def chat_stream(session_id: str, body: ChatRequest) -> StreamingResponse:
-    session = _require_session(session_id)
-    pwd = _validate_pwd(session, body.pwd)
+@app.get("/api/sessions/{session_id}/runs/active", response_model=ActiveRunResponse)
+async def get_active_run(session_id: str) -> ActiveRunResponse:
+    if await store.get_meta(session_id) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return ActiveRunResponse(run_id=store.runs.active_run_id(session_id))
 
-    def event_generator():
-        user_turn = [{"role": "user", "content": body.message}]
-        with session.lock:
-            session.touch()
-            for event in iter_agent_turn_events(
-                session.agent,
-                user_turn,
-                thread_id=session.id,
-                pwd=pwd,
-                on_future=session.set_stream_future,
-            ):
-                if event["type"] == "done":
-                    session.touch()
-                    store.sync_chat_summary(session_id, event["messages"])
-                    payload = {
-                        "type": "done",
-                        "messages": _serialize_messages(event["messages"]),
-                        "reply": _last_assistant_text(event["messages"]),
-                        "usage": event.get("usage"),
-                    }
-                elif event["type"] == "cancelled":
-                    session.touch()
-                    store.sync_chat_summary(session_id)
-                    payload = {"type": "cancelled"}
-                else:
-                    payload = event
-                yield f"event: {payload['type']}\ndata: {json.dumps(payload)}\n\n"
+
+@app.get("/api/sessions/{session_id}/runs/{run_id}", response_model=RunResponse)
+async def get_run_status(session_id: str, run_id: str) -> RunResponse:
+    run = await _require_run(session_id, run_id)
+    return RunResponse(run_id=run.id, session_id=run.session_id, status=run.status)
+
+
+@app.post("/api/sessions/{session_id}/runs/{run_id}/cancel", response_model=CancelResponse)
+async def cancel_run(session_id: str, run_id: str) -> CancelResponse:
+    """Cancel an in-flight run. The executor rolls the checkpoint back to its
+    pre-turn state and appends a ``cancelled`` event to the run log."""
+    await _require_run(session_id, run_id)
+    return CancelResponse(cancelled=await store.runs.cancel(run_id))
+
+
+@app.get("/api/sessions/{session_id}/runs/{run_id}/events")
+async def stream_run_events(
+    session_id: str,
+    run_id: str,
+    request: Request,
+    after: int | None = Query(None, description="Replay events with seq greater than this"),
+    last_event_id: str | None = Header(None, alias="Last-Event-ID"),
+) -> StreamingResponse:
+    """Resumable SSE stream of a run's events.
+
+    Pure observer: opening or closing this stream never affects the run.
+    Each SSE frame carries ``id: <seq>``, so browser ``EventSource`` reconnects
+    resume automatically via ``Last-Event-ID``; fetch-based clients can pass
+    ``?after=<seq>`` instead. Ends after the terminal event
+    (``done`` | ``cancelled`` | ``error``).
+    """
+    await _require_run(session_id, run_id)
+
+    cursor = 0
+    if after is not None:
+        cursor = max(0, after)
+    elif last_event_id:
+        try:
+            cursor = max(0, int(last_event_id))
+        except ValueError:
+            cursor = 0
+
+    async def event_generator():
+        agen = store.runs.subscribe(run_id, cursor)
+        try:
+            while True:
+                next_event = asyncio.ensure_future(agen.__anext__())
+                # Heartbeat + disconnect detection while waiting for the next event.
+                while True:
+                    done, _ = await asyncio.wait({next_event}, timeout=_SSE_HEARTBEAT_SECONDS)
+                    if done:
+                        break
+                    if await request.is_disconnected():
+                        next_event.cancel()
+                        return
+                    yield ": ping\n\n"
+                try:
+                    event = next_event.result()
+                except StopAsyncIteration:
+                    return
+                yield (
+                    f"id: {event.get('seq', 0)}\n"
+                    f"event: {event['type']}\n"
+                    f"data: {json.dumps(event)}\n\n"
+                )
+        finally:
+            await agen.aclose()
 
     return StreamingResponse(
         event_generator(),
@@ -314,24 +381,23 @@ def chat_stream(session_id: str, body: ChatRequest) -> StreamingResponse:
     )
 
 
-@app.post("/api/sessions/{session_id}/chat/stop")
-def stop_chat_stream(session_id: str) -> dict[str, bool]:
-    """Cancel the in-flight streaming turn, if any, and roll back its state.
+@app.post("/api/sessions/{session_id}/chat/stop", response_model=CancelResponse)
+async def stop_active_run(session_id: str) -> CancelResponse:
+    """Convenience: cancel whatever run is active on this session."""
+    if await store.get_meta(session_id) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return CancelResponse(cancelled=await store.runs.cancel_session(session_id))
 
-    The stream generator (see ``chat_stream``) detects the cancellation,
-    reverts the checkpoint to its state as of the last completed agent
-    message, and emits a ``cancelled`` SSE event before closing.
-    """
-    session = _require_session(session_id)
-    return {"stopped": session.request_stop()}
+
+# -- workspace files --------------------------------------------------------
 
 
 @app.get("/api/sessions/{session_id}/files", response_model=FileListResponse)
-def list_files(
+async def list_files(
     session_id: str,
     path: str = Query("", description="Path relative to workspace root"),
 ) -> FileListResponse:
-    session = _require_session(session_id)
+    session = await _require_session(session_id)
     target = _resolve_workspace_path(session, path)
     if not target.exists():
         raise HTTPException(status_code=404, detail="Path not found")
@@ -355,11 +421,7 @@ def list_files(
                 except OSError:
                     size = 0
             scanned.append(
-                (
-                    is_dir,
-                    name.lower(),
-                    FileEntry(path=rel, name=name, is_dir=is_dir, size=size),
-                )
+                (is_dir, name.lower(), FileEntry(path=rel, name=name, is_dir=is_dir, size=size))
             )
     entries = [item for _, _, item in sorted(scanned, key=lambda row: (not row[0], row[1]))]
     rel_path = target.relative_to(workdir).as_posix()
@@ -367,11 +429,11 @@ def list_files(
 
 
 @app.get("/api/sessions/{session_id}/files/content", response_model=FileContentResponse)
-def read_file(
+async def read_file(
     session_id: str,
     path: str = Query(..., description="File path relative to workspace root"),
 ) -> FileContentResponse:
-    session = _require_session(session_id)
+    session = await _require_session(session_id)
     target = _resolve_workspace_path(session, path)
     if not target.exists():
         raise HTTPException(status_code=404, detail="File not found")
@@ -386,11 +448,11 @@ def read_file(
 
 
 @app.get("/api/sessions/{session_id}/files/raw")
-def read_file_raw(
+async def read_file_raw(
     session_id: str,
     path: str = Query(..., description="File path relative to workspace root"),
 ) -> Response:
-    session = _require_session(session_id)
+    session = await _require_session(session_id)
     target = _resolve_workspace_path(session, path)
     if not target.exists():
         raise HTTPException(status_code=404, detail="File not found")
@@ -410,15 +472,19 @@ def read_file_raw(
 
 
 @app.get("/api/sessions/{session_id}/folders", response_model=FolderListResponse)
-def list_folders(session_id: str) -> FolderListResponse:
-    session = _require_session(session_id)
+async def list_folders(session_id: str) -> FolderListResponse:
+    session = await _require_session(session_id)
     workdir = Path(session.sandbox._workdir).resolve()
     return FolderListResponse(folders=_list_workspace_folders(workdir))
 
 
-@app.post("/api/sessions/{session_id}/folders", response_model=FolderCreateResponse, status_code=201)
-def create_folder(session_id: str, body: CreateFolderRequest) -> FolderCreateResponse:
-    session = _require_session(session_id)
+@app.post(
+    "/api/sessions/{session_id}/folders",
+    response_model=FolderCreateResponse,
+    status_code=201,
+)
+async def create_folder(session_id: str, body: CreateFolderRequest) -> FolderCreateResponse:
+    session = await _require_session(session_id)
     name = _validate_folder_name(body.name)
     parent = body.parent.strip().lstrip("/")
     parent_path = _resolve_workspace_path(session, parent)
@@ -439,7 +505,7 @@ def create_folder(session_id: str, body: CreateFolderRequest) -> FolderCreateRes
 
 
 @app.get("/api/config")
-def get_config() -> dict[str, Any]:
+async def get_config() -> dict[str, Any]:
     mcp_connections = load_mcp_connections()
     return {
         "default_model": os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),

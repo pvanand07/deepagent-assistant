@@ -28,6 +28,7 @@ class SessionResponse(BaseModel):
     mcp_servers: list[str] = Field(default_factory=list)
     mcp_tool_names: list[str] = Field(default_factory=list)
     subagent_names: list[str] = Field(default_factory=list)
+    active_run_id: str | None = None
 
 
 class SessionSummary(BaseModel):
@@ -37,6 +38,7 @@ class SessionSummary(BaseModel):
     message_count: int
     model: str
     updated_at: float
+    active_run_id: str | None = None
 
 
 class SessionListResponse(BaseModel):
@@ -51,9 +53,23 @@ class ChatRequest(BaseModel):
     )
 
 
-class ChatResponse(BaseModel):
-    reply: str
-    messages: list[dict[str, Any]]
+class RunResponse(BaseModel):
+    """Returned by POST /chat (202): the turn now executes as a background run.
+
+    Stream it via GET /sessions/{session_id}/runs/{run_id}/events (SSE).
+    """
+
+    run_id: str
+    session_id: str
+    status: str
+
+
+class ActiveRunResponse(BaseModel):
+    run_id: str | None = None
+
+
+class CancelResponse(BaseModel):
+    cancelled: bool
 
 
 class ResetResponse(BaseModel):

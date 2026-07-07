@@ -1,15 +1,16 @@
-"""Token-level streaming helpers for deepagents.
+"""Async token-level streaming for deepagents.
 
-Uses LangGraph v2 stream chunks with ``stream_mode=["messages", "values"]`` so
-callers get live LLM tokens *and* the final message list for conversation
-history. See https://docs.langchain.com/oss/python/deepagents/streaming
+Pure event production: ``iter_agent_turn_events`` is an async generator over
+LangGraph v2 stream chunks. It knows nothing about HTTP, cancellation, or
+persistence -- the run executor (see ``runs.py``) owns those concerns.
+Cancellation support is provided as two helpers: ``capture_baseline_ids``
+(call before the turn) and ``rollback_uncommitted_turn`` (call after a
+cancelled/interrupted turn to restore the checkpoint).
 """
 
 from __future__ import annotations
 
-import concurrent.futures
-import sys
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator
 from typing import Any
 
 from langchain_core.messages import (
@@ -19,16 +20,6 @@ from langchain_core.messages import (
     ToolMessage,
     ToolMessageChunk,
 )
-
-from session_persistence import get_async_runner
-
-# ANSI styling (override via ``style=`` on ``stream_agent_turn`` for tests/TTY checks)
-DEFAULT_STYLE = {
-    "cyan": "\033[36m",
-    "gray": "\033[90m",
-    "bold": "\033[1m",
-    "reset": "\033[0m",
-}
 
 
 def _source_label(ns: tuple[str, ...]) -> tuple[bool, str]:
@@ -40,7 +31,6 @@ def _source_label(ns: tuple[str, ...]) -> tuple[bool, str]:
 
 
 def _token_text(token: Any) -> str:
-    """Extract printable text from a streamed message chunk."""
     text = getattr(token, "text", None)
     if text is not None:
         return str(text)
@@ -59,7 +49,6 @@ def _is_tool_token(token: Any) -> bool:
 
 
 def _normalize_usage(usage_metadata: Any) -> dict[str, int] | None:
-    """Normalize LangChain usage_metadata to a plain dict."""
     if not usage_metadata:
         return None
     if isinstance(usage_metadata, dict):
@@ -92,7 +81,6 @@ def _accumulate_usage(turn: dict[str, int], step: dict[str, int]) -> dict[str, i
 
 
 def _estimate_tokens(char_count: int) -> int:
-    """Rough output-token estimate while the model is still streaming."""
     return max(1, char_count // 4) if char_count else 0
 
 
@@ -117,29 +105,20 @@ def _usage_estimate_event(
     }
 
 
-def _iter_agent_stream(
-    agent: Any,
-    input_messages: list,
-    *,
-    config: dict[str, Any] | None = None,
-    on_future: Callable[[concurrent.futures.Future | None], None] | None = None,
-    **stream_kwargs: Any,
-) -> Iterator[Any]:
-    """Iterate LangGraph v2 stream chunks using ``astream`` (required for async MCP tools)."""
-
-    async def _chunks() -> AsyncIterator[Any]:
-        async for chunk in agent.astream(
-            {"messages": input_messages},
-            config=config,
-            **stream_kwargs,
-        ):
-            yield chunk
-
-    agen = _chunks()
-    yield from get_async_runner().iter_async_generator(agen, on_future=on_future)
+async def capture_baseline_ids(agent: Any, config: dict[str, Any]) -> set[str]:
+    """Message ids present in the checkpoint before a turn starts."""
+    try:
+        state = await agent.aget_state(config)
+    except Exception:
+        return set()
+    return {
+        m.id
+        for m in (state.values or {}).get("messages", [])
+        if getattr(m, "id", None)
+    }
 
 
-async def _rollback_uncommitted_turn(
+async def rollback_uncommitted_turn(
     agent: Any,
     config: dict[str, Any],
     baseline_ids: set[str],
@@ -149,9 +128,7 @@ async def _rollback_uncommitted_turn(
     Restores the thread to its state as of the last completed agent message:
     any human/AI/tool messages this turn wrote (including the triggering user
     message) are tombstoned via ``RemoveMessage`` so the next turn starts from
-    a clean, un-truncated history. See
-    https://docs.langchain.com/oss/python/langgraph/checkpointers (time travel
-    / ``update_state``) for the underlying mechanism.
+    a clean, un-truncated history.
     """
     state = await agent.aget_state(config)
     current = list((state.values or {}).get("messages") or [])
@@ -160,27 +137,18 @@ async def _rollback_uncommitted_turn(
         await agent.aupdate_state(config, {"messages": [RemoveMessage(id=m.id) for m in stray]})
 
 
-def iter_agent_turn_events(
+async def iter_agent_turn_events(
     agent: Any,
     input_messages: list,
     *,
-    thread_id: str | None = None,
+    thread_id: str,
     pwd: str | None = None,
     tool_preview_len: int = 500,
-    on_future: Callable[[concurrent.futures.Future | None], None] | None = None,
-) -> Iterator[dict[str, Any]]:
-    """Yield structured stream events for API/SSE consumers.
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield structured stream events for one agent turn.
 
-    When ``thread_id`` is set, ``input_messages`` should contain only the new
-    user turn; prior history is loaded from the LangGraph checkpointer.
-
-    ``on_future`` (optional) receives the in-flight ``concurrent.futures.Future``
-    driving the current stream step; a caller on another thread can call
-    ``future.cancel()`` on it to cooperatively stop the turn mid-flight. When
-    that happens, this generator rolls the checkpoint back to its state as of
-    the last completed agent message (undoing the triggering user message and
-    any partial output) and yields a single ``cancelled`` event instead of
-    ``done``.
+    ``input_messages`` should contain only the new user turn; prior history is
+    loaded from the LangGraph checkpointer via ``thread_id``.
 
     Event types:
         source_start  - agent/subagent began producing output
@@ -190,8 +158,7 @@ def iter_agent_turn_events(
         usage         - token usage update (per model call + turn cumulative)
         usage_estimate- live output-token estimate while model streams
         tool_running  - sandbox tool execution started (after model finishes)
-        cancelled     - turn was stopped mid-flight and rolled back
-        done          - final message list (serialized via caller)
+        done          - final message list (raw LangChain messages; caller serializes)
     """
     stream_kwargs: dict[str, Any] = {
         "stream_mode": ["messages", "values"],
@@ -200,50 +167,14 @@ def iter_agent_turn_events(
     }
     if pwd:
         stream_kwargs["context"] = {"pwd": pwd}
-    config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+    config = {"configurable": {"thread_id": thread_id}}
 
-    baseline_ids: set[str] = set()
-    if config is not None:
-        try:
-            baseline_state = get_async_runner().run(agent.aget_state(config))
-            baseline_ids = {
-                m.id
-                for m in (baseline_state.values or {}).get("messages", [])
-                if getattr(m, "id", None)
-            }
-        except Exception:
-            baseline_ids = set()
-
-    try:
-        yield from _iter_agent_turn_events_inner(
-            agent,
-            input_messages,
-            config=config,
-            on_future=on_future,
-            tool_preview_len=tool_preview_len,
-            stream_kwargs=stream_kwargs,
-        )
-    except concurrent.futures.CancelledError:
-        if config is not None:
-            get_async_runner().run(_rollback_uncommitted_turn(agent, config, baseline_ids))
-        yield {"type": "cancelled"}
-
-
-def _iter_agent_turn_events_inner(
-    agent: Any,
-    input_messages: list,
-    *,
-    config: dict[str, Any] | None,
-    on_future: Callable[[concurrent.futures.Future | None], None] | None,
-    tool_preview_len: int,
-    stream_kwargs: dict[str, Any],
-) -> Iterator[dict[str, Any]]:
-    final_messages = list(input_messages)
+    final_messages: list = list(input_messages)
     current_source = ""
     in_tool_call = False
     current_tool_name: str | None = None
     step_stream_chars = 0
-    turn_usage: dict[str, int] = {
+    turn_usage = {
         "input_tokens": 0,
         "output_tokens": 0,
         "total_tokens": 0,
@@ -251,28 +182,21 @@ def _iter_agent_turn_events_inner(
         "model_calls": 0,
     }
 
-    def _finish_tool_call(source: str) -> Iterator[dict[str, Any]]:
+    def _finish_tool_call(source: str) -> list[dict[str, Any]]:
         nonlocal in_tool_call, current_tool_name, step_stream_chars
         if not in_tool_call:
-            return
-        yield {"type": "tool_call_end"}
+            return []
+        events: list[dict[str, Any]] = [{"type": "tool_call_end"}]
         if current_tool_name:
-            yield {
-                "type": "tool_running",
-                "source": source,
-                "name": current_tool_name,
-            }
+            events.append(
+                {"type": "tool_running", "source": source, "name": current_tool_name}
+            )
         in_tool_call = False
         current_tool_name = None
         step_stream_chars = 0
+        return events
 
-    for chunk in _iter_agent_stream(
-        agent,
-        input_messages,
-        config=config,
-        on_future=on_future,
-        **stream_kwargs,
-    ):
+    async for chunk in agent.astream({"messages": input_messages}, config=config, **stream_kwargs):
         chunk_type = chunk["type"]
         ns = chunk.get("ns", ())
 
@@ -292,12 +216,14 @@ def _iter_agent_turn_events_inner(
             _accumulate_usage(turn_usage, step_usage)
             yield {"type": "usage", "turn": dict(turn_usage), "step": step_usage}
             if in_tool_call:
-                yield from _finish_tool_call(source)
+                for event in _finish_tool_call(source):
+                    yield event
             else:
                 step_stream_chars = 0
 
         if _is_tool_token(token):
-            yield from _finish_tool_call(source)
+            for event in _finish_tool_call(source):
+                yield event
             content = _token_text(token) or str(token.content)
             if len(content) > tool_preview_len:
                 content = content[:tool_preview_len] + " …[truncated]"
@@ -312,7 +238,8 @@ def _iter_agent_turn_events_inner(
         if tool_call_chunks:
             for tc in tool_call_chunks:
                 if tc.get("name"):
-                    yield from _finish_tool_call(source)
+                    for event in _finish_tool_call(source):
+                        yield event
                     in_tool_call = True
                     current_tool_name = tc["name"]
                     step_stream_chars = 0
@@ -337,7 +264,8 @@ def _iter_agent_turn_events_inner(
             text = _token_text(token)
             if not text:
                 continue
-            yield from _finish_tool_call(source)
+            for event in _finish_tool_call(source):
+                yield event
             step_stream_chars += len(text)
             yield _usage_estimate_event(
                 turn_usage=turn_usage,
@@ -358,123 +286,8 @@ def _iter_agent_turn_events_inner(
                 "is_subagent": is_subagent,
             }
 
-    yield from _finish_tool_call(current_source or "main")
+    for event in _finish_tool_call(current_source or "main"):
+        yield event
 
     done_usage = dict(turn_usage) if turn_usage["model_calls"] else None
     yield {"type": "done", "messages": final_messages, "usage": done_usage}
-
-
-def stream_agent_turn(
-    agent: Any,
-    input_messages: list,
-    *,
-    thread_id: str | None = None,
-    write: Callable[[str], None] | None = None,
-    style: dict[str, str] | None = None,
-    tool_preview_len: int = 500,
-) -> list:
-    """Run one agent turn with token-level streaming.
-
-    When ``thread_id`` is set, pass only the new user message(s); history is
-    restored from the LangGraph checkpointer. Otherwise ``input_messages`` is
-    treated as the full in-memory history for this turn.
-    """
-    colors = DEFAULT_STYLE if style is None else style
-    cyan = colors.get("cyan", "")
-    gray = colors.get("gray", "")
-    bold = colors.get("bold", "")
-    reset = colors.get("reset", "")
-
-    sink = write or (lambda text: (sys.stdout.write(text), sys.stdout.flush()))
-
-    final_messages = list(input_messages)
-    current_source = ""
-    mid_line = False
-    in_tool_call = False
-    config = {"configurable": {"thread_id": thread_id}} if thread_id else None
-
-    def writeln(text: str = "") -> None:
-        nonlocal mid_line
-        sink(text + "\n")
-        mid_line = False
-
-    def write_inline(text: str) -> None:
-        nonlocal mid_line
-        sink(text)
-        mid_line = bool(text) and not text.endswith("\n")
-
-    for chunk in _iter_agent_stream(
-        agent,
-        input_messages,
-        config=config,
-        stream_mode=["messages", "values"],
-        subgraphs=True,
-        version="v2",
-    ):
-        chunk_type = chunk["type"]
-        ns = chunk.get("ns", ())
-
-        if chunk_type == "values":
-            final_messages = chunk["data"]["messages"]
-            continue
-
-        if chunk_type != "messages":
-            continue
-
-        token, _metadata = chunk["data"]
-        is_subagent, source = _source_label(ns)
-        tool_call_chunks = getattr(token, "tool_call_chunks", None) or []
-
-        # Tool results (check before tool_call_chunks — ToolMessage has no such attr)
-        if _is_tool_token(token):
-            if in_tool_call:
-                write_inline(")")
-                in_tool_call = False
-            if mid_line:
-                writeln()
-            content = _token_text(token) or str(token.content)
-            if len(content) > tool_preview_len:
-                content = content[:tool_preview_len] + " …[truncated]"
-            tool_name = getattr(token, "name", "tool")
-            writeln(f"  {gray}← [{source}] {tool_name}: {content}{reset}")
-            continue
-
-        # Streaming tool invocations (name + args arrive in chunks)
-        if tool_call_chunks:
-            for tc in tool_call_chunks:
-                if tc.get("name"):
-                    if mid_line:
-                        writeln()
-                    if in_tool_call:
-                        write_inline(")")
-                    in_tool_call = True
-                    write_inline(f"  {cyan}→ [{source}] calling {tc['name']}(")
-                if tc.get("args"):
-                    write_inline(tc["args"])
-            continue
-
-        # AI tokens (skip tool-call-only chunks and metadata-only chunks)
-        if _is_ai_token(token) and not tool_call_chunks:
-            text = _token_text(token)
-            if not text:
-                continue
-            if in_tool_call:
-                write_inline(")")
-                in_tool_call = False
-            if source != current_source:
-                if mid_line:
-                    writeln()
-                if is_subagent:
-                    writeln(f"\n{gray}--- [{source}] ---{reset}")
-                else:
-                    write_inline(f"\n{bold}Agent:{reset} ")
-                current_source = source
-            write_inline(text)
-
-    if in_tool_call:
-        write_inline(")")
-    if mid_line:
-        writeln()
-    writeln()
-
-    return final_messages
