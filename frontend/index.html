@@ -2,7 +2,7 @@
 <html lang="en" class="h-full antialiased">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Deep Agent</title>
 
   <script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.prod.js"></script>
@@ -132,13 +132,8 @@
 
     .liquid-glass {
       pointer-events: none;
-      background: rgba(255, 255, 255, 0.18);
-      backdrop-filter: blur(40px) saturate(2);
-      -webkit-backdrop-filter: blur(40px) saturate(2);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.45);
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.55),
-        0 12px 32px -18px rgba(15, 23, 42, 0.14);
+      background: var(--muted);
+      border-bottom: 1px solid var(--border);
     }
 
     .liquid-glass > * {
@@ -147,27 +142,32 @@
       pointer-events: auto;
     }
 
-    .liquid-glass::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      z-index: 0;
-      pointer-events: none;
-      background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.14) 0%,
-        transparent 70%
-      );
+    /* Prevent horizontal scroll and respect notched devices. */
+    html, body { overflow-x: hidden; }
+    @supports (height: 100dvh) {
+      .app-shell { height: 100dvh; }
     }
   </style>
 </head>
 <body class="h-full bg-background text-foreground font-sans">
 
 <div id="app" v-cloak class="h-full">
-  <main class="flex h-screen bg-background">
+  <main class="app-shell relative flex h-screen overflow-hidden bg-background">
+
+    <!-- Mobile sidebar backdrop -->
+    <div v-if="sidebarOpen" @click="sidebarOpen = false"
+      class="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity lg:hidden"
+      aria-hidden="true"></div>
+
+    <!-- Mobile preview backdrop -->
+    <div v-if="previewBackdropVisible" @click="previewCollapsed = true"
+      class="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity lg:hidden"
+      aria-hidden="true"></div>
 
     <!-- ======================= Sidebar ======================= -->
-    <aside class="relative flex h-full w-64 shrink-0 flex-col overflow-hidden border-r border-border bg-gradient-to-b from-muted/70 via-muted/45 to-muted/25">
+    <aside class="fixed inset-y-0 left-0 z-50 flex h-full w-[min(85vw,16rem)] shrink-0 -translate-x-full flex-col overflow-hidden border-r border-border bg-muted transition-transform duration-200 ease-out lg:relative lg:z-auto lg:w-64 lg:translate-x-0"
+      :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+      aria-label="Chat sidebar">
 
       <div class="liquid-glass absolute inset-x-0 top-0 z-20 flex h-12 items-center gap-2 px-4">
         <span class="grid size-6 shrink-0 place-items-center rounded-md bg-foreground text-background">
@@ -182,6 +182,10 @@
           <button type="button" @click="loadSessionList" :disabled="sessionListLoading" :class="iconBtn"
             title="Refresh chat list" aria-label="Refresh chat list">
             <p-icon name="refresh" :size="13" :class="sessionListLoading ? 'animate-spin' : ''" />
+          </button>
+          <button type="button" @click="sidebarOpen = false" :class="iconBtn"
+            class="lg:hidden" title="Close sidebar" aria-label="Close sidebar">
+            <p-icon name="x" :size="13" />
           </button>
         </div>
       </div>
@@ -285,14 +289,20 @@
     </aside>
 
     <!-- ======================= Chat panel ======================= -->
-    <div class="flex h-full min-w-0 flex-1 flex-col min-h-0">
-      <div class="relative mx-auto flex min-h-0 w-full flex-1 flex-col" style="max-width: 800px;">
+    <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+      <div class="relative mx-auto flex min-h-0 w-full flex-1 flex-col lg:max-w-[800px]">
 
         <!-- Header -->
-        <div class="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
-          <div class="min-w-0">
-            <p class="truncate text-sm font-semibold text-foreground">{{ chatTitle }}</p>
-            <p class="truncate text-xs text-muted-foreground">{{ chatSubtitle }}</p>
+        <div class="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3 sm:px-4">
+          <div class="flex min-w-0 items-center gap-2">
+            <button type="button" @click="sidebarOpen = true" :class="iconBtn"
+              class="lg:hidden" title="Open sidebar" aria-label="Open sidebar">
+              <p-icon name="sidebar" :size="16" />
+            </button>
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-foreground">{{ chatTitle }}</p>
+              <p class="truncate text-xs text-muted-foreground">{{ chatSubtitle }}</p>
+            </div>
           </div>
 
           <!-- Session info popover -->
@@ -302,7 +312,7 @@
               <p-icon name="info" :size="16" />
             </button>
             <div v-if="sessionInfoOpen && session"
-              class="absolute right-0 top-full z-40 mt-2 w-72 rounded-xl border border-border bg-background p-3 shadow-lg">
+              class="absolute right-0 top-full z-40 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-border bg-background p-3 shadow-lg">
               <p class="mb-2 text-xs font-semibold text-foreground">Session details</p>
               <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
                 <template v-for="row in sessionInfoRows" :key="row.label">
@@ -315,8 +325,8 @@
         </div>
 
         <!-- Messages -->
-        <div ref="scrollEl" class="min-h-0 flex-1 overflow-y-auto">
-          <div class="flex min-h-full flex-col justify-end gap-2.5 px-4 py-3 pb-48">
+        <div ref="scrollEl" class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div class="flex min-h-full flex-col justify-end gap-2.5 px-3 py-3 pb-36 sm:px-4 sm:pb-40">
 
             <!-- Empty state -->
             <div v-if="!timeline.length && !streaming" class="flex flex-col items-center gap-2 py-16 text-center">
@@ -332,7 +342,7 @@
             <template v-for="item in timeline" :key="item.id">
               <!-- user -->
               <div v-if="item.kind === 'user'"
-                class="w-fit max-w-[85%] self-end rounded-2xl rounded-br-md bg-muted px-3.5 py-2 text-sm leading-6 text-black">
+                class="w-fit max-w-[92%] self-end rounded-2xl rounded-br-md bg-muted px-3.5 py-2 text-sm leading-6 text-black sm:max-w-[85%]">
                 <p class="whitespace-pre-wrap break-words">{{ item.text }}</p>
               </div>
 
@@ -378,7 +388,7 @@
 
         <!-- Error banner -->
         <div v-if="errorMessage"
-          class="absolute inset-x-4 bottom-40 z-30 flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive-soft px-3 py-2 text-sm text-destructive shadow-sm">
+          class="absolute inset-x-3 bottom-32 z-30 flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive-soft px-3 py-2 text-sm text-destructive shadow-sm sm:inset-x-4 sm:bottom-36">
           <p-icon name="warning" :size="16" class="mt-0.5 shrink-0" />
           <p class="min-w-0 flex-1">{{ errorMessage }}</p>
           <button type="button" @click="errorMessage = ''"
@@ -390,48 +400,45 @@
 
         <!-- Composer -->
         <form @submit.prevent="submit"
-          class="pointer-events-auto absolute inset-x-0 bottom-0 z-40 bg-linear-to-t from-background via-background/95 to-transparent px-4 pb-4 pt-12">
-          <div class="rounded-xl border border-border bg-background p-3 shadow-sm transition-colors focus-within:border-ring/50">
-            <textarea ref="inputEl" v-model="draft" rows="1" :disabled="streaming || !session"
-              placeholder="What do you want to build?"
-              @keydown.enter.exact.prevent="submit"
-              @input="autoGrow"
-              class="max-h-40 min-h-16 w-full resize-none border-0 bg-transparent px-1 py-0 text-base text-black outline-none placeholder:text-muted-foreground disabled:opacity-60"
-              style="outline: none;"></textarea>
+          class="pointer-events-auto absolute inset-x-0 bottom-0 z-40 bg-linear-to-t from-background via-background/95 to-transparent px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-8 sm:px-4 sm:pb-4 sm:pt-10">
+          <div class="rounded-2xl border border-border bg-background shadow-sm transition-[border-color,box-shadow] focus-within:border-ring/40 focus-within:shadow-md">
+            <!-- Input row: textarea + send -->
+            <div class="flex items-end gap-2 px-3 pt-3 pb-1">
+              <textarea ref="inputEl" v-model="draft" rows="1" :disabled="streaming || !session"
+                placeholder="What do you want to build?"
+                @keydown.enter.exact="onComposerEnter"
+                @input="autoGrow"
+                class="max-h-36 min-h-6 flex-1 resize-none border-0 bg-transparent py-0 text-base text-black outline-none placeholder:text-muted-foreground disabled:opacity-60"
+                style="outline: none;"></textarea>
 
-            <div class="flex items-center justify-between gap-2 pt-2">
-              <div class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                <!-- model chip -->
-                <span class="inline-flex h-8 min-w-0 shrink items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground max-w-40"
-                  :title="'Model: ' + modelLabel">
-                  <p-icon name="cpu" :size="14" class="shrink-0 text-muted-foreground/70" />
-                  <span class="min-w-0 truncate">{{ modelLabel }}</span>
-                </span>
+              <!-- stop -->
+              <button v-if="streaming" type="button" @click="stopStream"
+                class="mb-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:border-destructive/40 hover:bg-destructive-soft hover:text-destructive"
+                aria-label="Stop generating" title="Stop generating">
+                <p-icon name="stop" :size="11" />
+              </button>
+              <!-- send -->
+              <button v-else type="submit" :disabled="!canSend"
+                class="mb-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:bg-foreground/90 disabled:opacity-35"
+                aria-label="Send message" title="Send message">
+                <p-icon name="arrow-up" :size="16" />
+              </button>
+            </div>
 
-                <span class="h-4 w-px shrink-0 bg-border" aria-hidden="true"></span>
+            <!-- Meta toolbar -->
+            <div class="flex items-center gap-1.5 overflow-hidden px-3 pb-2.5 pt-0">
+              <span class="inline-flex h-8 min-w-0 max-w-28 shrink items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs text-muted-foreground sm:max-w-40"
+                :title="'Model: ' + modelLabel">
+                <p-icon name="cpu" :size="14" class="shrink-0 text-muted-foreground/70" />
+                <span class="min-w-0 truncate">{{ modelLabel }}</span>
+              </span>
 
-                <!-- working directory picker -->
-                <pwd-picker ref="pwdPickerEl" :streaming="streaming" :folders="workspaceFolders"
-                  :selected="selectedPwd" :close-signal="pwdCloseSignal" />
-              </div>
+              <pwd-picker ref="pwdPickerEl" :streaming="streaming" :folders="workspaceFolders"
+                :selected="selectedPwd" :close-signal="pwdCloseSignal" />
 
-              <div class="flex shrink-0 items-center gap-2">
-                <p v-if="!streaming" class="hidden text-[11px] text-muted-foreground/50 sm:block">
-                  Enter to send · Shift+Enter for a new line
-                </p>
-                <!-- stop -->
-                <button v-if="streaming" type="button" @click="stopStream"
-                  class="inline-flex size-8 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:border-destructive/40 hover:bg-destructive-soft hover:text-destructive"
-                  aria-label="Stop generating" title="Stop generating">
-                  <p-icon name="stop" :size="11" />
-                </button>
-                <!-- send -->
-                <button v-else type="submit" :disabled="!canSend"
-                  class="inline-flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:bg-foreground/90 disabled:opacity-35"
-                  aria-label="Send message" title="Send message">
-                  <p-icon name="arrow-up" :size="16" />
-                </button>
-              </div>
+              <p v-if="!streaming" class="ml-auto hidden truncate text-[11px] text-muted-foreground/50 sm:block">
+                Enter to send · Shift+Enter for a new line
+              </p>
             </div>
           </div>
         </form>
@@ -440,7 +447,8 @@
     </div>
 
     <!-- ======================= Workspace preview ======================= -->
-    <aside class="flex h-full shrink-0 flex-col overflow-hidden border-l border-border bg-background transition-all duration-200"
+    <aside class="fixed inset-y-0 right-0 z-50 flex h-full shrink-0 flex-col overflow-hidden border-l border-border bg-background shadow-2xl transition-all duration-200 lg:relative lg:z-auto lg:shadow-none"
+      :class="previewCollapsed ? 'hidden lg:flex' : 'flex'"
       :style="{ width: previewWidth }" aria-label="Workspace preview">
 
       <div class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-2"
@@ -835,19 +843,21 @@ const PwdPicker = {
     },
     positionMenu() {
       const r = this.$el.getBoundingClientRect();
+      const menuWidth = Math.min(Math.max(r.width, 220), window.innerWidth - 16);
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - menuWidth - 8));
       this.menuStyle = {
         position: "fixed",
-        left: `${r.left}px`,
+        left: `${left}px`,
         bottom: `${window.innerHeight - r.top + 8}px`,
-        width: `${Math.max(r.width, 220)}px`,
+        width: `${menuWidth}px`,
         zIndex: 200,
       };
     },
   },
   template: `
-    <div class="relative shrink-0 min-w-[8.5rem] max-w-52">
+    <div class="relative min-w-0 max-w-36 shrink sm:min-w-[8.5rem] sm:max-w-52">
       <button type="button" data-pwd-picker-trigger :disabled="streaming"
-        class="inline-flex h-8 w-full items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        class="inline-flex h-8 w-full items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         aria-haspopup="listbox" :aria-expanded="String(menuOpen)" title="Working directory for this message">
         <p-icon name="folder" :size="14" class="shrink-0 text-muted-foreground/70" />
         <span class="min-w-0 truncate">{{ label }}</span>
@@ -954,6 +964,8 @@ createApp({
     /* ---------- preview ---------- */
     const previewCollapsed = ref(true);
     const previewExpanded = ref(false);
+    const sidebarOpen = ref(false);
+    const isMobileLayout = ref(false);
     const preview = reactive({
       mode: "empty", message: "Select a workspace file to preview it here.",
       title: "Preview", subtitle: "No file selected",
@@ -996,8 +1008,13 @@ createApp({
       ];
     });
     const canSend = computed(() => !!draft.value.trim() && !streaming.value && !!sessionId.value);
-    const previewWidth = computed(() =>
-      previewCollapsed.value ? "3rem" : previewExpanded.value ? "min(52vw, 760px)" : "min(38vw, 520px)"
+    const previewWidth = computed(() => {
+      if (previewCollapsed.value) return "3rem";
+      if (isMobileLayout.value) return "min(100vw, 28rem)";
+      return previewExpanded.value ? "min(52vw, 760px)" : "min(38vw, 520px)";
+    });
+    const previewBackdropVisible = computed(() =>
+      isMobileLayout.value && !previewCollapsed.value
     );
     const usageText = computed(() => {
       const turn = lastTurnUsage.value, est = usageEstimate.value;
@@ -1057,7 +1074,13 @@ createApp({
       const el = inputEl.value;
       if (!el) return;
       el.style.height = "auto";
-      el.style.height = Math.min(el.scrollHeight, 160) + "px";
+      el.style.height = Math.min(el.scrollHeight, 144) + "px";
+    }
+
+    function onComposerEnter(e) {
+      if (isMobileLayout.value) return;
+      e.preventDefault();
+      submit();
     }
 
     async function api(path, options = {}) {
@@ -1337,6 +1360,7 @@ createApp({
 
     async function previewWorkspaceFile(path) {
       if (!sessionId.value) return;
+      sidebarOpen.value = false;
       previewCollapsed.value = false;
       clearPreviewBlob();
       Object.assign(preview, {
@@ -1824,6 +1848,7 @@ createApp({
     async function switchSession(id) {
       if (!id || id === sessionId.value) return;
       sessionInfoOpen.value = false;
+      sidebarOpen.value = false;
       try {
         await loadSessionState(id);
       } catch (e) {
@@ -1913,6 +1938,7 @@ createApp({
 
     async function newChat() {
       sessionInfoOpen.value = false;
+      sidebarOpen.value = false;
       try {
         await createSession();
         chatTitleOverride.value = "New chat";
@@ -1955,10 +1981,19 @@ createApp({
       if (e.key === "Escape") {
         closePwdMenu();
         sessionInfoOpen.value = false;
+        sidebarOpen.value = false;
+        if (isMobileLayout.value) previewCollapsed.value = true;
       }
     }
 
+    function updateLayoutMode() {
+      isMobileLayout.value = window.matchMedia("(max-width: 1023px)").matches;
+      if (!isMobileLayout.value) sidebarOpen.value = false;
+    }
+
     onMounted(() => {
+      updateLayoutMode();
+      window.addEventListener("resize", updateLayoutMode);
       document.addEventListener("click", onPwdPickerCapture, true);
       document.addEventListener("click", onDocClick);
       document.addEventListener("keydown", onKeydown);
@@ -1969,6 +2004,7 @@ createApp({
     });
 
     onBeforeUnmount(() => {
+      window.removeEventListener("resize", updateLayoutMode);
       document.removeEventListener("click", onPwdPickerCapture, true);
       document.removeEventListener("click", onDocClick);
       document.removeEventListener("keydown", onKeydown);
@@ -1987,7 +2023,7 @@ createApp({
       loadSessionList, switchSession, deleteSession, isRunning,
       // chat
       timeline, draft, streaming, thinking, errorMessage, canSend,
-      submit, stopStream, newChat, renderMarkdown, autoGrow,
+      submit, stopStream, newChat, renderMarkdown, autoGrow, onComposerEnter,
       // usage / running
       usageText, runningTool, runningSeconds,
       // files
@@ -1997,7 +2033,8 @@ createApp({
       // pwd
       workspaceFolders, selectedPwd, pwdCloseSignal, pwdPickerEl, selectPwd, onSessionInfoClick,
       // preview
-      preview, previewCollapsed, previewExpanded, previewWidth,
+      preview, previewCollapsed, previewExpanded, previewWidth, previewBackdropVisible,
+      sidebarOpen,
       previewWorkspaceFile, downloadWorkspaceFile, openPreviewInTab,
       // refs
       scrollEl, inputEl,
