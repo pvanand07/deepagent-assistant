@@ -312,12 +312,17 @@ class SandboxManager:
         guest_log = f"{SANDBOX_ROOT}/{LOG_DIR_REL}/{log_id}.log"
         try:
             host_log.parent.mkdir(parents=True, exist_ok=True)
+            # Truncate/create so streaming flushes have a stable target.
+            host_log.write_bytes(b"")
             if use_stub_backend():
                 output, exit_code, timed_out = await self._stub_exec(command, timeout)
+                host_log.write_text(output, encoding="utf-8", errors="replace")
             else:
-                output, exit_code, timed_out = await self._vm_exec(command, timeout)
-
-            host_log.write_text(output, encoding="utf-8", errors="replace")
+                output, exit_code, timed_out = await self._vm_exec(
+                    command, timeout, host_log=host_log
+                )
+                # Rewrite decoded text so the on-disk log matches the returned string.
+                host_log.write_text(output, encoding="utf-8", errors="replace")
             self._prune_logs()
 
             preview, was_trimmed = _last_lines(output, LOG_PREVIEW_LINES)
@@ -331,7 +336,10 @@ class SandboxManager:
                 response=ExecuteResponse(
                     output=preview + "".join(suffix_parts),
                     exit_code=exit_code,
-                    truncated=was_trimmed or timed_out,
+                    # Size trim only — timeout is signaled via the suffix above.
+                    # Marking timeout as truncated makes deepagents claim
+                    # "truncated due to size limits", which is misleading.
+                    truncated=was_trimmed,
                 ),
                 log_path=guest_log,
             )
@@ -346,28 +354,97 @@ class SandboxManager:
         return ("[stub sandbox] no command executed\n", 0, False)
 
     async def _vm_exec(
-        self, command: str, timeout: int | None
+        self,
+        command: str,
+        timeout: int | None,
+        *,
+        host_log: Path,
     ) -> tuple[str, int | None, bool]:
+        """Stream guest output; keep partial logs if the app-owned deadline fires.
+
+        Uses ``shell_stream`` with no SDK timeout so bytes already received are
+        retained when we kill the process. Chunks are flushed to ``host_log`` as
+        they arrive so a crash mid-command still leaves a useful file.
+        """
         sb = await self.ensure_sandbox()
         effective = exec_timeout() if timeout is None else timeout
         no_timeout = effective == 0
+        handle = await sb.shell_stream(command, cwd=SANDBOX_ROOT)
+        chunks: list[bytes] = []
+        exit_code: int | None = None
+        timed_out = False
+        loop = asyncio.get_running_loop()
+        deadline = None if no_timeout else (loop.time() + float(effective))
+
+        def _on_bytes(data: bytes) -> None:
+            if not data:
+                return
+            chunks.append(data)
+            try:
+                with host_log.open("ab") as fh:
+                    fh.write(data)
+            except OSError:
+                pass
+
+        def _handle_event(event: Any) -> bool:
+            """Apply one stream event. Return True when the process has exited."""
+            nonlocal exit_code
+            kind = _event_kind(event)
+            if kind == "stdout" or kind == "stderr":
+                _on_bytes(getattr(event, "data", None) or b"")
+                return False
+            if kind == "exited":
+                code = getattr(event, "code", None)
+                exit_code = int(code) if code is not None else None
+                return True
+            return False
+
+        async def _recv_until(
+            *, stop_at: float | None, stop_on_exit: bool
+        ) -> bool:
+            """Receive events until exit, stream end, or ``stop_at`` (loop time).
+
+            Returns True if the process exited cleanly (ExitedEvent or EOF after
+            start). Returns False if the wall-clock deadline was hit first.
+            """
+            while True:
+                if stop_at is not None:
+                    remaining = stop_at - loop.time()
+                    if remaining <= 0:
+                        return False
+                    try:
+                        event = await asyncio.wait_for(handle.recv(), timeout=remaining)
+                    except asyncio.TimeoutError:
+                        return False
+                else:
+                    event = await handle.recv()
+
+                if event is None:
+                    return True
+                if _handle_event(event) and stop_on_exit:
+                    return True
+
         try:
-            from microsandbox import ExecTimeoutError
-
-            kwargs: dict[str, Any] = {"cwd": SANDBOX_ROOT}
-            if not no_timeout:
-                kwargs["timeout"] = float(effective)
-            output = await sb.shell(command, **kwargs)
-            text = _combine_output(output)
-            code = getattr(output, "exit_code", None)
-            return text, code, False
-        except Exception as exc:
-            from microsandbox import ExecTimeoutError
-
-            if isinstance(exc, ExecTimeoutError) or type(exc).__name__ == "ExecTimeoutError":
-                partial = str(exc)
-                return partial, None, True
+            finished = await _recv_until(stop_at=deadline, stop_on_exit=True)
+            if not finished:
+                timed_out = True
+                try:
+                    await handle.kill()
+                except Exception:
+                    pass
+                # Brief grace drain for bytes already in flight after kill.
+                await _recv_until(stop_at=loop.time() + 0.5, stop_on_exit=True)
+        except Exception:
+            try:
+                await handle.kill()
+            except Exception:
+                pass
             raise
+
+        text = b"".join(chunks).decode("utf-8", errors="replace")
+        if timed_out and not text:
+            text = f"exec timed out after {effective}s\n"
+        return text, exit_code, timed_out
 
     def _prune_logs(self) -> None:
         log_dir = self._workdir / LOG_DIR_REL
@@ -400,12 +477,21 @@ class SandboxManager:
                 break
 
 
-def _combine_output(output: Any) -> str:
-    stdout = getattr(output, "stdout_text", None) or ""
-    stderr = getattr(output, "stderr_text", None) or ""
-    if stdout and stderr:
-        return stdout + ("\n" if not stdout.endswith("\n") else "") + stderr
-    return stdout or stderr or ""
+def _event_kind(event: Any) -> str:
+    """Normalize microsandbox stream events to stdout|stderr|exited|started|other."""
+    et = getattr(event, "event_type", None)
+    if isinstance(et, str) and et:
+        return et.lower()
+    name = type(event).__name__.lower()
+    if name.startswith("stdout"):
+        return "stdout"
+    if name.startswith("stderr"):
+        return "stderr"
+    if name.startswith("exited"):
+        return "exited"
+    if name.startswith("started"):
+        return "started"
+    return name or "other"
 
 
 def _last_lines(text: str, n: int) -> tuple[str, bool]:
