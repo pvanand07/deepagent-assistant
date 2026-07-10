@@ -1,0 +1,28 @@
+# Guest image for the shared Deep Agent microsandbox.
+# Dev:
+#   docker build -f Dockerfile.sandbox -t deepagent-workspace:dev .
+# Then set (or rely on default):
+#   DEEPAGENT_SANDBOX_IMAGE=deepagent-workspace:dev
+#
+# Release builds should push a pinned tag/digest to a registry and set
+# DEEPAGENT_SANDBOX_IMAGE accordingly.
+
+FROM python:3.12-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        ca-certificates \
+        curl \
+        git \
+        ripgrep \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+ENV HOME=/workspace \
+    TMPDIR=/tmp \
+    LANG=C.UTF-8 \
+    PYTHONDONTWRITEBYTECODE=1
+
+CMD ["bash"]

@@ -1,15 +1,11 @@
-"""Assembles the deep agent: OpenRouter model + bubblewrap-sandboxed backend.
+"""Assembles the deep agent: OpenRouter model + microsandbox backend.
 
 The agent gets `ls`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`,
-and `execute` tools for free from `deepagents.FilesystemMiddleware`, all
-backed by `BubblewrapSandbox` -- so every shell command and file operation
-the agent runs happens inside an isolated bwrap namespace jail, not on your
-host.
+and `execute` tools from `deepagents.FilesystemMiddleware`, backed by a
+shared microsandbox microVM (see ``SandboxManager``).
 
-Note: sandbox cleanup is the caller's responsibility (the session store owns
-sandbox lifecycle, including idle eviction and shutdown) -- there is no
-process-level ``atexit`` hook here anymore, since registering one per
-hydration leaked registrations across session rebuilds.
+Sandbox VM lifecycle is owned by ``SandboxManager`` (app lifespan), not by
+individual sessions.
 """
 
 from __future__ import annotations
@@ -22,41 +18,42 @@ from typing import Any
 from deepagents import SubAgent, create_deep_agent
 from dotenv import load_dotenv
 
-from bubblewrap_sandbox import BubblewrapSandbox
 from mcp_tools import load_mcp_tools
 from openrouter_model import get_openrouter_model
 from pwd_middleware import AgentContext, PwdContextMiddleware
+from sandbox_config import default_network, default_workdir
+from sandbox_tools import build_sandbox_tools
 
 load_dotenv()
 
 
-def _env_bool(name: str, default: bool = False) -> bool:
-    val = os.environ.get(name)
-    if val is None:
-        return default
-    return val.lower() in {"1", "true", "yes"}
-
-
 def _default_workdir() -> str | None:
-    return os.environ.get("DEEPAGENT_WORKDIR") or os.environ.get("CODEX_GUI_WORKSPACE")
+    return str(default_workdir())
 
 
 def _default_network() -> bool:
-    return _env_bool("DEEPAGENT_NETWORK_ACCESS") or _env_bool("CODEX_GUI_NETWORK_ACCESS")
+    return default_network()
 
 
 MAIN_SYSTEM_PROMPT = """You are DeepAgent, a precise, safe, and helpful coding agent.
 Resolve the user's request fully; keep communication concise, direct, and friendly.
 
 Environment:
-- Sandboxed filesystem and shell tools (`ls`, `read_file`, `write_file`,
-  `edit_file`, `glob`, `grep`, `execute`) rooted at /workspace. The sandbox is
-  disposable, but preserve any user work found in it.
+- Filesystem and shell tools (`ls`, `read_file`, `write_file`, `edit_file`,
+  `glob`, `grep`, `execute`) run inside a shared microsandbox microVM rooted at
+  /workspace (host workspace bind-mounted). Preserve user work in /workspace.
 - The run context may supply an active pwd under /workspace; treat it as the
   primary scope for new files and edits unless the user says otherwise.
-- Shell network access is disabled. MCP tools (when available) run outside the
-  sandbox; use them for live documentation lookup only. Web research always
-  goes through `research_agent`, never the main agent.
+- Shell network access follows the app-wide setting (often disabled). MCP tools
+  (when available) run outside the sandbox; use them for live documentation
+  lookup only. Web research always goes through `research_agent`, never the
+  main agent.
+- `execute` output returns only the last 100 lines. Full logs are saved under
+  `/workspace/.deepagent/logs/`; read those files when you need more detail.
+- You may set a longer per-command timeout when installs/builds need it.
+- All chats share one sandbox. Exec is serialized. If you are blocked, use
+  `sandbox_status` / `sandbox_wait` (configure wait_seconds) and wait by
+  default. Ask the user before `cancel_sandbox_holder`.
 
 How to work:
 - Inspect the repo before acting; obey the most specific AGENTS.md / AGENT.md
@@ -167,29 +164,24 @@ def load_subagents_from_toml(agents_dir: Path | None = None) -> list[SubAgent]:
 def build_agent(
     *,
     model_name: str | None = None,
-    network: bool | None = None,
-    workdir: str | None = None,
     with_subagents: bool = True,
     mcp_tools: list | None = None,
     mcp_servers: list[str] | None = None,
     checkpointer: Any | None = None,
+    sandbox: Any | None = None,
 ):
-    """Construct the deep agent and its sandbox backend.
+    """Construct the deep agent using the shared microsandbox backend.
 
     Returns:
-        (agent, sandbox, mcp_meta) -- the caller owns `sandbox` and must call
-        `sandbox.cleanup()` when done with it. ``mcp_meta`` is
-        ``{"servers": [...], "tool_names": [...], "subagent_names": [...]}``.
+        (agent, sandbox, mcp_meta). The VM is owned by ``SandboxManager``;
+        ``sandbox.cleanup()`` is a no-op for the shared backend.
     """
     model = get_openrouter_model(model=model_name)
 
-    sandbox = BubblewrapSandbox(
-        workdir=workdir or _default_workdir(),
-        network=network if network is not None else _default_network(),
-        timeout=120,
-        rlimit_as_mb=1024,
-        rlimit_nproc=64,
-    )
+    if sandbox is None:
+        from sandbox_manager import get_manager
+
+        sandbox = get_manager().backend
 
     if mcp_tools is None:
         try:
@@ -200,13 +192,14 @@ def build_agent(
         resolved_servers = list(mcp_servers or [])
 
     subagents = load_subagents_from_toml() if with_subagents else []
+    extra_tools = list(mcp_tools or []) + build_sandbox_tools()
 
     agent = create_deep_agent(
         model=model,
         backend=sandbox,
         system_prompt=MAIN_SYSTEM_PROMPT,
         subagents=subagents or None,
-        tools=mcp_tools or None,
+        tools=extra_tools or None,
         middleware=[PwdContextMiddleware()],
         context_schema=AgentContext,
         checkpointer=checkpointer,
@@ -220,11 +213,21 @@ def build_agent(
 
 
 if __name__ == "__main__":
-    # Smoke test: construct the agent and print the wired-up tool names.
-    agent, sandbox, mcp_meta = build_agent()
-    print(f"Agent built. Sandbox id: {sandbox.id}, workdir: {sandbox._workdir}")
-    print(f"Network enabled: {sandbox.network}")
-    if mcp_meta["servers"]:
-        print(f"MCP servers: {', '.join(mcp_meta['servers'])}")
-        print(f"MCP tools: {', '.join(mcp_meta['tool_names'])}")
-    sandbox.cleanup()
+    import asyncio
+
+    from sandbox_manager import get_manager
+
+    async def _main() -> None:
+        mgr = get_manager()
+        await mgr.startup()
+        try:
+            agent, sandbox, mcp_meta = build_agent()
+            print(f"Agent built. Sandbox id: {sandbox.id}, workdir: {sandbox._workdir}")
+            print(f"Network enabled: {sandbox.network}")
+            if mcp_meta["servers"]:
+                print(f"MCP servers: {', '.join(mcp_meta['servers'])}")
+                print(f"MCP tools: {', '.join(mcp_meta['tool_names'])}")
+        finally:
+            await mgr.shutdown()
+
+    asyncio.run(_main())

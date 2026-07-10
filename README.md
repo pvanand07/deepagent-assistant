@@ -1,207 +1,125 @@
-# Sandboxed Deep Agent (bubblewrap + OpenRouter)
+# Sandboxed Deep Agent (microsandbox + OpenRouter)
 
 A `deepagents` agent whose filesystem and shell tools (`ls`, `read_file`,
 `write_file`, `edit_file`, `glob`, `grep`, `execute`) run inside a
-[bubblewrap](https://github.com/containers/bubblewrap) namespace jail
+[microsandbox](https://github.com/superradcompany/microsandbox) microVM
 instead of directly on your machine, using any tool-calling model on
 [OpenRouter](https://openrouter.ai) as the LLM.
 
+Designed as a **native desktop** app for Linux, Windows, and macOS (hardware
+virtualization required). See [docs/microsandbox-migration.md](docs/microsandbox-migration.md)
+for the architecture decisions.
+
 ## What's isolated
 
-Every `execute()` call (and everything the file tools do under the hood)
-runs in a fresh `bwrap` sandbox with:
+One shared microVM per app process:
 
-- **Its own mount namespace** — only the sandbox's own workdir is writable
-  (mounted at `/workspace`); the rest of your filesystem is invisible, not
-  just "denied."
-- **Its own network namespace** — no network access at all by default
-  (`--network` flag to opt in).
-- **Its own PID namespace** — can't see or signal host processes.
-- **An unprivileged user namespace** — no real privilege escalation path.
-- **Best-effort memory/process `ulimit` caps** (1024MB / 64 procs by
-  default) — see the note in `src/bubblewrap_sandbox.py` about pairing this
-  with `systemd-run --scope` + cgroups v2 for hard quota enforcement under
-  untrusted/adversarial load.
+- **Hardware-isolated guest** (libkrun) with its own kernel view
+- **Host workspace bind-mounted** at `/workspace` (all chats share it)
+- **App-wide network policy** — `Network.none()` by default, or
+  `Network.public_only()` when `DEEPAGENT_NETWORK_ACCESS=true`
+- **Serialized exec** across chats (agent can wait / ask before cancel)
+- **Resource caps** via microsandbox memory/CPU settings (defaults 1024 MiB / 2 vCPUs)
 
 ## Files
 
-| Path                    | Purpose                                                        |
-|-------------------------|-----------------------------------------------------------------|
-| `src/bubblewrap_sandbox.py` | `BubblewrapSandbox` — the sandboxed backend (`BaseSandbox` impl) |
-| `src/openrouter_model.py`   | Builds a `ChatOpenAI` client pointed at OpenRouter               |
-| `src/agent.py`              | Wires model + sandbox into a `deepagents` agent (+ example sub-agent) |
-| `src/cli.py`                | Interactive terminal chat loop (token-level streaming)          |
-| `src/streaming.py`          | Reusable `stream_agent_turn()` helper for v2 message streaming  |
-| `src/api.py`                | FastAPI HTTP API for the web GUI                                |
-| `frontend/`             | Static HTML/CSS/JS GUI                                          |
-| `Dockerfile`            | Linux runtime image with bubblewrap and CLI tools               |
-| `docker-compose.yml`    | Runs the agent with namespace-friendly security opts            |
-| `workspace/`            | Host directory mounted as the agent's writable `/workspace`   |
+| Path | Purpose |
+|------|---------|
+| `src/sandbox_manager.py` | App-scoped VM lifecycle, exec lock, command logs |
+| `src/microsandbox_sandbox.py` | `BaseSandbox` impl (async `aexecute`, host-direct files) |
+| `src/sandbox_tools.py` | `sandbox_status` / `sandbox_wait` / `cancel_sandbox_holder` |
+| `src/agent.py` | Wires model + sandbox + MCP + subagents |
+| `src/api.py` | FastAPI HTTP API for the web GUI |
+| `src/cli.py` | Interactive terminal chat loop |
+| `Dockerfile.sandbox` | Guest OCI image definition (dev build / release pull) |
+| `frontend/` | Static HTML/CSS/JS GUI |
+| `workspace/` | Host directory mounted as `/workspace` |
+| `docs/microsandbox-migration.md` | Agreed migration design |
 
-## Docker (recommended on Windows/macOS)
+## Prerequisites
 
-Bubblewrap needs Linux user namespaces. On Windows and macOS, run the agent
-inside Docker instead of on the host. Docker Desktop (or any Docker engine with
-Compose v2) is required.
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/)
+- Hardware virtualization:
+  - **Linux:** KVM (`/dev/kvm`)
+  - **macOS:** Apple Silicon
+  - **Windows:** Windows Hypervisor Platform (WHP)
+- Docker (or another OCI builder) **only** to build the guest image locally
 
-### Quick start
+## Quick start
 
 ```bash
-# 1. Configure OpenRouter (compose reads .env automatically)
+# 1. Install Python deps
+uv sync --group dev
+
+# 2. Configure OpenRouter
 cp .env.example .env
-# edit .env and set OPENROUTER_API_KEY
+# edit .env → OPENROUTER_API_KEY
 
-# 2. Build and start the web API (default)
-docker compose up -d --build
+# 3. Build the guest image (dev)
+docker build -f Dockerfile.sandbox -t deepagent-workspace:dev .
 
-# Open http://localhost:8011 for the GUI.
+# 4. Ensure microsandbox runtime (first time)
+uv run python -c "import asyncio; from microsandbox import install, is_installed; \
+asyncio.run(install() if not is_installed() else asyncio.sleep(0)); print('runtime ok')"
+# Optional: msb doctor
 
-# Optional: interactive terminal REPL
-docker compose run --rm cli
+# 5. Run the API + GUI
+mkdir -p workspace data
+DEEPAGENT_WORKDIR="$PWD/workspace" PYTHONPATH=src uv run uvicorn api:app --host 127.0.0.1 --port 8010
+# Open http://127.0.0.1:8010
 ```
 
-Inside the CLI container, type your request, `/reset` to clear history, or `exit` to quit.
-
-### Workspace
-
-Agent files are written to `./workspace` on your host, mounted read-write at
-`/workspace` inside the container. The sandbox persists across container
-restarts — only conversation history resets when you quit or run `/reset`.
-
-### Network access
-
-By default the sandbox has **no** outbound network (same as native `src/cli.py`).
-To allow pip, curl, git clone, etc., either:
+CLI:
 
 ```bash
-# one-off
-DEEPAGENT_NETWORK_ACCESS=true docker compose up -d --build
-
-# or add to .env
-DEEPAGENT_NETWORK_ACCESS=true
+DEEPAGENT_WORKDIR="$PWD/workspace" PYTHONPATH=src uv run python src/cli.py
 ```
 
-You can also pass `--network` when invoking `src/cli.py` directly inside the
-container (overrides the env var).
-
-### Configuration
-
-Compose passes these from your `.env` file:
+## Configuration
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `OPENROUTER_API_KEY` | — | Required. Your OpenRouter API key |
+| `OPENROUTER_API_KEY` | — | Required |
 | `OPENROUTER_MODEL` | `anthropic/claude-sonnet-4.5` | Model id |
-| `OPENROUTER_TEMPERATURE` | `0.3` | Sampling temperature |
-| `DEEPAGENT_NETWORK_ACCESS` | `false` | Allow outbound network in the sandbox |
+| `DEEPAGENT_WORKDIR` | `./workspace` | Host path bind-mounted at `/workspace` |
+| `DEEPAGENT_NETWORK_ACCESS` | `false` | Guest egress (`none` vs `public_only`) |
+| `DEEPAGENT_SANDBOX_IMAGE` | `deepagent-workspace:dev` | Guest OCI image |
+| `DEEPAGENT_SANDBOX_MEMORY` | `1024` | MiB |
+| `DEEPAGENT_SANDBOX_CPUS` | `2` | vCPUs |
+| `DEEPAGENT_SANDBOX_IDLE_TIMEOUT` | `300` | Auto-stop unused VM (seconds; `0` = never) |
+| `DEEPAGENT_SANDBOX_LOCK_WAIT` | `120` | Default exec-lock wait (agent can override) |
+| `DEEPAGENT_EXEC_TIMEOUT` | `120` | Default command timeout (`0` = none) |
+| `DEEPAGENT_SANDBOX_BACKEND` | `microsandbox` | Set `stub` for tests without a VM |
+| `DEEPAGENT_MSB_INTEGRATION` | unset | Set `1` to run real-VM integration tests |
 
-Model and flags can also be passed at runtime:
+## Guest image (dev vs release)
 
-```bash
-docker compose run --rm cli python src/cli.py --model "openai/gpt-5"
-docker compose run --rm cli python src/cli.py --network
-```
+- **Dev:** build `Dockerfile.sandbox` → `deepagent-workspace:dev`
+- **Release:** CI pushes a pinned registry tag; set `DEEPAGENT_SANDBOX_IMAGE` to that tag/digest
 
-Use `docker compose up -d` for the API in the background; use
-`docker compose run --rm cli` for an interactive terminal session.
+## Exec output
 
-### How it works
+- Tool results include the **last 100 lines** of stdout/stderr
+- Full output is written under `/workspace/.deepagent/logs/` (retained ~7 days / 100 MB)
 
-The compose file:
-
-- mounts `./workspace` → `/workspace` (writable sandbox root)
-- sets `security_opt: apparmor:unconfined, seccomp:unconfined` so `bwrap` can
-  create user namespaces inside the container
-- installs bubblewrap in the image (`Dockerfile`)
-
-See `reference_sandboxing.md` for troubleshooting (namespace errors, network
-issues, `BWRAP_SETUID` rebuild arg).
-
-## Setup (native Linux)
+## Tests
 
 ```bash
-# 1. Install bubblewrap (Debian/Ubuntu shown; see below for other distros)
-sudo apt-get update && sudo apt-get install -y bubblewrap
+# Default E2E uses StubSandbox (no VM)
+DEEPAGENT_SANDBOX_BACKEND=stub PYTHONPATH=src uv run pytest
 
-# 2. Install Python deps
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# 3. Configure your OpenRouter key
-cp .env.example .env
-# edit .env and set OPENROUTER_API_KEY
-
-# 4. Run (set PYTHONPATH so imports resolve from src/)
-export PYTHONPATH=src
-python src/cli.py
+# Optional real microsandbox integration (requires virt + guest image)
+DEEPAGENT_MSB_INTEGRATION=1 PYTHONPATH=src uv run pytest tests/test_msb_integration.py
 ```
-
-Other distros:
-- Fedora/RHEL: `sudo dnf install bubblewrap`
-- Arch: `sudo pacman -S bubblewrap`
-- macOS: bubblewrap is Linux-only (needs Linux user namespaces). Run this
-  inside a Linux VM/container (Docker Desktop's Linux VM, Lima, WSL2, etc.)
-- WSL2: works the same as native Linux, install via apt inside WSL
-
-## Usage (native Linux)
-
-```bash
-export PYTHONPATH=src
-python src/cli.py                                  # default model, no network
-python src/cli.py --model "openai/gpt-5"           # pick a different OpenRouter model
-python src/cli.py --network                        # allow the sandbox outbound internet
-python src/cli.py --workdir /home/me/agent-scratch # persist the sandbox workspace across runs
-```
-
-Inside the REPL:
-- Type any request — the agent can write files, run shell commands, install
-  packages (if `--network` is on), run tests, etc., all inside `/workspace`.
-- `/reset` clears conversation history (sandbox files are untouched).
-- `exit` or Ctrl-D quits and cleans up the sandbox's temp workdir (unless
-  you passed `--workdir`, which is never deleted automatically).
-
-## Using it as a library
-
-```python
-from agent import build_agent
-from streaming import stream_agent_turn
-
-# Run with PYTHONPATH=src (or from a shell where src/ is on PYTHONPATH)
-agent, sandbox, mcp_meta = build_agent(model_name="anthropic/claude-sonnet-4.5", network=False)
-history = [{"role": "user", "content": "Write and run a fibonacci script"}]
-history = stream_agent_turn(agent, history)  # token-level streaming to stdout
-sandbox.cleanup()
-```
-
-For a one-shot result without streaming:
-
-```python
-result = agent.invoke({"messages": history})
-print(result["messages"][-1].content)
-```
-
-## Customizing
-
-- **Sub-agents**: edit `SUBAGENTS` in `src/agent.py` (see the `code-reviewer`
-  example) to add more predefined, on-demand specialist agents — this
-  follows the same task-delegation pattern as
-  [`deep-agents-from-scratch`](https://github.com/langchain-ai/deep-agents-from-scratch).
-- **Resource limits**: `BubblewrapSandbox(rlimit_as_mb=..., rlimit_nproc=...)`
-  in `src/agent.py`.
-- **Extra read-only mounts** (e.g. to expose a shared dataset dir):
-  `BubblewrapSandbox(extra_ro_binds=["/path/on/host"])`.
-- **Model**: any tool-calling model id from https://openrouter.ai/models,
-  via `--model` or `OPENROUTER_MODEL` in `.env`.
 
 ## Security notes
 
-- This is real OS-level isolation (Linux namespaces), not just a "best
-  practice" wrapper — verified filesystem/network/PID isolation, see the
-  chat history this was built in for live test output.
-- It is **not** a substitute for running on a disposable VM/container if
-  you're executing fully untrusted, adversarial code at scale — bubblewrap
-  has no built-in cgroup resource accounting, so a determined adversary
-  could still exhaust host CPU/memory before ulimits kick in under
-  concurrent load. For that threat model, wrap the whole thing in
-  `systemd-run --scope -p MemoryMax=... -p CPUQuota=...` or run it inside
-  its own VM.
+- Isolation is a **microVM**, stronger than process namespaces alone.
+- LLM/MCP credentials stay on the host; nothing is injected into the guest in v1.
+- Parallel chats share one workspace and one VM; exec is serialized to avoid races.
+- Fail-hard at startup if virtualization/runtime is unavailable (no unsandboxed fallback).
+
+## License / redistribution
+
+See [docs/LICENSES.md](docs/LICENSES.md) for microsandbox / libkrun / libkrunfw obligations.

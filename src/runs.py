@@ -37,6 +37,7 @@ from streaming import (
     iter_agent_turn_events,
     rollback_uncommitted_turn,
 )
+from sandbox_manager import current_run_id, current_session_id
 
 # Live-only events: fanned out to connected subscribers, never persisted.
 _EPHEMERAL_TYPES = {"usage_estimate"}
@@ -247,6 +248,8 @@ class RunManager:
         status = "error"
         error: str | None = None
         final_messages: list | None = None
+        session_token = current_session_id.set(handle.session_id)
+        run_token = current_run_id.set(handle.run_id)
 
         try:
             async with self._sem:
@@ -298,6 +301,8 @@ class RunManager:
             except Exception:
                 pass
         finally:
+            current_session_id.reset(session_token)
+            current_run_id.reset(run_token)
             try:
                 await self._flush_pending(handle)
             except Exception:

@@ -13,9 +13,10 @@ class HealthResponse(BaseModel):
 
 class CreateSessionRequest(BaseModel):
     model: str | None = None
+    with_subagents: bool = True
+    # Deprecated: ignored. Network/workdir are app-wide via env.
     network: bool | None = None
     workdir: str | None = None
-    with_subagents: bool = True
 
 
 class SessionResponse(BaseModel):

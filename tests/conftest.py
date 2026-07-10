@@ -9,6 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from api import app
+from sandbox_manager import get_manager, reset_manager_for_tests
 from session_persistence import AppDB, CheckpointManager, MessageDB
 from sessions import SessionStore, store
 
@@ -60,28 +61,37 @@ async def client(
     monkeypatch.setenv("DEEPAGENT_MESSAGES_DB", str(data_dir / "messages.sqlite"))
     monkeypatch.setenv("DEEPAGENT_CHECKPOINT_DB", str(data_dir / "checkpoints.sqlite"))
     monkeypatch.setenv("DEEPAGENT_MAX_CONCURRENT_RUNS", "4")
+    monkeypatch.setenv("DEEPAGENT_SANDBOX_BACKEND", "stub")
 
     await _close_persistence()
     _reset_store()
+    reset_manager_for_tests()
 
     async def _build(self: SessionStore, meta):
         return await stub_build_session(self, meta)
 
     with patch.object(SessionStore, "_build_session", _build):
         await store.startup()
+        manager = get_manager()
+        await manager.startup()
+        assert store.runs is not None
+        manager.bind_cancel_run(store.runs.cancel)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://testserver") as http:
             yield http
         await store.close()
+        await manager.shutdown()
+
     await _close_persistence()
     _reset_store()
+    reset_manager_for_tests()
 
 
 @pytest.fixture
 async def session_id(client: AsyncClient) -> str:
     response = await client.post(
         "/api/sessions",
-        json={"with_subagents": False, "network": False},
+        json={"with_subagents": False},
     )
     response.raise_for_status()
     return response.json()["id"]

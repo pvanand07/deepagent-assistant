@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
 from agent import _default_network, _default_workdir, build_agent
-from bubblewrap_sandbox import BubblewrapSandbox
 from mcp_tools import load_mcp_tools
 from message_summary import messages_after_baseline, summary_from_messages
 from openrouter_model import DEFAULT_MODEL
@@ -24,14 +24,12 @@ from session_persistence import (
 )
 from streaming import rollback_uncommitted_turn
 
-import os
-
 
 @dataclass
 class AgentSession:
     id: str
     agent: Any
-    sandbox: BubblewrapSandbox
+    sandbox: Any
     model: str
     mcp_servers: list[str] = field(default_factory=list)
     mcp_tool_names: list[str] = field(default_factory=list)
@@ -40,7 +38,10 @@ class AgentSession:
     updated_at: float = field(default_factory=time.time)
 
     def cleanup(self) -> None:
-        self.sandbox.cleanup()
+        """Per-session cleanup. Shared microsandbox VM is not destroyed here."""
+        cleanup = getattr(self.sandbox, "cleanup", None)
+        if callable(cleanup):
+            cleanup()
 
 
 class SessionStore:
@@ -52,6 +53,7 @@ class SessionStore:
     - One run at a time per session (enforced by ``RunManager``); runs on
       different sessions execute in parallel, bounded by a global semaphore.
     - MCP tools are loaded once per process and shared across all agents.
+    - All sessions share one microsandbox backend from ``SandboxManager``.
     """
 
     def __init__(self) -> None:
@@ -63,8 +65,6 @@ class SessionStore:
         self.runs: RunManager | None = None
         self._mcp_cache: tuple[list, list[str]] | None = None
         self._mcp_lock = asyncio.Lock()
-
-    # -- lifecycle ----------------------------------------------------------
 
     async def startup(self) -> None:
         self._db = await AppDB.get()
@@ -86,13 +86,10 @@ class SessionStore:
         if self._db is not None:
             await self._db.close()
 
-    # -- internals -----------------------------------------------------------
-
     def _resolved_model(self, model: str | None) -> str:
         return model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
 
     async def _get_mcp(self) -> tuple[list, list[str]]:
-        """MCP handshake once per process; shared across all sessions."""
         async with self._mcp_lock:
             if self._mcp_cache is None:
                 tools, servers = await asyncio.to_thread(load_mcp_tools)
@@ -101,15 +98,17 @@ class SessionStore:
 
     async def _build_session(self, meta: SessionMeta) -> AgentSession:
         mcp_tools, mcp_servers = await self._get_mcp()
+        from sandbox_manager import get_manager
+
+        sandbox = get_manager().backend
         agent, sandbox, mcp_meta = await asyncio.to_thread(
             build_agent,
             model_name=meta.model,
-            network=meta.network,
-            workdir=meta.workdir,
             with_subagents=meta.with_subagents,
             mcp_tools=mcp_tools,
             mcp_servers=mcp_servers,
             checkpointer=self._checkpoints.checkpointer,
+            sandbox=sandbox,
         )
         return AgentSession(
             id=meta.id,
@@ -131,7 +130,6 @@ class SessionStore:
         return lock
 
     async def _rollback_interrupted(self, session: AgentSession) -> None:
-        """Undo checkpoint writes from runs killed by a previous process crash."""
         config = thread_config(session.id)
         for run_id, baseline_ids in await self._db.interrupted_unrolled_runs(session.id):
             try:
@@ -140,22 +138,18 @@ class SessionStore:
                 continue
             await self._db.mark_run_rolled_back(run_id)
 
-    # -- public API ------------------------------------------------------------
-
     async def create(
         self,
         *,
         model: str | None = None,
-        network: bool | None = None,
-        workdir: str | None = None,
         with_subagents: bool = True,
     ) -> AgentSession:
         now = time.time()
         meta = SessionMeta(
             id=uuid.uuid4().hex,
             model=self._resolved_model(model),
-            network=network if network is not None else _default_network(),
-            workdir=workdir or _default_workdir(),
+            network=_default_network(),
+            workdir=_default_workdir(),
             with_subagents=with_subagents,
             created_at=now,
             updated_at=now,
@@ -189,14 +183,12 @@ class SessionStore:
         return await self._db.list_sessions()
 
     async def read_messages(self, session_id: str) -> list[Any]:
-        """Read UI history from the append-only message store."""
         messages = await self._messages.list_messages(session_id)
         if messages:
             return messages
         return await self._backfill_messages_from_runs(session_id)
 
     async def _backfill_messages_from_runs(self, session_id: str) -> list[Any]:
-        """One-time migration for sessions created before the message store existed."""
         for run_id, baseline_ids in await self._db.list_done_runs(session_id):
             events = await self._db.read_run_events(run_id, after_seq=0)
             for event in reversed(events):
@@ -221,8 +213,6 @@ class SessionStore:
         )
 
     async def start_chat(self, session_id: str, *, message: str, pwd: str | None) -> RunRecord:
-        """Create a background run for one chat turn. Raises RunConflictError
-        if a run is already in flight for this session."""
         session = await self.get(session_id)
         if session is None:
             raise KeyError(session_id)

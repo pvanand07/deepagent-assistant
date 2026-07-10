@@ -33,6 +33,8 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from agent import _default_workdir
+from sandbox_config import default_network
+from sandbox_manager import get_manager
 from api_models import (
     ActiveRunResponse,
     CancelResponse,
@@ -64,14 +66,21 @@ _SSE_HEARTBEAT_SECONDS = 15
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await store.startup()
-    yield
-    await store.close()
+    manager = get_manager()
+    await manager.startup()
+    assert store.runs is not None
+    manager.bind_cancel_run(store.runs.cancel)
+    try:
+        yield
+    finally:
+        await store.close()
+        await manager.shutdown()
 
 
 app = FastAPI(
     title="Deep Agent API",
-    description="HTTP API for the bubblewrap-sandboxed deep agent GUI.",
-    version="0.2.0",
+    description="HTTP API for the microsandbox-backed deep agent GUI.",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -235,8 +244,6 @@ async def create_session(body: CreateSessionRequest) -> SessionResponse:
     try:
         session = await store.create(
             model=body.model,
-            network=body.network,
-            workdir=body.workdir,
             with_subagents=body.with_subagents,
         )
     except RuntimeError as e:
@@ -510,11 +517,11 @@ async def get_config() -> dict[str, Any]:
     return {
         "default_model": os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
         "default_workdir": _default_workdir(),
-        "default_network": os.environ.get("DEEPAGENT_NETWORK_ACCESS", "false").lower()
-        in {"1", "true", "yes"},
+        "default_network": default_network(),
         "mcp_enabled": bool(mcp_connections),
         "mcp_servers": list(mcp_connections.keys()),
         "username": os.environ.get("DEEPAGENT_USERNAME") or getpass.getuser() or "User",
+        "sandbox_backend": os.environ.get("DEEPAGENT_SANDBOX_BACKEND", "microsandbox"),
     }
 
 
