@@ -16,15 +16,12 @@ from pathlib import Path
 from typing import Any
 
 from deepagents import SubAgent, create_deep_agent
-from dotenv import load_dotenv
 
 from mcp_tools import load_mcp_tools
 from openrouter_model import get_openrouter_model
 from pwd_middleware import AgentContext, PwdContextMiddleware
 from sandbox_config import default_network, default_workdir
 from sandbox_tools import build_sandbox_tools
-
-load_dotenv()
 
 
 def _default_workdir() -> str | None:

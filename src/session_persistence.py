@@ -69,6 +69,7 @@ class SessionMeta:
     title: str = "New chat"
     preview: str = "No session yet"
     message_count: int = 0
+    last_usage_json: str | None = None
 
     @classmethod
     def from_row(cls, row: aiosqlite.Row) -> SessionMeta:
@@ -83,6 +84,24 @@ class SessionMeta:
             title=row["title"] or "New chat",
             preview=row["preview"] or "No session yet",
             message_count=row["message_count"] or 0,
+            last_usage_json=row["last_usage_json"],
+        )
+
+    def parsed_usage(self) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        """Return (turn_usage, step_usage) from ``last_usage_json``."""
+        if not self.last_usage_json:
+            return None, None
+        try:
+            parsed = json.loads(self.last_usage_json)
+        except (TypeError, ValueError):
+            return None, None
+        if not isinstance(parsed, dict):
+            return None, None
+        usage = parsed.get("usage")
+        step = parsed.get("step_usage")
+        return (
+            usage if isinstance(usage, dict) else None,
+            step if isinstance(step, dict) else None,
         )
 
 
@@ -157,7 +176,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     updated_at     REAL NOT NULL,
     title          TEXT NOT NULL DEFAULT 'New chat',
     preview        TEXT NOT NULL DEFAULT 'No session yet',
-    message_count  INTEGER NOT NULL DEFAULT 0
+    message_count  INTEGER NOT NULL DEFAULT 0,
+    last_usage_json TEXT
 );
 
 CREATE TABLE IF NOT EXISTS runs (
@@ -222,13 +242,16 @@ class AppDB:
         d = asdict(meta)
         await self._conn.execute(
             """INSERT INTO sessions (id, model, network, workdir, with_subagents,
-                                     created_at, updated_at, title, preview, message_count)
+                                     created_at, updated_at, title, preview, message_count,
+                                     last_usage_json)
                VALUES (:id, :model, :network, :workdir, :with_subagents,
-                       :created_at, :updated_at, :title, :preview, :message_count)
+                       :created_at, :updated_at, :title, :preview, :message_count,
+                       :last_usage_json)
                ON CONFLICT(id) DO UPDATE SET
                    model=:model, network=:network, workdir=:workdir,
                    with_subagents=:with_subagents, updated_at=:updated_at,
-                   title=:title, preview=:preview, message_count=:message_count""",
+                   title=:title, preview=:preview, message_count=:message_count,
+                   last_usage_json=:last_usage_json""",
             d,
         )
         await self._conn.commit()
@@ -261,6 +284,24 @@ class AppDB:
             """UPDATE sessions SET title = ?, preview = ?, message_count = ?,
                                    updated_at = ? WHERE id = ?""",
             (title, preview, message_count, time.time(), session_id),
+        )
+        await self._conn.commit()
+
+    async def update_last_usage(
+        self,
+        session_id: str,
+        *,
+        usage: dict[str, Any] | None = None,
+        step_usage: dict[str, Any] | None = None,
+    ) -> None:
+        payload = (
+            json.dumps({"usage": usage, "step_usage": step_usage})
+            if usage or step_usage
+            else None
+        )
+        await self._conn.execute(
+            "UPDATE sessions SET last_usage_json = ?, updated_at = ? WHERE id = ?",
+            (payload, time.time(), session_id),
         )
         await self._conn.commit()
 

@@ -32,8 +32,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+# Load repo-root .env / .env.local before other app modules read os.environ.
+from sandbox_config import default_network, load_app_env
+
+load_app_env()
+
 from agent import _default_workdir
-from sandbox_config import default_network
 from sandbox_manager import get_manager
 from api_models import (
     ActiveRunResponse,
@@ -124,6 +128,8 @@ async def _require_run(session_id: str, run_id: str):
 
 async def _session_response(session) -> SessionResponse:
     message_count = await store._messages.count_messages(session.id)  # noqa: SLF001
+    meta = await store.get_meta(session.id)
+    last_usage, last_step_usage = meta.parsed_usage() if meta else (None, None)
     return SessionResponse(
         id=session.id,
         sandbox_id=session.sandbox.id,
@@ -135,6 +141,8 @@ async def _session_response(session) -> SessionResponse:
         mcp_tool_names=session.mcp_tool_names,
         subagent_names=session.subagent_names,
         active_run_id=store.runs.active_run_id(session.id),
+        last_usage=last_usage,
+        last_step_usage=last_step_usage,
     )
 
 

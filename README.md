@@ -56,15 +56,12 @@ uv sync --group dev
 cp .env.example .env
 # edit .env → OPENROUTER_API_KEY
 
-# 3. Build the guest image (dev)
-docker build -f Dockerfile.sandbox -t deepagent-workspace:dev .
-
-# 4. Ensure microsandbox runtime (first time)
+# 3. Ensure microsandbox runtime (first time)
 uv run python -c "import asyncio; from microsandbox import install, is_installed; \
 asyncio.run(install() if not is_installed() else asyncio.sleep(0)); print('runtime ok')"
 # Optional: msb doctor
 
-# 5. Run the API + GUI
+# 4. Run the API + GUI (default guest image: python:3.12-slim, pulled on first start)
 mkdir -p workspace data
 DEEPAGENT_WORKDIR="$PWD/workspace" PYTHONPATH=src uv run uvicorn api:app --host 127.0.0.1 --port 8010
 # Open http://127.0.0.1:8010
@@ -84,7 +81,7 @@ DEEPAGENT_WORKDIR="$PWD/workspace" PYTHONPATH=src uv run python src/cli.py
 | `OPENROUTER_MODEL` | `anthropic/claude-sonnet-4.5` | Model id |
 | `DEEPAGENT_WORKDIR` | `./workspace` | Host path bind-mounted at `/workspace` |
 | `DEEPAGENT_NETWORK_ACCESS` | `false` | Guest egress (`none` vs `public_only`) |
-| `DEEPAGENT_SANDBOX_IMAGE` | `deepagent-workspace:dev` | Guest OCI image |
+| `DEEPAGENT_SANDBOX_IMAGE` | `python:3.12-slim` | Guest OCI image (Docker Hub by default) |
 | `DEEPAGENT_SANDBOX_MEMORY` | `1024` | MiB |
 | `DEEPAGENT_SANDBOX_CPUS` | `2` | vCPUs |
 | `DEEPAGENT_SANDBOX_IDLE_TIMEOUT` | `300` | Auto-stop unused VM (seconds; `0` = never) |
@@ -93,10 +90,16 @@ DEEPAGENT_WORKDIR="$PWD/workspace" PYTHONPATH=src uv run python src/cli.py
 | `DEEPAGENT_SANDBOX_BACKEND` | `microsandbox` | Set `stub` for tests without a VM |
 | `DEEPAGENT_MSB_INTEGRATION` | unset | Set `1` to run real-VM integration tests |
 
-## Guest image (dev vs release)
+## Guest image
 
-- **Dev:** build `Dockerfile.sandbox` → `deepagent-workspace:dev`
-- **Release:** CI pushes a pinned registry tag; set `DEEPAGENT_SANDBOX_IMAGE` to that tag/digest
+- **Default:** `python:3.12-slim` (pulled from Docker Hub on first sandbox create)
+- **Optional custom:** build `Dockerfile.sandbox`, load into msb, set `DEEPAGENT_SANDBOX_IMAGE`:
+
+```bash
+docker build -f Dockerfile.sandbox -t deepagent-workspace:dev .
+docker save deepagent-workspace:dev | msb load --tag deepagent-workspace:dev
+export DEEPAGENT_SANDBOX_IMAGE=deepagent-workspace:dev
+```
 
 ## Exec output
 

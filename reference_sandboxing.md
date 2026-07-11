@@ -21,12 +21,15 @@ If create fails at app startup, enable platform virtualization and retry:
 
 ## Guest image
 
+Default is the public image `python:3.12-slim` (pulled on first create).
+
+Optional custom image:
+
 ```bash
 docker build -f Dockerfile.sandbox -t deepagent-workspace:dev .
+docker save deepagent-workspace:dev | msb load --tag deepagent-workspace:dev
 export DEEPAGENT_SANDBOX_IMAGE=deepagent-workspace:dev
 ```
-
-Release installs should pull a pinned registry image instead of building locally.
 
 ## Shared sandbox behavior
 

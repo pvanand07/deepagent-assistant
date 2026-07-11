@@ -23,6 +23,7 @@ from sandbox_config import (
     default_network,
     default_workdir,
     exec_timeout,
+    guest_network,
     sandbox_cpus,
     sandbox_idle_timeout,
     sandbox_image,
@@ -69,8 +70,11 @@ Install/check the runtime:
 asyncio.run(install()) if not is_installed() else print('ok')"
   msb doctor
 
-Then rebuild the guest image if needed:
+Default guest image is python:3.12-slim (pulled from Docker Hub on first use).
+Optional custom image:
   docker build -f Dockerfile.sandbox -t deepagent-workspace:dev .
+  docker save deepagent-workspace:dev | msb load --tag deepagent-workspace:dev
+  set DEEPAGENT_SANDBOX_IMAGE=deepagent-workspace:dev
 """
 
 
@@ -174,7 +178,7 @@ class SandboxManager:
             pass
 
     async def _create_sandbox(self) -> None:
-        from microsandbox import Network, Sandbox, Volume
+        from microsandbox import Sandbox, Volume
 
         kwargs: dict[str, Any] = {
             "image": sandbox_image(),
@@ -185,7 +189,7 @@ class SandboxManager:
             "volumes": {
                 SANDBOX_ROOT: Volume.bind(str(self._workdir)),
             },
-            "network": Network.public_only() if self._network else Network.none(),
+            "network": guest_network(),
             "env": {
                 "HOME": SANDBOX_ROOT,
                 "TMPDIR": "/tmp",

@@ -320,6 +320,10 @@
                   <dd class="min-w-0 truncate font-mono text-foreground" :title="row.value">{{ row.value }}</dd>
                 </template>
               </dl>
+              <div v-if="turnTotalsText" class="mt-3 border-t border-border pt-2">
+                <p class="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Last turn totals</p>
+                <p class="font-mono text-[11px] leading-4 text-foreground">{{ turnTotalsText }}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -932,8 +936,11 @@ createApp({
        has a run in flight. Other sessions stay fully interactive. */
     const streaming = computed(() => !!(sessionId.value && activeRuns[sessionId.value]));
 
-    /* ---------- usage ---------- */
+    /* ---------- usage ----------
+       lastStepUsage = latest model-call prompt size (used context).
+       lastTurnUsage = summed totals across all model calls in the turn. */
     const lastTurnUsage = ref(null);
+    const lastStepUsage = ref(null);
     const usageEstimate = ref(null);
 
     /* ---------- running tool ---------- */
@@ -1016,28 +1023,44 @@ createApp({
     const previewBackdropVisible = computed(() =>
       isMobileLayout.value && !previewCollapsed.value
     );
+    /** Latest model-call prompt size as `in`; out = cumulative turn output so far. */
     const usageText = computed(() => {
-      const turn = lastTurnUsage.value, est = usageEstimate.value;
+      const step = lastStepUsage.value;
+      const turn = lastTurnUsage.value;
+      const est = usageEstimate.value;
+      if (!step && !turn?.model_calls && !(est && Number(est.estimated_output_tokens || 0))) {
+        return "";
+      }
       const parts = [];
-      const total = Number(turn?.total_tokens || 0);
-      const out = Number(turn?.output_tokens || 0);
+      const context = Number(step?.input_tokens || 0);
+      const out = Number(turn?.output_tokens || step?.output_tokens || 0);
       const estOut = Number(est?.estimated_output_tokens || 0);
       if (est && estOut) {
-        parts.push(`~${(total + estOut).toLocaleString()} tokens`);
-        parts.push(`in ${Number(turn?.input_tokens || 0).toLocaleString()}`);
+        parts.push(`in ${context ? context.toLocaleString() : "—"}`);
         parts.push(`out ~${(out + estOut).toLocaleString()}`);
         if (est.phase === "tool_args" && est.tool_name) {
           parts.push(`${est.tool_name} args ${Number(est.chars || 0).toLocaleString()} chars`);
         } else if (est.phase === "text") {
-          parts.push("text streaming");
+          parts.push("streaming");
         }
-      } else if (turn?.model_calls) {
-        parts.push(`${total.toLocaleString()} tokens`);
-        parts.push(`in ${Number(turn.input_tokens || 0).toLocaleString()}`);
+      } else if (step || turn?.model_calls) {
+        parts.push(`in ${context ? context.toLocaleString() : "—"}`);
         parts.push(`out ${out.toLocaleString()}`);
-        if (turn.cache_read) parts.push(`cache ${Number(turn.cache_read).toLocaleString()}`);
-        if (turn.model_calls > 1) parts.push(`${turn.model_calls} model calls`);
+        if (step?.cache_read) parts.push(`cache ${Number(step.cache_read).toLocaleString()}`);
       }
+      return parts.join(" · ");
+    });
+    /** Summed turn metrics for the session-details popover. */
+    const turnTotalsText = computed(() => {
+      const turn = lastTurnUsage.value;
+      if (!turn?.model_calls) return "";
+      const parts = [
+        `${Number(turn.total_tokens || 0).toLocaleString()} tokens`,
+        `in ${Number(turn.input_tokens || 0).toLocaleString()}`,
+        `out ${Number(turn.output_tokens || 0).toLocaleString()}`,
+      ];
+      if (turn.cache_read) parts.push(`cache ${Number(turn.cache_read).toLocaleString()}`);
+      parts.push(`${turn.model_calls} model call${turn.model_calls === 1 ? "" : "s"}`);
       return parts.join(" · ");
     });
 
@@ -1554,6 +1577,7 @@ createApp({
         case "usage":
           if (data.turn?.model_calls) {
             lastTurnUsage.value = data.turn;
+            if (data.step) lastStepUsage.value = data.step;
             usageEstimate.value = null;
           }
           break;
@@ -1571,6 +1595,7 @@ createApp({
             pushItem({ kind: "assistant", text: data.reply });
           }
           if (data.usage?.model_calls) lastTurnUsage.value = data.usage;
+          if (data.step_usage) lastStepUsage.value = data.step_usage;
           sidebarSubtitle.value = `${data.messages?.length || 0} messages`;
           if (session.value?.id === ctx.sessionId) {
             session.value.message_count = data.messages?.length || 0;
@@ -1698,6 +1723,7 @@ createApp({
       closePwdMenu();
       sessionInfoOpen.value = false;
       lastTurnUsage.value = null;
+      lastStepUsage.value = null;
       usageEstimate.value = null;
 
       const ctx = newTurnCtx(sid, null, {
@@ -1774,6 +1800,7 @@ createApp({
       timeline.value = [];
       itemId = 0;
       lastTurnUsage.value = null;
+      lastStepUsage.value = null;
       usageEstimate.value = null;
       thinking.value = false;
       stopToolTimer();
@@ -1811,6 +1838,11 @@ createApp({
       }
     }
 
+    function applyPersistedUsage(s) {
+      lastTurnUsage.value = s?.last_usage?.model_calls ? s.last_usage : null;
+      lastStepUsage.value = s?.last_step_usage || null;
+    }
+
     async function loadSessionState(id) {
       if (sessionId.value && sessionId.value !== id) snapshotWorkspace(sessionId.value);
       // Detach the observer from whatever we were watching. The server-side
@@ -1822,6 +1854,7 @@ createApp({
       sessionStorage.setItem(SESSION_KEY, id);
       const { messages } = await api(`/api/sessions/${id}/messages`);
       resetChatUi();
+      applyPersistedUsage(session.value);
       const hadCache = restoreWorkspace(id);
 
       const runId = session.value.active_run_id || activeRuns[id] || null;
@@ -2025,7 +2058,7 @@ createApp({
       timeline, draft, streaming, thinking, errorMessage, canSend,
       submit, stopStream, newChat, renderMarkdown, autoGrow, onComposerEnter,
       // usage / running
-      usageText, runningTool, runningSeconds,
+      usageText, turnTotalsText, runningTool, runningSeconds,
       // files
       fileTree, childrenMap, expandedFolders, filesLoading, filesError, workspaceOpen,
       loadFiles, toggleFolder, newFolderOpen, newFolderName, creatingFolder, newFolderInputEl,

@@ -35,7 +35,7 @@ Python SDK reference: [sdk-python.md](https://github.com/superradcompany/skills/
 | Knob | Default |
 |------|---------|
 | Sandbox name | `deepagent` |
-| Image (dev) | `deepagent-workspace:dev` |
+| Image (default) | `python:3.12-slim` (public); custom via `DEEPAGENT_SANDBOX_IMAGE` |
 | Memory / CPUs | 1024 MiB / 2 |
 | Idle timeout | 300s (`0` disables) |
 | Lock wait | 120s (agent-configurable) |

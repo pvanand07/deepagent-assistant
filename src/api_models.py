@@ -30,6 +30,8 @@ class SessionResponse(BaseModel):
     mcp_tool_names: list[str] = Field(default_factory=list)
     subagent_names: list[str] = Field(default_factory=list)
     active_run_id: str | None = None
+    last_usage: dict[str, Any] | None = None
+    last_step_usage: dict[str, Any] | None = None
 
 
 class SessionSummary(BaseModel):

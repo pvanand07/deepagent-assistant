@@ -227,9 +227,16 @@ class SessionStore:
             *,
             baseline_ids: set[str],
             run_id: str,
+            usage: dict | None = None,
+            step_usage: dict | None = None,
         ) -> None:
-            del status, final_messages, baseline_ids, run_id
+            del final_messages, baseline_ids, run_id
             await self.sync_chat_summary(session_id)
+            await self._db.update_last_usage(
+                session_id,
+                usage=usage if status == "done" else None,
+                step_usage=step_usage if status == "done" else None,
+            )
 
         return await self.runs.start(
             agent=session.agent,
@@ -247,6 +254,7 @@ class SessionStore:
         await self._db.update_chat_summary(
             session_id, title="New chat", preview="No session yet", message_count=0
         )
+        await self._db.update_last_usage(session_id)
 
     async def delete(self, session_id: str) -> bool:
         await self.runs.cancel_session(session_id)

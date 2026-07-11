@@ -72,7 +72,7 @@ class _RunHandle:
     pending: dict[str, Any] | None = None
 
 
-# on_terminal(status, final_messages, *, baseline_ids, run_id) -- after run settles.
+# on_terminal(status, final_messages, *, baseline_ids, run_id, usage, step_usage)
 TerminalCallback = Callable[..., Awaitable[None]]
 
 
@@ -248,6 +248,8 @@ class RunManager:
         status = "error"
         error: str | None = None
         final_messages: list | None = None
+        turn_usage: dict[str, Any] | None = None
+        step_usage: dict[str, Any] | None = None
         session_token = current_session_id.set(handle.session_id)
         run_token = current_run_id.set(handle.run_id)
 
@@ -268,6 +270,8 @@ class RunManager:
                 ):
                     if event["type"] == "done":
                         final_messages = event["messages"]
+                        turn_usage = event.get("usage")
+                        step_usage = event.get("step_usage")
                         turn_messages = messages_after_baseline(
                             final_messages, baseline_ids
                         )
@@ -278,7 +282,8 @@ class RunManager:
                             "type": "done",
                             "messages": serialize_messages(final_messages),
                             "reply": last_assistant_text(final_messages),
-                            "usage": event.get("usage"),
+                            "usage": turn_usage,
+                            "step_usage": step_usage,
                         }
                     await self._emit(handle, event)
                 status = "done"
@@ -323,6 +328,8 @@ class RunManager:
                     final_messages,
                     baseline_ids=baseline_ids,
                     run_id=handle.run_id,
+                    usage=turn_usage,
+                    step_usage=step_usage,
                 )
             except Exception:
                 pass

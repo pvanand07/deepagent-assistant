@@ -181,6 +181,7 @@ async def iter_agent_turn_events(
         "cache_read": 0,
         "model_calls": 0,
     }
+    last_step_usage: dict[str, int] | None = None
 
     def _finish_tool_call(source: str) -> list[dict[str, Any]]:
         nonlocal in_tool_call, current_tool_name, step_stream_chars
@@ -213,6 +214,7 @@ async def iter_agent_turn_events(
 
         step_usage = _normalize_usage(getattr(token, "usage_metadata", None))
         if step_usage:
+            last_step_usage = step_usage
             _accumulate_usage(turn_usage, step_usage)
             yield {"type": "usage", "turn": dict(turn_usage), "step": step_usage}
             if in_tool_call:
@@ -290,4 +292,9 @@ async def iter_agent_turn_events(
         yield event
 
     done_usage = dict(turn_usage) if turn_usage["model_calls"] else None
-    yield {"type": "done", "messages": final_messages, "usage": done_usage}
+    yield {
+        "type": "done",
+        "messages": final_messages,
+        "usage": done_usage,
+        "step_usage": last_step_usage,
+    }

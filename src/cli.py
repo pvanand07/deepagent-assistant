@@ -17,6 +17,10 @@ import asyncio
 import os
 import sys
 
+from sandbox_config import load_app_env
+
+load_app_env()
+
 from agent import build_agent
 from sandbox_manager import get_manager
 from session_persistence import CheckpointManager
