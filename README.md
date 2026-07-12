@@ -115,10 +115,12 @@ Documents workspace, and `PYTHONPATH` → bundled `src`.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `OPENROUTER_API_KEY` | — | Required |
-| `OPENROUTER_MODEL` | `anthropic/claude-sonnet-4.5` | Model id |
+| `DEEPAGENT_LLM_PROVIDER` | `openrouter` | `openrouter` \| `ollama` \| `custom` |
+| `DEEPAGENT_LLM_BASE_URL` | provider default | OpenAI-compatible base URL (required for `custom`) |
+| `OPENROUTER_API_KEY` | — | API key (optional for Ollama) |
+| `OPENROUTER_MODEL` | provider default | Model id |
 | `DEEPAGENT_WORKDIR` | `./workspace` | Host path bind-mounted at `/workspace` |
-| `DEEPAGENT_NETWORK_ACCESS` | `false` | Guest egress (`none` vs `public_only`) |
+| `DEEPAGENT_NETWORK_ACCESS` | `true` | Guest egress (`public_only` vs `none`) |
 | `DEEPAGENT_SANDBOX_IMAGE` | `python:3.12-slim` | Guest OCI image (Docker Hub by default) |
 | `DEEPAGENT_SANDBOX_MEMORY` | `1024` | MiB |
 | `DEEPAGENT_SANDBOX_CPUS` | `2` | vCPUs |

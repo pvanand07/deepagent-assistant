@@ -12,7 +12,7 @@ from typing import Any
 from agent import _default_network, _default_workdir, build_agent
 from mcp_tools import load_mcp_tools
 from message_summary import messages_after_baseline, summary_from_messages
-from openrouter_model import DEFAULT_MODEL
+from openrouter_model import default_model_for_provider
 from runs import RunManager
 from session_persistence import (
     AppDB,
@@ -87,7 +87,7 @@ class SessionStore:
             await self._db.close()
 
     def _resolved_model(self, model: str | None) -> str:
-        return model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
+        return model or os.environ.get("OPENROUTER_MODEL") or default_model_for_provider()
 
     async def _get_mcp(self) -> tuple[list, list[str]]:
         async with self._mcp_lock:

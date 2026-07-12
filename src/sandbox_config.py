@@ -14,6 +14,8 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Editable via Settings API / AppData ``.env``.
 SETTINGS_ENV_KEYS = (
+    "DEEPAGENT_LLM_PROVIDER",
+    "DEEPAGENT_LLM_BASE_URL",
     "OPENROUTER_API_KEY",
     "OPENROUTER_MODEL",
     "OPENROUTER_TEMPERATURE",

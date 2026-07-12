@@ -73,7 +73,7 @@ from api_models import (
 )
 from mcp_tools import load_mcp_connections
 from message_summary import serialize_messages
-from openrouter_model import DEFAULT_MODEL
+from openrouter_model import default_model_for_provider, llm_provider
 from runs import RunConflictError
 from sessions import store
 
@@ -123,7 +123,7 @@ def _session_summary(meta) -> SessionSummary:
         title=meta.title or "New chat",
         preview=meta.preview or "No session yet",
         message_count=meta.message_count or 0,
-        model=meta.model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
+        model=meta.model or os.environ.get("OPENROUTER_MODEL") or default_model_for_provider(),
         updated_at=meta.updated_at,
         active_run_id=store.runs.active_run_id(meta.id),
     )
@@ -152,7 +152,7 @@ async def _session_response(session) -> SessionResponse:
         sandbox_id=session.sandbox.id,
         workdir=str(session.sandbox._workdir),
         network=session.sandbox.network,
-        model=session.model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
+        model=session.model or os.environ.get("OPENROUTER_MODEL") or default_model_for_provider(),
         message_count=message_count,
         mcp_servers=session.mcp_servers,
         mcp_tool_names=session.mcp_tool_names,
@@ -575,7 +575,7 @@ async def get_config() -> dict[str, Any]:
     manager = get_manager()
     sandbox_status = manager.status_dict() if manager.started else None
     return {
-        "default_model": os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
+        "default_model": os.environ.get("OPENROUTER_MODEL") or default_model_for_provider(),
         "default_workdir": _default_workdir(),
         "default_network": default_network(),
         "mcp_enabled": bool(mcp_connections),
@@ -587,7 +587,9 @@ async def get_config() -> dict[str, Any]:
         "sandbox_healthy": bool(sandbox_status and sandbox_status.get("healthy")),
         "sandbox_degraded": bool(sandbox_status and sandbox_status.get("degraded")),
         "sandbox_status": sandbox_status,
-        "has_api_key": bool(os.environ.get("OPENROUTER_API_KEY")),
+        "llm_provider": llm_provider(),
+        "has_api_key": bool(os.environ.get("OPENROUTER_API_KEY"))
+        or llm_provider() == "ollama",
     }
 
 

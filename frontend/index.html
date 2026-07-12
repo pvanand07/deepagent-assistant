@@ -176,16 +176,37 @@
         <div class="flex flex-col gap-4">
           <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Model</p>
           <label class="flex flex-col gap-1.5 text-xs">
-            <span class="font-medium text-foreground">OpenRouter API key</span>
+            <span class="font-medium text-foreground">Provider</span>
+            <select v-model="settingsForm.DEEPAGENT_LLM_PROVIDER"
+              class="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring">
+              <option value="openrouter">OpenRouter</option>
+              <option value="ollama">Ollama</option>
+              <option value="custom">Custom (OpenAI-compatible)</option>
+            </select>
+          </label>
+          <label v-if="settingsForm.DEEPAGENT_LLM_PROVIDER !== 'openrouter'" class="flex flex-col gap-1.5 text-xs">
+            <span class="font-medium text-foreground">Base URL</span>
+            <input v-model="settingsForm.DEEPAGENT_LLM_BASE_URL" type="text"
+              class="rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring"
+              :placeholder="settingsForm.DEEPAGENT_LLM_PROVIDER === 'ollama' ? 'http://127.0.0.1:11434/v1' : 'https://api.example.com/v1'" />
+            <span class="text-muted-foreground">
+              OpenAI-compatible API root (must include <span class="font-mono">/v1</span> if the provider uses it).
+            </span>
+          </label>
+          <label class="flex flex-col gap-1.5 text-xs">
+            <span class="font-medium text-foreground">API key</span>
             <input v-model="settingsForm.OPENROUTER_API_KEY" type="password" autocomplete="off"
               class="rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring"
-              :placeholder="settingsMeta.values?.OPENROUTER_API_KEY_set === 'true' ? '•••• (leave blank to keep)' : 'sk-or-…'" />
+              :placeholder="apiKeyPlaceholder" />
+            <span v-if="settingsForm.DEEPAGENT_LLM_PROVIDER === 'ollama'" class="text-muted-foreground">
+              Optional for Ollama (left blank uses a local placeholder).
+            </span>
           </label>
           <label class="flex flex-col gap-1.5 text-xs">
             <span class="font-medium text-foreground">Model</span>
             <input v-model="settingsForm.OPENROUTER_MODEL" type="text"
               class="rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring"
-              placeholder="anthropic/claude-sonnet-4.5" />
+              :placeholder="modelPlaceholder" />
           </label>
           <label class="flex flex-col gap-1.5 text-xs">
             <span class="font-medium text-foreground">Temperature</span>
@@ -193,18 +214,20 @@
               class="rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring"
               placeholder="0.3" />
           </label>
-          <label class="flex flex-col gap-1.5 text-xs">
-            <span class="font-medium text-foreground">Site URL</span>
-            <input v-model="settingsForm.OPENROUTER_SITE_URL" type="text"
-              class="rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring"
-              placeholder="http://localhost" />
-          </label>
-          <label class="flex flex-col gap-1.5 text-xs">
-            <span class="font-medium text-foreground">Site name</span>
-            <input v-model="settingsForm.OPENROUTER_SITE_NAME" type="text"
-              class="rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring"
-              placeholder="deep-agent-microsandbox" />
-          </label>
+          <template v-if="settingsForm.DEEPAGENT_LLM_PROVIDER === 'openrouter'">
+            <label class="flex flex-col gap-1.5 text-xs">
+              <span class="font-medium text-foreground">Site URL</span>
+              <input v-model="settingsForm.OPENROUTER_SITE_URL" type="text"
+                class="rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring"
+                placeholder="http://localhost" />
+            </label>
+            <label class="flex flex-col gap-1.5 text-xs">
+              <span class="font-medium text-foreground">Site name</span>
+              <input v-model="settingsForm.OPENROUTER_SITE_NAME" type="text"
+                class="rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring"
+                placeholder="deep-agent" />
+            </label>
+          </template>
 
           <p class="mt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sandbox</p>
           <p class="text-xs text-muted-foreground -mt-2">
@@ -1055,17 +1078,39 @@ createApp({
     const sessionListLoading = ref(false);
     const route = ref(location.hash.replace(/^#\/?/, "") === "settings" ? "settings" : "chat");
     const settingsForm = reactive({
+      DEEPAGENT_LLM_PROVIDER: "openrouter",
+      DEEPAGENT_LLM_BASE_URL: "",
       OPENROUTER_API_KEY: "",
       OPENROUTER_MODEL: "",
       OPENROUTER_TEMPERATURE: "",
       OPENROUTER_SITE_URL: "",
       OPENROUTER_SITE_NAME: "",
+      networkEnabled: true,
+      DEEPAGENT_SANDBOX_MEMORY: "",
+      DEEPAGENT_SANDBOX_CPUS: "",
+      DEEPAGENT_DNS_NAMESERVERS: "",
+      DEEPAGENT_EXEC_TIMEOUT: "",
+      DEEPAGENT_SANDBOX_IDLE_TIMEOUT: "",
     });
     const settingsMeta = reactive({ data_dir: "", workdir: "", env_path: "", values: {} });
     const settingsSaving = ref(false);
     const settingsMessage = ref("");
     const settingsError = ref(false);
     const sandboxRetrying = ref(false);
+
+    const apiKeyPlaceholder = computed(() => {
+      if (settingsMeta.values?.OPENROUTER_API_KEY_set === "true") {
+        return "•••• (leave blank to keep)";
+      }
+      if (settingsForm.DEEPAGENT_LLM_PROVIDER === "ollama") return "optional";
+      if (settingsForm.DEEPAGENT_LLM_PROVIDER === "custom") return "sk-…";
+      return "sk-or-…";
+    });
+    const modelPlaceholder = computed(() => {
+      if (settingsForm.DEEPAGENT_LLM_PROVIDER === "ollama") return "llama3.2";
+      if (settingsForm.DEEPAGENT_LLM_PROVIDER === "custom") return "gpt-4o";
+      return "anthropic/claude-sonnet-4.5";
+    });
 
     /* ---------- runs ----------
        activeRuns maps sessionId -> run_id for every run the server reports
@@ -2128,11 +2173,14 @@ createApp({
       settingsMeta.workdir = data.workdir || "";
       settingsMeta.env_path = data.env_path || "";
       settingsMeta.values = data.values || {};
+      const v = data.values || {};
+      settingsForm.DEEPAGENT_LLM_PROVIDER = v.DEEPAGENT_LLM_PROVIDER || "openrouter";
+      settingsForm.DEEPAGENT_LLM_BASE_URL = v.DEEPAGENT_LLM_BASE_URL || "";
       settingsForm.OPENROUTER_API_KEY = "";
-      settingsForm.OPENROUTER_MODEL = data.values?.OPENROUTER_MODEL || "";
-      settingsForm.OPENROUTER_TEMPERATURE = data.values?.OPENROUTER_TEMPERATURE || "";
-      settingsForm.OPENROUTER_SITE_URL = data.values?.OPENROUTER_SITE_URL || "";
-      settingsForm.OPENROUTER_SITE_NAME = data.values?.OPENROUTER_SITE_NAME || "";
+      settingsForm.OPENROUTER_MODEL = v.OPENROUTER_MODEL || "";
+      settingsForm.OPENROUTER_TEMPERATURE = v.OPENROUTER_TEMPERATURE || "";
+      settingsForm.OPENROUTER_SITE_URL = v.OPENROUTER_SITE_URL || "";
+      settingsForm.OPENROUTER_SITE_NAME = v.OPENROUTER_SITE_NAME || "";
       settingsMessage.value = "";
       settingsError.value = false;
     }
@@ -2142,7 +2190,19 @@ createApp({
       settingsMessage.value = "";
       settingsError.value = false;
       try {
-        const payload = { ...settingsForm };
+        const payload = {
+          DEEPAGENT_LLM_PROVIDER: settingsForm.DEEPAGENT_LLM_PROVIDER || "openrouter",
+          DEEPAGENT_LLM_BASE_URL: settingsForm.DEEPAGENT_LLM_BASE_URL,
+          OPENROUTER_API_KEY: settingsForm.OPENROUTER_API_KEY,
+          OPENROUTER_MODEL: settingsForm.OPENROUTER_MODEL,
+          OPENROUTER_TEMPERATURE: settingsForm.OPENROUTER_TEMPERATURE,
+          OPENROUTER_SITE_URL: settingsForm.OPENROUTER_SITE_URL,
+          OPENROUTER_SITE_NAME: settingsForm.OPENROUTER_SITE_NAME,
+        };
+        if (payload.DEEPAGENT_LLM_PROVIDER === "openrouter") {
+          // OpenRouter uses its fixed base URL; clear any leftover custom URL.
+          payload.DEEPAGENT_LLM_BASE_URL = "";
+        }
         const res = await fetch(`${API}/api/settings`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -2159,7 +2219,9 @@ createApp({
         settingsMeta.env_path = data.env_path || "";
         settingsMeta.values = data.values || {};
         settingsForm.OPENROUTER_API_KEY = "";
-        settingsMessage.value = "Saved. New chats use the updated model/key.";
+        settingsForm.DEEPAGENT_LLM_PROVIDER = data.values?.DEEPAGENT_LLM_PROVIDER || settingsForm.DEEPAGENT_LLM_PROVIDER;
+        settingsForm.DEEPAGENT_LLM_BASE_URL = data.values?.DEEPAGENT_LLM_BASE_URL || "";
+        settingsMessage.value = "Saved. New chats use the updated provider/model/key.";
         config.value = await api("/api/config");
       } catch (e) {
         settingsError.value = true;
@@ -2301,7 +2363,7 @@ createApp({
       sessionInfoOpen, sessionInfoEl, sessionInfoRows,
       loadSessionList, switchSession, deleteSession, isRunning,
       route, openSettings, closeSettings, settingsForm, settingsMeta, settingsSaving,
-      settingsMessage, settingsError, saveSettings,
+      settingsMessage, settingsError, saveSettings, apiKeyPlaceholder, modelPlaceholder,
       sandboxDegraded, sandboxDegradedReason, sandboxRetrying, retrySandbox,
       // chat
       timeline, draft, streaming, thinking, errorMessage, canSend,
