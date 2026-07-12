@@ -84,10 +84,16 @@ def _normalize_server_entry(entry: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _config_paths() -> list[Path]:
+    """Search order: ``DEEPAGENT_MCP_CONFIG``, then desktop AppData, then repo."""
+    from sandbox_config import is_desktop_mode, resolve_data_dir
+
     paths: list[Path] = []
     override = os.environ.get("DEEPAGENT_MCP_CONFIG")
     if override:
         paths.append(Path(override))
+        return paths
+    if is_desktop_mode() or os.environ.get("DEEPAGENT_DATA_DIR"):
+        paths.append(resolve_data_dir() / ".mcp.json")
     paths.extend(
         [
             _PROJECT_ROOT / ".mcp.json",

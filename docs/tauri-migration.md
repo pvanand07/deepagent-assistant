@@ -9,7 +9,7 @@ References:
 - [claude-code-tauri-skills](https://github.com/dchuk/claude-code-tauri-skills) — Tauri v2 checklists (reference only)
 - [docs/microsandbox-migration.md](./microsandbox-migration.md) — existing VM / workspace decisions (unchanged)
 
-**Status:** Decision record agreed; **do not implement until explicitly confirmed.**
+**Status:** Decision record agreed. **Phase 0–3 implemented** (Tauri shell, desktop Python paths, Windows packaging). Phase 4 optional.
 
 ---
 
@@ -29,7 +29,7 @@ References:
 | 10 | Other entrypoints | **Desktop-primary**; keep browser `uvicorn` + CLI for dev/debug |
 | 11 | Virt failure UX | **Degraded shell** — UI opens with setup guidance |
 | 12 | Chat without sandbox | **No sandbox tools** — chat (+ optional MCP) only until VM healthy |
-| 13 | Dist artifacts | **NSIS + portable**, **unsigned** |
+| 13 | Dist artifacts | **NSIS** (+ portable zip of release exe in Phase 3; Tauri v2 has no `portable` bundle target) |
 | 14 | Dev workflow | **Browser-first**; Tauri when touching shell; optional production-like smoke |
 | 15 | Native surface | **Light desktop** — window, sidecar lifecycle, menu (Quit, Open workspace, Open AppData, Settings) |
 | 16 | Identity | **Deep Agent** / `com.deepagent.app` |
@@ -146,33 +146,34 @@ Do **not** use production `stub` sandbox for this path (host execution undermine
 ### Phase 0 — Doc + scaffolding
 
 - [x] Agree decisions (this doc)
-- [ ] `pnpm create tauri-app` (or equivalent) at repo root → `src-tauri/`
-- [ ] Stub/minimal scaffold frontend; configure window to load sidecar URL in desktop mode
-- [ ] Product name / identifier: Deep Agent / `com.deepagent.app`
+- [x] `pnpm create tauri-app` (or equivalent) at repo root → `src-tauri/`
+- [x] Stub/minimal scaffold frontend; configure window to load sidecar URL in desktop mode
+- [x] Product name / identifier: Deep Agent / `com.deepagent.app`
 
 ### Phase 1 — Sidecar lifecycle (dev)
 
-- [ ] Rust: spawn/kill directory Python, preferred port 8010 + fallback, health wait
-- [ ] Single-instance plugin/behavior
-- [ ] App menu: Quit, Open workspace, Open AppData, Settings (navigate WebView)
-- [ ] Pass `DEEPAGENT_DESKTOP`, data dir, workdir into sidecar env
+- [x] Rust: spawn/kill directory Python, preferred port 8010 + fallback, health wait
+- [x] Single-instance plugin/behavior
+- [x] App menu: Quit, Open workspace, Open AppData, Settings (navigate WebView)
+- [x] Pass `DEEPAGENT_DESKTOP`, data dir, workdir into sidecar env
 
 ### Phase 2 — App path / desktop awareness (Python + Vue)
 
-- [ ] Resolve AppData + Documents defaults when desktop
-- [ ] Load AppData `.env`; settings API + Vue panel for API key / model
-- [ ] AppData `.mcp.json` search path
-- [ ] First-run copy of `agents/` into AppData
-- [ ] Degraded sandbox startup + status API; agent without sandbox tools
-- [ ] Vendor CDN JS/CSS + fonts into `frontend/`
-- [ ] File logging under AppData `logs\`
+- [x] Resolve AppData + Documents defaults when desktop
+- [x] Load AppData `.env`; settings API + Vue panel for API key / model
+- [x] AppData `.mcp.json` search path
+- [x] First-run copy of `agents/` into AppData
+- [x] Degraded sandbox startup + status API; agent without sandbox tools
+- [x] Vendor CDN JS/CSS + fonts into `frontend/` (Tailwind CDN kept — see `frontend/vendor/README.md`)
+- [x] File logging under AppData `logs\`
 
 ### Phase 3 — Windows packaging
 
-- [ ] Package script: embeddable CPython + locked deps → `sidecar/`
-- [ ] Bundle frontend static + agents defaults + sidecar into Tauri resources
-- [ ] `tauri build` → NSIS + portable, unsigned
-- [ ] Smoke: install, first-run key, image pull, chat, sandbox exec
+- [x] Package script: embeddable CPython + locked deps → `sidecar/` (`scripts/package-sidecar.ps1` / `pnpm package:sidecar`)
+- [x] Bundle frontend static + agents defaults + sidecar into Tauri resources (`tauri.conf.json` → `$RESOURCE/sidecar/`; frontend/agents copied into sidecar layout)
+- [x] `tauri build` → NSIS (+ portable zip of release exe + resources); unsigned. Note: Tauri v2 `bundle.targets` has no `portable` enum — `scripts/package-portable.ps1` / `pnpm package:portable` (or `pnpm build:release`)
+- [x] Smoke (non-GUI): packaged `api:app` import + brief uvicorn `/health`. Full install / image-pull / chat / sandbox exec needs interactive virt (WHP); degraded mode remains the designed path when virt fails — do not use stub as production degraded.
+- [x] Packaged spawn uses `resources/sidecar/python.exe -m uvicorn`; `tauri dev` keeps `uv run` fallback
 
 ### Phase 4 — Polish (optional, after ship)
 

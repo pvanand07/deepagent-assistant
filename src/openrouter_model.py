@@ -54,12 +54,12 @@ def get_openrouter_model(
     if site_name := os.environ.get("OPENROUTER_SITE_NAME"):
         default_headers["X-Title"] = site_name
 
-    resolved_model = model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
-    resolved_temperature = (
-        temperature
-        if temperature is not None
-        else float(os.environ.get("OPENROUTER_TEMPERATURE", "0.3"))
-    )
+    resolved_model = model or os.environ.get("OPENROUTER_MODEL") or DEFAULT_MODEL
+    if temperature is not None:
+        resolved_temperature = temperature
+    else:
+        raw_temp = (os.environ.get("OPENROUTER_TEMPERATURE") or "").strip()
+        resolved_temperature = float(raw_temp) if raw_temp else 0.3
 
     kwargs: dict = {
         "model": resolved_model,

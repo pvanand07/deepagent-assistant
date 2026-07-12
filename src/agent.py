@@ -5,13 +5,17 @@ and `execute` tools from `deepagents.FilesystemMiddleware`, backed by a
 shared microsandbox microVM (see ``SandboxManager``).
 
 Sandbox VM lifecycle is owned by ``SandboxManager`` (app lifespan), not by
-individual sessions.
+individual sessions. When the sandbox is degraded (no VM), the agent is built
+for chat + optional MCP only — no host stub sandbox.
 """
 
 from __future__ import annotations
 
+import logging
 import os
+import shutil
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -20,8 +24,24 @@ from deepagents import SubAgent, create_deep_agent
 from mcp_tools import load_mcp_tools
 from openrouter_model import get_openrouter_model
 from pwd_middleware import AgentContext, PwdContextMiddleware
-from sandbox_config import default_network, default_workdir
+from sandbox_config import default_network, default_workdir, is_desktop_mode, resolve_data_dir
 from sandbox_tools import build_sandbox_tools
+
+logger = logging.getLogger(__name__)
+
+_REPO_AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
+
+
+@dataclass
+class HostWorkspace:
+    """Host workdir handle used when the microVM is unavailable (degraded)."""
+
+    _workdir: Path
+    id: str = "degraded"
+    network: bool = False
+
+    def cleanup(self) -> None:
+        return None
 
 
 def _default_workdir() -> str | None:
@@ -30,6 +50,30 @@ def _default_workdir() -> str | None:
 
 def _default_network() -> bool:
     return default_network()
+
+
+def resolve_agents_dir() -> Path:
+    """Return the agents TOML directory, copying defaults into AppData on first run."""
+    if is_desktop_mode() or os.environ.get("DEEPAGENT_DATA_DIR"):
+        dest = resolve_data_dir() / "agents"
+        ensure_agents_copied(dest)
+        if dest.is_dir() and any(dest.glob("*.toml")):
+            return dest
+    return _REPO_AGENTS_DIR
+
+
+def ensure_agents_copied(dest: Path | None = None) -> Path:
+    """Copy bundled ``agents/*.toml`` into AppData when the destination is empty."""
+    target = dest or (resolve_data_dir() / "agents")
+    target.mkdir(parents=True, exist_ok=True)
+    if any(target.glob("*.toml")):
+        return target
+    if not _REPO_AGENTS_DIR.is_dir():
+        return target
+    for path in _REPO_AGENTS_DIR.glob("*.toml"):
+        shutil.copy2(path, target / path.name)
+        logger.info("Copied default agent TOML to %s", target / path.name)
+    return target
 
 
 MAIN_SYSTEM_PROMPT = """You are DeepAgent, a precise, safe, and helpful coding agent.
@@ -124,12 +168,19 @@ UI preview buttons:
   prose, never inside code fences.
 """
 
-_AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
+DEGRADED_SYSTEM_PROMPT = """You are DeepAgent in setup mode. The microsandbox microVM is
+not available yet, so workspace filesystem and shell tools are disabled.
+
+You can still chat and use optional MCP tools (when configured). Do not claim
+you edited files or ran shell commands. Tell the user to finish virtualization
+setup (Windows Hypervisor Platform / WHP, `msb doctor`) and retry the sandbox
+from Settings or after fixing the host.
+"""
 
 
 def load_subagents_from_toml(agents_dir: Path | None = None) -> list[SubAgent]:
     """Load codex-style agent TOML definitions as deepagents SubAgent specs."""
-    root = agents_dir or _AGENTS_DIR
+    root = agents_dir or resolve_agents_dir()
     subagents: list[SubAgent] = []
 
     for path in sorted(root.glob("*.toml")):
@@ -166,8 +217,12 @@ def build_agent(
     mcp_servers: list[str] | None = None,
     checkpointer: Any | None = None,
     sandbox: Any | None = None,
+    sandbox_available: bool | None = None,
 ):
     """Construct the deep agent using the shared microsandbox backend.
+
+    When ``sandbox_available`` is False (degraded virt), builds chat + MCP only
+    with no sandbox filesystem/shell tools and no host stub backend.
 
     Returns:
         (agent, sandbox, mcp_meta). The VM is owned by ``SandboxManager``;
@@ -175,7 +230,12 @@ def build_agent(
     """
     model = get_openrouter_model(model=model_name)
 
-    if sandbox is None:
+    if sandbox_available is None:
+        from sandbox_manager import get_manager
+
+        sandbox_available = get_manager().healthy
+
+    if sandbox is None and sandbox_available:
         from sandbox_manager import get_manager
 
         sandbox = get_manager().backend
@@ -187,6 +247,26 @@ def build_agent(
             raise RuntimeError(f"Failed to load MCP tools: {exc}") from exc
     else:
         resolved_servers = list(mcp_servers or [])
+
+    if not sandbox_available:
+        workdir = default_workdir()
+        workdir.mkdir(parents=True, exist_ok=True)
+        host = HostWorkspace(_workdir=workdir, network=default_network())
+        agent = create_deep_agent(
+            model=model,
+            backend=None,
+            system_prompt=DEGRADED_SYSTEM_PROMPT,
+            subagents=None,
+            tools=list(mcp_tools or []) or None,
+            checkpointer=checkpointer,
+        )
+        mcp_meta = {
+            "servers": resolved_servers,
+            "tool_names": [getattr(t, "name", str(t)) for t in (mcp_tools or [])],
+            "subagent_names": [],
+            "sandbox_available": False,
+        }
+        return agent, host, mcp_meta
 
     subagents = load_subagents_from_toml() if with_subagents else []
     extra_tools = list(mcp_tools or []) + build_sandbox_tools()
@@ -205,6 +285,7 @@ def build_agent(
         "servers": resolved_servers,
         "tool_names": [getattr(t, "name", str(t)) for t in (mcp_tools or [])],
         "subagent_names": [s["name"] for s in subagents],
+        "sandbox_available": True,
     }
     return agent, sandbox, mcp_meta
 

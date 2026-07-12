@@ -9,6 +9,21 @@ from pydantic import BaseModel, Field
 
 class HealthResponse(BaseModel):
     status: str = "ok"
+    sandbox_healthy: bool = True
+    sandbox_degraded: bool = False
+    sandbox_status: dict[str, Any] | None = None
+
+
+class SettingsResponse(BaseModel):
+    desktop: bool = False
+    data_dir: str
+    workdir: str
+    env_path: str
+    values: dict[str, str] = Field(default_factory=dict)
+
+
+class SettingsUpdateRequest(BaseModel):
+    values: dict[str, str] = Field(default_factory=dict)
 
 
 class CreateSessionRequest(BaseModel):

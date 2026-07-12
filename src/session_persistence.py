@@ -26,10 +26,15 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 
 def default_data_dir() -> Path:
-    env = os.environ.get("DEEPAGENT_DATA_DIR")
-    if env:
-        return Path(env)
-    return Path(__file__).resolve().parent.parent / "data"
+    """SQLite / app data root.
+
+    Honors ``DEEPAGENT_DATA_DIR``. In desktop mode (``DEEPAGENT_DESKTOP=1``)
+    without an override, defaults to ``%APPDATA%\\DeepAgent`` (see
+    ``sandbox_config.resolve_data_dir``). Dev/browser keeps repo ``data/``.
+    """
+    from sandbox_config import resolve_data_dir
+
+    return resolve_data_dir()
 
 
 def checkpoint_db_path() -> Path:

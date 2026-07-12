@@ -32,9 +32,12 @@ One shared microVM per app process:
 | `src/api.py` | FastAPI HTTP API for the web GUI |
 | `src/cli.py` | Interactive terminal chat loop |
 | `Dockerfile.sandbox` | Guest OCI image definition (dev build / release pull) |
-| `frontend/` | Static HTML/CSS/JS GUI |
+| `frontend/` | Static HTML/CSS/JS GUI (served by FastAPI) |
+| `desktop-stub/` | Tauri boot chrome only (“Starting Deep Agent…”) |
+| `src-tauri/` | Tauri 2 shell (sidecar spawn, menu, single-instance) |
 | `workspace/` | Host directory mounted as `/workspace` |
 | `docs/microsandbox-migration.md` | Agreed migration design |
+| `docs/tauri-migration.md` | Tauri desktop shell plan |
 
 ## Prerequisites
 
@@ -72,6 +75,41 @@ CLI:
 ```bash
 DEEPAGENT_WORKDIR="$PWD/workspace" PYTHONPATH=src uv run python src/cli.py
 ```
+
+## Desktop shell (Tauri)
+
+Browser + `uvicorn` and the CLI remain supported for daily debug. Use Tauri when working on
+the native shell (window, menu, sidecar lifecycle). See [docs/tauri-migration.md](docs/tauri-migration.md).
+
+```bash
+# One-time: Node deps for the shell
+pnpm install
+
+# Dev: Tauri spawns uvicorn (prefers `uv run`) on 127.0.0.1:8010 (+ fallback),
+# waits for /health, then navigates the WebView to the API UI.
+pnpm tauri dev
+
+# Packaged Windows build (embeddable CPython sidecar + NSIS + portable zip)
+pnpm build:release
+# Or step-by-step:
+#   pnpm package:sidecar    # scripts/package-sidecar.ps1 → sidecar/
+#   pnpm tauri build        # NSIS installer
+#   pnpm package:portable   # zip of exe + sidecar resources (Tauri v2 has no portable target)
+```
+
+**Artifacts (unsigned):**
+
+| Artifact | Path |
+|----------|------|
+| NSIS installer | `src-tauri/target/release/bundle/nsis/Deep Agent_0.1.0_x64-setup.exe` |
+| Portable zip | `src-tauri/target/release/bundle/portable/Deep-Agent-0.1.0-windows-x64-portable.zip` |
+
+`sidecar/` is generated and gitignored (except `sidecar/README.md`). Re-run `pnpm package:sidecar`
+after dependency or app-source changes before a release build.
+
+**Dev vs packaged spawn:** `tauri dev` uses `uv run uvicorn` (or system Python). Release builds
+spawn bundled `sidecar/python.exe -m uvicorn` with `DEEPAGENT_DESKTOP=1`, AppData data dir,
+Documents workspace, and `PYTHONPATH` → bundled `src`.
 
 ## Configuration
 

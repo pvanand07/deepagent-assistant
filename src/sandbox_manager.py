@@ -92,10 +92,21 @@ class SandboxManager:
         self._cancel_run: CancelRunFn | None = None
         self._started = False
         self._create_lock = asyncio.Lock()
+        self._healthy = False
+        self._degraded_reason: str | None = None
+        self._fix_it: str | None = None
 
     @property
     def started(self) -> bool:
         return self._started
+
+    @property
+    def healthy(self) -> bool:
+        return self._healthy
+
+    @property
+    def degraded(self) -> bool:
+        return self._started and not self._healthy
 
     @property
     def loop(self) -> asyncio.AbstractEventLoop:
@@ -112,9 +123,8 @@ class SandboxManager:
         return self._network
 
     @property
-    def backend(self) -> Any:
-        if self._backend is None:
-            raise RuntimeError("SandboxManager backend is not ready")
+    def backend(self) -> Any | None:
+        """Shared microsandbox backend, or ``None`` when degraded (no VM)."""
         return self._backend
 
     @property
@@ -124,13 +134,26 @@ class SandboxManager:
     def bind_cancel_run(self, cancel_run: CancelRunFn) -> None:
         self._cancel_run = cancel_run
 
+    def _enter_degraded(self, reason: str) -> None:
+        self._healthy = False
+        self._backend = None
+        self._sb = None
+        self._degraded_reason = reason
+        self._fix_it = _VIRT_HELP
+        self._started = True
+
     async def startup(self) -> None:
         if use_stub_backend():
             self._loop = asyncio.get_running_loop()
+            self._workdir = default_workdir()
+            self._network = default_network()
             self._workdir.mkdir(parents=True, exist_ok=True)
             from microsandbox_sandbox import MicrosandboxSandbox
 
             self._backend = MicrosandboxSandbox(manager=self, stub=True)
+            self._healthy = True
+            self._degraded_reason = None
+            self._fix_it = None
             self._started = True
             return
 
@@ -146,17 +169,45 @@ class SandboxManager:
             if not is_installed():
                 await install()
         except Exception as exc:
-            raise RuntimeError(_VIRT_HELP) from exc
+            self._enter_degraded(f"microsandbox install/check failed: {exc}")
+            return
 
         try:
             await self._create_sandbox()
         except Exception as exc:
-            raise RuntimeError(f"{_VIRT_HELP}\nUnderlying error: {exc}") from exc
+            self._enter_degraded(f"microsandbox could not create a microVM: {exc}")
+            return
 
         from microsandbox_sandbox import MicrosandboxSandbox
 
         self._backend = MicrosandboxSandbox(manager=self)
+        self._healthy = True
+        self._degraded_reason = None
+        self._fix_it = None
         self._started = True
+
+    async def retry_sandbox(self) -> dict[str, Any]:
+        """Attempt to create the microVM after a degraded start."""
+        if use_stub_backend():
+            return self.status_dict()
+        if self._healthy and self._backend is not None:
+            return self.status_dict()
+        try:
+            from microsandbox import is_installed, install
+
+            if not is_installed():
+                await install()
+            await self._create_sandbox()
+            from microsandbox_sandbox import MicrosandboxSandbox
+
+            self._backend = MicrosandboxSandbox(manager=self)
+            self._healthy = True
+            self._degraded_reason = None
+            self._fix_it = None
+            self._started = True
+        except Exception as exc:
+            self._enter_degraded(f"microsandbox retry failed: {exc}")
+        return self.status_dict()
 
     async def shutdown(self) -> None:
         if not self._started:
@@ -207,12 +258,15 @@ class SandboxManager:
         async with self._create_lock:
             if use_stub_backend():
                 return None
+            if not self._healthy:
+                raise RuntimeError(
+                    self._degraded_reason
+                    or "Sandbox is unavailable (degraded mode). See fix_it guidance."
+                )
             if self._sb is None:
                 await self._create_sandbox()
                 return self._sb
             try:
-                from microsandbox import SandboxNotRunningError
-
                 # Cheap liveness probe; recreate after idle auto-stop.
                 await self._sb.shell("true", timeout=10)
             except Exception as exc:
@@ -233,6 +287,10 @@ class SandboxManager:
         holder = self._holder
         return {
             "started": self._started,
+            "healthy": self._healthy,
+            "degraded": self.degraded,
+            "degraded_reason": self._degraded_reason,
+            "fix_it": self._fix_it,
             "sandbox_name": SANDBOX_NAME,
             "workdir": str(self._workdir),
             "network": self._network,
@@ -243,6 +301,9 @@ class SandboxManager:
             "holder_since": holder.since if holder else None,
             "default_lock_wait": sandbox_lock_wait(),
             "default_exec_timeout": exec_timeout(),
+            "backend": "stub" if use_stub_backend() else (
+                "microsandbox" if self._healthy else "unavailable"
+            ),
         }
 
     async def wait_for_lock(self, wait_seconds: int | None = None) -> dict[str, Any]:

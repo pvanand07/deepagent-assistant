@@ -1,0 +1,18 @@
+{
+  "name": "deep-agent",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Deep Agent desktop shell (Tauri)",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "package:sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-sidecar.ps1",
+    "package:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-portable.ps1",
+    "build:release": "pnpm package:sidecar && pnpm tauri build && pnpm package:portable"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

@@ -1,0 +1,26 @@
+[package]
+name = "deep-agent"
+version = "0.1.0"
+description = "Deep Agent desktop shell"
+authors = ["Deep Agent"]
+edition = "2021"
+
+[lib]
+# The `_lib` suffix avoids Windows crate/bin name conflicts.
+# See https://github.com/rust-lang/cargo/issues/8519
+name = "deep_agent_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+ureq = "2"
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = "2"

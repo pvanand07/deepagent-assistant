@@ -100,7 +100,8 @@ class SessionStore:
         mcp_tools, mcp_servers = await self._get_mcp()
         from sandbox_manager import get_manager
 
-        sandbox = get_manager().backend
+        manager = get_manager()
+        sandbox = manager.backend if manager.healthy else None
         agent, sandbox, mcp_meta = await asyncio.to_thread(
             build_agent,
             model_name=meta.model,
@@ -109,6 +110,7 @@ class SessionStore:
             mcp_servers=mcp_servers,
             checkpointer=self._checkpoints.checkpointer,
             sandbox=sandbox,
+            sandbox_available=manager.healthy,
         )
         return AgentSession(
             id=meta.id,

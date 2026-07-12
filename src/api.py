@@ -33,9 +33,20 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Load repo-root .env / .env.local before other app modules read os.environ.
-from sandbox_config import default_network, load_app_env
+from sandbox_config import (
+    configure_file_logging,
+    default_network,
+    default_workdir,
+    env_dir,
+    is_desktop_mode,
+    load_app_env,
+    read_settings_env,
+    resolve_data_dir,
+    write_settings_env,
+)
 
 load_app_env()
+configure_file_logging()
 
 from agent import _default_workdir
 from sandbox_manager import get_manager
@@ -57,6 +68,8 @@ from api_models import (
     SessionListResponse,
     SessionResponse,
     SessionSummary,
+    SettingsResponse,
+    SettingsUpdateRequest,
 )
 from mcp_tools import load_mcp_connections
 from message_summary import serialize_messages
@@ -69,6 +82,10 @@ _SSE_HEARTBEAT_SECONDS = 15
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from agent import ensure_agents_copied
+
+    if is_desktop_mode() or os.environ.get("DEEPAGENT_DATA_DIR"):
+        ensure_agents_copied()
     await store.startup()
     manager = get_manager()
     await manager.startup()
@@ -238,7 +255,40 @@ def _validate_pwd(session, pwd: str | None) -> str | None:
 
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
-    return HealthResponse()
+    manager = get_manager()
+    status = manager.status_dict() if manager.started else None
+    healthy = bool(status and status.get("healthy"))
+    degraded = bool(status and status.get("degraded"))
+    return HealthResponse(
+        status="ok" if not degraded else "degraded",
+        sandbox_healthy=healthy if status else True,
+        sandbox_degraded=degraded,
+        sandbox_status=status,
+    )
+
+
+@app.get("/api/settings", response_model=SettingsResponse)
+async def get_settings() -> SettingsResponse:
+    data = resolve_data_dir()
+    return SettingsResponse(
+        desktop=is_desktop_mode(),
+        data_dir=str(data),
+        workdir=str(default_workdir()),
+        env_path=str(env_dir() / ".env"),
+        values=read_settings_env(),
+    )
+
+
+@app.put("/api/settings", response_model=SettingsResponse)
+async def put_settings(body: SettingsUpdateRequest) -> SettingsResponse:
+    write_settings_env(body.values)
+    return await get_settings()
+
+
+@app.post("/api/sandbox/retry")
+async def retry_sandbox() -> dict[str, Any]:
+    manager = get_manager()
+    return await manager.retry_sandbox()
 
 
 @app.get("/api/sessions", response_model=SessionListResponse)
@@ -522,6 +572,8 @@ async def create_folder(session_id: str, body: CreateFolderRequest) -> FolderCre
 @app.get("/api/config")
 async def get_config() -> dict[str, Any]:
     mcp_connections = load_mcp_connections()
+    manager = get_manager()
+    sandbox_status = manager.status_dict() if manager.started else None
     return {
         "default_model": os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
         "default_workdir": _default_workdir(),
@@ -530,6 +582,12 @@ async def get_config() -> dict[str, Any]:
         "mcp_servers": list(mcp_connections.keys()),
         "username": os.environ.get("DEEPAGENT_USERNAME") or getpass.getuser() or "User",
         "sandbox_backend": os.environ.get("DEEPAGENT_SANDBOX_BACKEND", "microsandbox"),
+        "desktop": is_desktop_mode(),
+        "data_dir": str(resolve_data_dir()),
+        "sandbox_healthy": bool(sandbox_status and sandbox_status.get("healthy")),
+        "sandbox_degraded": bool(sandbox_status and sandbox_status.get("degraded")),
+        "sandbox_status": sandbox_status,
+        "has_api_key": bool(os.environ.get("OPENROUTER_API_KEY")),
     }
 
 
