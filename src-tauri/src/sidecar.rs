@@ -1,9 +1,12 @@
-//! FastAPI sidecar lifecycle: packaged embeddable CPython or dev `uv run`.
+//! FastAPI sidecar lifecycle: packaged CPython or dev `uv run`.
 //!
-//! Packaged release builds spawn `resources/sidecar/python.exe -m uvicorn …`.
+//! Packaged release builds spawn bundled Python under `resources/sidecar/`:
+//! - Windows: `python.exe -m uvicorn …`
+//! - macOS/Linux: `bin/python3` (or `python3` / `bin/python`) `-m uvicorn …`
+//!
 //! `pnpm tauri dev` (debug) always uses repo root + `uv run` / system Python,
 //! even if `target/*/sidecar` exists from a prior package step.
-//! See docs/tauri-migration.md Phase 3.
+//! See docs/tauri-migration.md Phase 3 and docs/macos-packaging.md.
 
 use std::{
     io::{self, BufRead, BufReader},
@@ -16,6 +19,9 @@ use std::{
 
 use tauri::{AppHandle, Manager};
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 const PREFERRED_PORT: u16 = 8010;
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(90);
 const HEALTH_POLL: Duration = Duration::from_millis(250);
@@ -26,18 +32,18 @@ pub struct SidecarPaths {
     pub root: PathBuf,
     pub data_dir: PathBuf,
     pub workdir: PathBuf,
-    /// Set when embeddable `python.exe` is present under resources.
+    /// Set when bundled Python is present under resources.
     pub python_exe: Option<PathBuf>,
 }
 
 impl SidecarPaths {
     fn data_and_workdir(fallback_root: &Path) -> (PathBuf, PathBuf) {
-        // %APPDATA%\DeepAgent on Windows (dirs::data_dir → Roaming)
+        // dirs::data_dir → Roaming AppData (Windows) / Application Support (macOS)
         let data_dir = dirs::data_dir()
             .unwrap_or_else(|| fallback_root.join("data"))
             .join("DeepAgent");
 
-        // %USERPROFILE%\Documents\DeepAgent\workspace
+        // Documents/DeepAgent/workspace
         let workdir = dirs::document_dir()
             .unwrap_or_else(|| fallback_root.join("workspace"))
             .join("DeepAgent")
@@ -61,10 +67,31 @@ impl SidecarPaths {
         }
     }
 
-    /// Prefer bundled embeddable Python under `$RESOURCE/sidecar/`; else dev.
+    /// Candidates for packaged Python under `$RESOURCE/sidecar/`.
+    fn find_packaged_python(sidecar_root: &Path) -> Option<PathBuf> {
+        #[cfg(windows)]
+        {
+            let python = sidecar_root.join("python.exe");
+            if python.is_file() {
+                return Some(python);
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            for rel in ["bin/python3", "bin/python", "python3", "python"] {
+                let candidate = sidecar_root.join(rel);
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+        None
+    }
+
+    /// Prefer bundled Python under `$RESOURCE/sidecar/`; else dev.
     ///
     /// Debug/`tauri dev` always uses the repo + `uv run` so a leftover
-    /// `target/*/sidecar/python.exe` from a prior package step does not win.
+    /// packaged sidecar from a prior package step does not win.
     pub fn resolve_with_app(app: &AppHandle) -> Self {
         if cfg!(debug_assertions) {
             let _ = app;
@@ -72,8 +99,7 @@ impl SidecarPaths {
         }
         if let Ok(resource_dir) = app.path().resource_dir() {
             let sidecar_root = resource_dir.join("sidecar");
-            let python = sidecar_root.join("python.exe");
-            if python.is_file() {
+            if let Some(python) = Self::find_packaged_python(&sidecar_root) {
                 let (data_dir, workdir) = Self::data_and_workdir(&sidecar_root);
                 return Self {
                     root: sidecar_root,
@@ -114,6 +140,29 @@ fn pipe_child_stdio(child: &mut Child) {
     }
 }
 
+/// Kill the sidecar process tree (Windows taskkill /T; Unix process group).
+fn kill_sidecar_tree(child: &mut Child) {
+    let pid = child.id();
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    #[cfg(unix)]
+    {
+        // Negative PID = process group (requires process_group(0) at spawn).
+        unsafe {
+            let _ = libc::kill(-(pid as i32), libc::SIGKILL);
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 pub struct SidecarHandle {
     pub port: u16,
     child: Child,
@@ -121,19 +170,8 @@ pub struct SidecarHandle {
 
 impl SidecarHandle {
     pub fn kill(mut self) {
-        let pid = self.child.id();
         // Kill the process tree — `uv run` may leave uvicorn as a grandchild.
-        #[cfg(windows)]
-        {
-            let _ = Command::new("taskkill")
-                .args(["/PID", &pid.to_string(), "/T", "/F"])
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
-        }
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        kill_sidecar_tree(&mut self.child);
     }
 }
 
@@ -215,7 +253,17 @@ fn apply_sidecar_env(cmd: &mut Command, paths: &SidecarPaths) {
         .stderr(Stdio::piped());
 }
 
-/// Packaged: embeddable `python.exe -m uvicorn`. Dev: `uv run` / system Python.
+/// Put the child in its own process group so quit can SIGKILL the whole tree.
+#[cfg(unix)]
+fn prepare_unix_process_group(cmd: &mut Command) {
+    // 0 → child's PID becomes the new PGID (stable since Rust 1.64).
+    cmd.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn prepare_unix_process_group(_cmd: &mut Command) {}
+
+/// Packaged: bundled Python `-m uvicorn`. Dev: `uv run` / system Python.
 fn spawn_uvicorn(paths: &SidecarPaths, port: u16) -> Result<Child, SidecarError> {
     let host = "127.0.0.1";
     let port_s = port.to_string();
@@ -232,6 +280,7 @@ fn spawn_uvicorn(paths: &SidecarPaths, port: u16) -> Result<Child, SidecarError>
             &port_s,
         ]);
         apply_sidecar_env(&mut cmd, paths);
+        prepare_unix_process_group(&mut cmd);
         return cmd.spawn().map_err(|e| {
             SidecarError::Spawn(format!(
                 "failed to spawn packaged `{} -m uvicorn`: {e}",
@@ -252,6 +301,7 @@ fn spawn_uvicorn(paths: &SidecarPaths, port: u16) -> Result<Child, SidecarError>
             &port_s,
         ]);
         apply_sidecar_env(&mut cmd, paths);
+        prepare_unix_process_group(&mut cmd);
         return cmd.spawn().map_err(|e| {
             SidecarError::Spawn(format!("failed to spawn `uv run uvicorn`: {e}"))
         });
@@ -275,6 +325,7 @@ fn spawn_uvicorn(paths: &SidecarPaths, port: u16) -> Result<Child, SidecarError>
             &port_s,
         ]);
         apply_sidecar_env(&mut cmd, paths);
+        prepare_unix_process_group(&mut cmd);
         match cmd.spawn() {
             Ok(child) => return Ok(child),
             Err(e) => {
@@ -287,7 +338,7 @@ fn spawn_uvicorn(paths: &SidecarPaths, port: u16) -> Result<Child, SidecarError>
 
     Err(SidecarError::Spawn(
         "No packaged sidecar Python and neither `uv` nor `python`/`python3`/`py` found on PATH. \
-         Run `scripts/package-sidecar.ps1` for release builds, or install uv / Python 3.12+ for dev."
+         Run `pnpm package:sidecar` for release builds, or install uv / Python 3.12+ for dev."
             .into(),
     ))
 }
@@ -332,21 +383,7 @@ pub fn spawn_and_wait(paths: &SidecarPaths) -> Result<SidecarHandle, SidecarErro
     match wait_for_health(port, &mut child) {
         Ok(()) => Ok(SidecarHandle { port, child }),
         Err(err) => {
-            let pid = child.id();
-            #[cfg(windows)]
-            {
-                let _ = Command::new("taskkill")
-                    .args(["/PID", &pid.to_string(), "/T", "/F"])
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status();
-            }
-            #[cfg(not(windows))]
-            {
-                let _ = child.kill();
-            }
-            let _ = pid;
+            kill_sidecar_tree(&mut child);
             Err(err)
         }
     }

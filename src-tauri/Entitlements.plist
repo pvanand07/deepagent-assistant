@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for Deep Agent on macOS (direct-download / Developer ID path).
+
+  Required for microsandbox → libkrun → Hypervisor.framework on Apple Silicon.
+  Do NOT enable App Sandbox — it conflicts with microVM + bundled sidecar natives.
+
+  These apply when the .app is code-signed. Unsigned CI builds still ship this
+  plist via Tauri so the capability set is ready for notarization later.
+  See docs/macos-packaging.md.
+-->
+<plist version="1.0">
+<dict>
+    <!-- Hypervisor.framework / HVF (libkrun on Apple Silicon) -->
+    <key>com.apple.security.hypervisor</key>
+    <true/>
+    <!-- Allow JIT / unsigned executable memory used by VM runtimes -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- Load bundled microsandbox/libkrunfw dylibs from non-system paths -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- Hardened runtime strips DYLD_*; needed if runtime uses DYLD_LIBRARY_PATH -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+</dict>
+</plist>

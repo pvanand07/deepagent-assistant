@@ -24,7 +24,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": "all",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -34,6 +34,11 @@
     ],
     "resources": {
       "../sidecar/": "sidecar/"
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "entitlements": "./Entitlements.plist",
+      "hardenedRuntime": true
     },
     "windows": {
       "nsis": {

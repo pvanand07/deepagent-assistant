@@ -481,7 +481,7 @@
           <div class="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
             <div class="min-w-0 text-xs leading-5 text-foreground">
               <p class="font-semibold">Sandbox unavailable — chat only</p>
-              <p class="text-muted-foreground">{{ sandboxDegradedReason || 'Enable Windows Hypervisor Platform (WHP) and run msb doctor, then retry.' }}</p>
+              <p class="text-muted-foreground">{{ sandboxDegradedReason || 'Enable host virtualization (Apple Silicon Hypervisor, Windows WHP, or Linux KVM), run msb doctor, then retry.' }}</p>
             </div>
             <div class="flex shrink-0 items-center gap-1.5">
               <button type="button" @click="openSettings" class="rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium">Settings</button>

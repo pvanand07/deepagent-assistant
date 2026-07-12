@@ -8,9 +8,10 @@
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build",
-    "package:sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-sidecar.ps1",
-    "package:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-portable.ps1",
-    "build:release": "pnpm package:sidecar && pnpm tauri build && pnpm package:portable"
+    "package:sidecar": "node scripts/package-platform.mjs sidecar",
+    "package:portable": "node scripts/package-platform.mjs portable",
+    "package:smoke": "node scripts/package-platform.mjs smoke",
+    "build:release": "node scripts/package-platform.mjs release"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

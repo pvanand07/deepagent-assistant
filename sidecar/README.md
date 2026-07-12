@@ -1,14 +1,11 @@
 # Sidecar runtime (generated)
 
-This directory holds the Windows **embeddable CPython** runtime plus installed
-dependencies and a copy of `src/`, `frontend/`, and `agents/` for packaged
-Deep Agent builds.
+This directory holds a **platform Python runtime** plus installed dependencies
+and a copy of `src/`, `frontend/`, and `agents/` for packaged Deep Agent builds.
 
-Regenerate with:
+| Host | Runtime layout | Regenerate |
+|------|----------------|------------|
+| Windows | Embeddable CPython → `python.exe` | `pnpm package:sidecar` / `scripts/package-sidecar.ps1` |
+| macOS (arm64) | Relocatable CPython → `bin/python3` | `pnpm package:sidecar` / `scripts/package-sidecar.sh` |
 
-```powershell
-pnpm package:sidecar
-# or: pwsh -File scripts/package-sidecar.ps1
-```
-
-Do not commit the generated binaries or `Lib/` tree — see `.gitignore`.
+Do not commit the generated binaries or site-packages — see `.gitignore`.

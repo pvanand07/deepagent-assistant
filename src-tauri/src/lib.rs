@@ -69,8 +69,14 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let open_workspace =
         MenuItem::with_id(app, "open-workspace", "Open workspace", true, None::<&str>)?;
+    #[cfg(target_os = "macos")]
+    let open_data_label = "Open Application Support";
+    #[cfg(target_os = "windows")]
+    let open_data_label = "Open AppData";
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let open_data_label = "Open data folder";
     let open_appdata =
-        MenuItem::with_id(app, "open-appdata", "Open AppData", true, None::<&str>)?;
+        MenuItem::with_id(app, "open-appdata", open_data_label, true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -168,12 +169,20 @@ UI preview buttons:
   prose, never inside code fences.
 """
 
-DEGRADED_SYSTEM_PROMPT = """You are DeepAgent in setup mode. The microsandbox microVM is
+def _virt_setup_hint() -> str:
+    if sys.platform == "darwin":
+        return "Apple Silicon Hypervisor.framework, `msb doctor`"
+    if sys.platform == "win32":
+        return "Windows Hypervisor Platform / WHP, `msb doctor`"
+    return "KVM (/dev/kvm), `msb doctor`"
+
+
+DEGRADED_SYSTEM_PROMPT = f"""You are DeepAgent in setup mode. The microsandbox microVM is
 not available yet, so workspace filesystem and shell tools are disabled.
 
 You can still chat and use optional MCP tools (when configured). Do not claim
 you edited files or ran shell commands. Tell the user to finish virtualization
-setup (Windows Hypervisor Platform / WHP, `msb doctor`) and retry the sandbox
+setup ({_virt_setup_hint()}) and retry the sandbox
 from Settings or after fixing the host.
 """
 

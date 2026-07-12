@@ -177,11 +177,16 @@ Do **not** use production `stub` sandbox for this path (host execution undermine
 
 ### Phase 4 — Polish (optional, after ship)
 
-- [ ] Code signing, auto-update, CI Windows artifacts
-- [ ] macOS / Linux shells
+- [ ] Code signing / notarization, auto-update
 - [ ] PyInstaller single-file experiment
 - [ ] React/modern frontend rewrite
 - [ ] Bundle preloaded guest image
+
+### Phase 5 — macOS packaging + dual-OS CI (active)
+
+See **[macos-packaging.md](./macos-packaging.md)** for the full decision record and
+implementation plan (unsigned arm64 DMG, relocatable CPython sidecar, Hypervisor
+entitlements, `workflow_dispatch` Releases). Linux installers remain a later phase.
 
 ---
 
@@ -189,12 +194,11 @@ Do **not** use production `stub` sandbox for this path (host execution undermine
 
 - React / TanStack rewrite
 - PyInstaller single binary as primary
-- macOS / Linux installers
+- macOS / Linux installers (macOS: see Phase 5 / macos-packaging.md)
 - Auto-update / code signing
 - Tray / close-to-tray
 - FastAPI ↔ Rust Unix socket bridge
 - Shipping a preloaded OCI guest image
-- GitHub Actions release pipeline
 - Exposing the API on LAN
 
 ---

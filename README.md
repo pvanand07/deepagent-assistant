@@ -79,7 +79,8 @@ DEEPAGENT_WORKDIR="$PWD/workspace" PYTHONPATH=src uv run python src/cli.py
 ## Desktop shell (Tauri)
 
 Browser + `uvicorn` and the CLI remain supported for daily debug. Use Tauri when working on
-the native shell (window, menu, sidecar lifecycle). See [docs/tauri-migration.md](docs/tauri-migration.md).
+the native shell (window, menu, sidecar lifecycle). See [docs/tauri-migration.md](docs/tauri-migration.md)
+and [docs/macos-packaging.md](docs/macos-packaging.md) (macOS arm64 DMG + dual-OS CI).
 
 ```bash
 # One-time: Node deps for the shell
@@ -89,28 +90,38 @@ pnpm install
 # waits for /health, then navigates the WebView to the API UI.
 pnpm tauri dev
 
-# Packaged Windows build (embeddable CPython sidecar + NSIS + portable zip)
+# Packaged release build (platform-aware)
 pnpm build:release
+# Windows: embeddable CPython sidecar → NSIS + portable zip
+# macOS arm64: relocatable CPython sidecar → DMG
 # Or step-by-step:
-#   pnpm package:sidecar    # scripts/package-sidecar.ps1 → sidecar/
-#   pnpm tauri build        # NSIS installer
-#   pnpm package:portable   # zip of exe + sidecar resources (Tauri v2 has no portable target)
+#   pnpm package:sidecar
+#   pnpm exec tauri build --bundles nsis   # Windows
+#   pnpm exec tauri build --bundles dmg    # macOS
+#   pnpm package:portable                  # Windows only
+#   pnpm package:smoke                     # import api:app + /health
 ```
+
+**CI:** GitHub Actions → **Desktop build (unsigned)** (`workflow_dispatch`) builds Windows +
+macOS and publishes a prerelease tagged `unsigned-YYYYMMDD-HHMM`.
 
 **Artifacts (unsigned):**
 
-| Artifact | Path |
-|----------|------|
-| NSIS installer | `src-tauri/target/release/bundle/nsis/Deep Agent_0.1.0_x64-setup.exe` |
+| Artifact | Path / name |
+|----------|-------------|
+| NSIS installer | `src-tauri/target/release/bundle/nsis/…setup.exe` → CI: `Deep-Agent-0.1.0-windows-x64-setup.exe` |
 | Portable zip | `src-tauri/target/release/bundle/portable/Deep-Agent-0.1.0-windows-x64-portable.zip` |
+| macOS DMG | `src-tauri/target/release/bundle/dmg/…dmg` → CI: `Deep-Agent-0.1.0-macos-arm64.dmg` |
 
 `sidecar/` is generated and gitignored (except `sidecar/README.md`). Re-run `pnpm package:sidecar`
 after dependency or app-source changes before a release build.
 
 **Dev vs packaged spawn:** `tauri dev` uses `uv run uvicorn` (or system Python). Release builds
-spawn bundled `sidecar/python.exe -m uvicorn` with `DEEPAGENT_DESKTOP=1`, AppData data dir,
-Documents workspace, and `PYTHONPATH` → bundled `src`.
+spawn bundled sidecar Python (`python.exe` on Windows, `bin/python3` on macOS) with
+`DEEPAGENT_DESKTOP=1`, platform data dir, Documents workspace, and `PYTHONPATH` → bundled `src`.
 
+**Unsigned macOS:** Gatekeeper will warn. For internal testing see
+[docs/macos-packaging.md](docs/macos-packaging.md) (quarantine / manual checks). Notarization is deferred.
 ## Configuration
 
 | Variable | Default | Purpose |

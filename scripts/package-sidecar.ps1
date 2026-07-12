@@ -197,9 +197,46 @@ try {
     $env:DEEPAGENT_DESKTOP = $prevDesktop
 }
 
+Write-Step "Smoke: brief uvicorn /health"
+$HealthPort = 18765
+$prevPythonPath = $env:PYTHONPATH
+$prevDesktop = $env:DEEPAGENT_DESKTOP
+$env:PYTHONPATH = Join-Path $OutDir "src"
+$env:DEEPAGENT_DESKTOP = "1"
+$uvicorn = Start-Process -FilePath $PythonExe -ArgumentList @(
+    "-m", "uvicorn", "api:app", "--host", "127.0.0.1", "--port", "$HealthPort"
+) -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $env:TEMP "da-uvicorn-out.log") -RedirectStandardError (Join-Path $env:TEMP "da-uvicorn-err.log")
+try {
+    $ok = $false
+    for ($i = 0; $i -lt 60; $i++) {
+        try {
+            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$HealthPort/health" -UseBasicParsing -TimeoutSec 2
+            if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 300) {
+                $ok = $true
+                break
+            }
+        } catch {
+            Start-Sleep -Milliseconds 250
+        }
+    }
+    if (-not $ok) {
+        throw "uvicorn /health smoke failed on port $HealthPort"
+    }
+    Write-Host "health ok"
+} finally {
+    if ($uvicorn -and -not $uvicorn.HasExited) {
+        Stop-Process -Id $uvicorn.Id -Force -ErrorAction SilentlyContinue
+        # Also kill children if any
+        Get-CimInstance Win32_Process -Filter "ParentProcessId=$($uvicorn.Id)" -ErrorAction SilentlyContinue |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    }
+    $env:PYTHONPATH = $prevPythonPath
+    $env:DEEPAGENT_DESKTOP = $prevDesktop
+}
+
 Write-Host ""
 Write-Host "Sidecar ready at $OutDir" -ForegroundColor Green
 Write-Host "  python:  $PythonExe"
 $srcPath = Join-Path $OutDir "src"
 Write-Host "  run:     `$env:PYTHONPATH='$srcPath'; & '$PythonExe' -m uvicorn api:app --host 127.0.0.1 --port 8010"
-Write-Host "Next:      pnpm tauri build"
+Write-Host "Next:      pnpm exec tauri build --bundles nsis"
