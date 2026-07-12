@@ -132,6 +132,10 @@ if [[ -z "$PYTHON_BIN" ]]; then
       done
     done
   fi
+  # Copied uv-managed installs refuse mutation; this tree is our relocatable
+  # bundle, so clear PEP 668 / uv "do not modify" markers before installing deps.
+  step "Clearing externally-managed markers for packaging"
+  find "$OUT_DIR" \( -name 'EXTERNALLY-MANAGED' -o -name 'RELOCATE_ME' \) -delete 2>/dev/null || true
 fi
 
 step "Exporting locked dependencies from uv.lock (no dev)"
@@ -144,7 +148,9 @@ REQ_PATH="$OUT_DIR/requirements.txt"
 step "Installing dependencies into sidecar (uv pip)"
 (
   cd "$REPO_ROOT"
-  uv pip install --python "$PYTHON_BIN" -r "$REQ_PATH"
+  # --break-system-packages: intentional install into the copied standalone tree
+  # (uv treats managed CPython as immutable otherwise).
+  uv pip install --python "$PYTHON_BIN" --break-system-packages -r "$REQ_PATH"
 )
 
 step "Copying src/, frontend/, agents/ into sidecar/"
