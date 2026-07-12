@@ -1,0 +1,152 @@
+# Dual-OS unsigned desktop build (Windows NSIS+portable, macOS arm64 DMG).
+# Manual only — see docs/macos-packaging.md.
+name: Desktop build (unsigned)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APP_VERSION: "0.1.0"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            bundles: nsis
+          - os: macos-14
+            platform: macos
+            bundles: dmg
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Package sidecar
+        run: pnpm package:sidecar
+
+      - name: Sidecar smoke (import + /health)
+        run: pnpm package:smoke
+
+      - name: Tauri build
+        run: pnpm exec tauri build --bundles ${{ matrix.bundles }}
+
+      - name: Portable zip (Windows)
+        if: matrix.platform == 'windows'
+        run: pnpm package:portable
+
+      - name: Stage release assets (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-assets | Out-Null
+          $nsis = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*setup.exe" -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $nsis) { throw "NSIS setup.exe not found" }
+          Copy-Item $nsis.FullName "dist-assets/Deep-Agent-$env:APP_VERSION-windows-x64-setup.exe"
+          $zip = "src-tauri/target/release/bundle/portable/Deep-Agent-$env:APP_VERSION-windows-x64-portable.zip"
+          if (-not (Test-Path $zip)) { throw "Portable zip not found: $zip" }
+          Copy-Item $zip "dist-assets/Deep-Agent-$env:APP_VERSION-windows-x64-portable.zip"
+          Get-ChildItem dist-assets
+
+      - name: Stage release assets (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          mkdir -p dist-assets
+          dmg=$(find src-tauri/target/release/bundle/dmg -name '*.dmg' | head -n 1)
+          if [[ -z "$dmg" ]]; then
+            echo "DMG not found under bundle/dmg" >&2
+            find src-tauri/target/release/bundle -type f || true
+            exit 1
+          fi
+          cp "$dmg" "dist-assets/Deep-Agent-${APP_VERSION}-macos-arm64.dmg"
+          ls -la dist-assets
+
+      - name: Upload job artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-agent-${{ matrix.platform }}-${{ env.APP_VERSION }}
+          path: dist-assets/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: collected
+
+      - name: Flatten assets
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          find collected -type f -print -exec cp {} release-assets/ \;
+          ls -la release-assets
+          test -f "release-assets/Deep-Agent-${APP_VERSION}-windows-x64-setup.exe"
+          test -f "release-assets/Deep-Agent-${APP_VERSION}-windows-x64-portable.zip"
+          test -f "release-assets/Deep-Agent-${APP_VERSION}-macos-arm64.dmg"
+
+      - name: Make release tag name
+        id: tag
+        shell: bash
+        run: |
+          # unsigned-YYYYMMDD-HHMM (UTC), per docs/macos-packaging.md
+          echo "tag=unsigned-$(date -u +%Y%m%d-%H%M)" >> "$GITHUB_OUTPUT"
+
+      - name: Create unsigned prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Deep Agent ${{ env.APP_VERSION }} — unsigned CI (Windows + macOS)
+          prerelease: true
+          generate_release_notes: false
+          body: |
+            **Unsigned** desktop build from workflow run ${{ github.run_id }} (attempt ${{ github.run_attempt }}).
+
+            - Windows: NSIS installer + portable zip
+            - macOS: Apple Silicon (arm64) DMG only — Gatekeeper will warn; not notarized
+            - Version: ${{ env.APP_VERSION }}
+            - Tag: `${{ steps.tag.outputs.tag }}`
+
+            See [docs/macos-packaging.md](https://github.com/${{ github.repository }}/blob/main/docs/macos-packaging.md) for install notes and manual Apple Silicon checks.
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
