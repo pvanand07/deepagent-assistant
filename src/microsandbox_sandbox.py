@@ -6,7 +6,7 @@ import asyncio
 import base64
 import codecs
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from deepagents.backends.protocol import (
     ExecuteResponse,
@@ -24,6 +24,7 @@ from deepagents.backends.sandbox import (
 from deepagents.backends.utils import _get_file_type
 
 from sandbox_config import SANDBOX_ROOT, default_network, exec_timeout
+from workspace_paths import resolve_under_workdir
 
 if TYPE_CHECKING:
     from sandbox_manager import SandboxManager
@@ -149,7 +150,7 @@ class MicrosandboxSandbox(BaseSandbox):
             if is_binary:
                 return self._read_binary(file_path, host_path, st.st_size)
 
-            return self._read_text_page(file_path, host_path, offset, limit)
+            return self._read_text_page(host_path, offset, limit)
         except PermissionError:
             return ReadResult(error=f"File '{file_path}': permission_denied")
         except OSError as e:
@@ -173,9 +174,7 @@ class MicrosandboxSandbox(BaseSandbox):
             )
         )
 
-    def _read_text_page(
-        self, file_path: str, host_path: Path, offset: int, limit: int
-    ) -> ReadResult:
+    def _read_text_page(self, host_path: Path, offset: int, limit: int) -> ReadResult:
         """Paginated text read matching BaseSandbox's guest template output."""
         line_count = 0
         returned_lines = 0
@@ -265,10 +264,4 @@ class MicrosandboxSandbox(BaseSandbox):
         if not sandbox_path.startswith(self.sandbox_root):
             return None
         rel = sandbox_path[len(self.sandbox_root) :].lstrip("/")
-        workdir = self._workdir.resolve()
-        candidate = (workdir / rel).resolve()
-        try:
-            candidate.relative_to(workdir)
-        except ValueError:
-            return None
-        return candidate
+        return resolve_under_workdir(self._workdir, rel)

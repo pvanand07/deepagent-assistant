@@ -131,7 +131,7 @@ spawn bundled sidecar Python (`python.exe` on Windows, `bin/python3` on macOS) w
 | `OPENROUTER_API_KEY` | — | API key (optional for Ollama) |
 | `OPENROUTER_MODEL` | provider default | Model id |
 | `DEEPAGENT_WORKDIR` | `./workspace` | Host path bind-mounted at `/workspace` |
-| `DEEPAGENT_NETWORK_ACCESS` | `true` | Guest egress (`public_only` vs `none`) |
+| `DEEPAGENT_NETWORK_ACCESS` | `false` | Guest egress (`public_only` vs `none`) |
 | `DEEPAGENT_SANDBOX_IMAGE` | `python:3.12-slim` | Guest OCI image (Docker Hub by default) |
 | `DEEPAGENT_SANDBOX_MEMORY` | `1024` | MiB |
 | `DEEPAGENT_SANDBOX_CPUS` | `2` | vCPUs |

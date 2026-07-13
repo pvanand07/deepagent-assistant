@@ -10,6 +10,8 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from env_values import env_bool
+
 # Repo root (parent of src/), independent of process cwd.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -51,11 +53,7 @@ _logging_configured = False
 
 def is_desktop_mode() -> bool:
     """True when running as the Tauri-packaged sidecar (or desktop-flagged)."""
-    return os.environ.get("DEEPAGENT_DESKTOP", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
+    return env_bool("DEEPAGENT_DESKTOP")
 
 
 def default_appdata_dir() -> Path:
@@ -139,13 +137,6 @@ def configure_file_logging() -> Path | None:
     return log_path
 
 
-def _env_bool(name: str, default: bool = False) -> bool:
-    val = os.environ.get(name)
-    if val is None:
-        return default
-    return val.lower() in {"1", "true", "yes"}
-
-
 def _env_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
@@ -164,7 +155,7 @@ def default_workdir() -> Path:
 
 
 def default_network() -> bool:
-    return _env_bool("DEEPAGENT_NETWORK_ACCESS") or _env_bool("CODEX_GUI_NETWORK_ACCESS")
+    return env_bool("DEEPAGENT_NETWORK_ACCESS") or env_bool("CODEX_GUI_NETWORK_ACCESS")
 
 
 def sandbox_dns_nameservers() -> tuple[str, ...]:

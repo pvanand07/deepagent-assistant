@@ -18,18 +18,13 @@ from typing import Any
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+from env_values import env_bool
+
 logger = logging.getLogger(__name__)
 
 _ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    val = os.environ.get(name)
-    if val is None:
-        return default
-    return val.lower() in {"1", "true", "yes"}
 
 
 def _expand_env(value: str) -> str:
@@ -133,7 +128,7 @@ def _env_fallback_servers() -> dict[str, dict[str, Any]]:
 
 def load_mcp_connections() -> dict[str, dict[str, Any]]:
     """Return ``MultiServerMCPClient`` connection dict (server name -> config)."""
-    if not _env_bool("DEEPAGENT_MCP_ENABLED", default=True):
+    if not env_bool("DEEPAGENT_MCP_ENABLED", default=True):
         return {}
 
     raw_servers = _load_mcp_servers_from_file()

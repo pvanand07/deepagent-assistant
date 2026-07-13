@@ -28,6 +28,23 @@ class SettingsUpdateRequest(BaseModel):
     values: dict[str, str] = Field(default_factory=dict)
 
 
+class ConfigResponse(BaseModel):
+    default_model: str
+    default_workdir: str | None
+    default_network: bool
+    mcp_enabled: bool
+    mcp_servers: list[str] = Field(default_factory=list)
+    username: str
+    sandbox_backend: str
+    desktop: bool
+    data_dir: str
+    sandbox_healthy: bool
+    sandbox_degraded: bool
+    sandbox_status: dict[str, Any] | None = None
+    llm_provider: str
+    has_api_key: bool
+
+
 class CreateSessionRequest(BaseModel):
     model: str | None = None
     with_subagents: bool = True

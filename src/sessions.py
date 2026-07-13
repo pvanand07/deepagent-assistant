@@ -7,6 +7,7 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from agent import _default_network, _default_workdir, build_agent
@@ -36,6 +37,11 @@ class AgentSession:
     subagent_names: list[str] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+
+    @property
+    def workdir(self) -> Path:
+        """Current shared workspace used by this session's sandbox."""
+        return Path(getattr(self.sandbox, "_workdir"))
 
     def cleanup(self) -> None:
         """Per-session cleanup. Shared microsandbox VM is not destroyed here."""
@@ -181,6 +187,9 @@ class SessionStore:
     async def get_meta(self, session_id: str) -> SessionMeta | None:
         return await self._db.get_session(session_id)
 
+    async def get_run(self, run_id: str) -> RunRecord | None:
+        return await self._db.get_run(run_id)
+
     async def list_all(self) -> list[SessionMeta]:
         return await self._db.list_sessions()
 
@@ -189,6 +198,9 @@ class SessionStore:
         if messages:
             return messages
         return await self._backfill_messages_from_runs(session_id)
+
+    async def message_count(self, session_id: str) -> int:
+        return await self._messages.count_messages(session_id)
 
     async def _backfill_messages_from_runs(self, session_id: str) -> list[Any]:
         for run_id, baseline_ids in await self._db.list_done_runs(session_id):

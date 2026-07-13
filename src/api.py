@@ -54,6 +54,7 @@ from api_models import (
     ActiveRunResponse,
     CancelResponse,
     ChatRequest,
+    ConfigResponse,
     CreateFolderRequest,
     CreateSessionRequest,
     FileContentResponse,
@@ -76,6 +77,7 @@ from message_summary import serialize_messages
 from openrouter_model import default_model_for_provider, llm_provider
 from runs import RunConflictError
 from sessions import store
+from workspace_paths import resolve_under_workdir
 
 _SSE_HEARTBEAT_SECONDS = 15
 
@@ -137,20 +139,20 @@ async def _require_session(session_id: str):
 
 
 async def _require_run(session_id: str, run_id: str):
-    run = await store._db.get_run(run_id)  # noqa: SLF001 -- thin API-layer access
+    run = await store.get_run(run_id)
     if run is None or run.session_id != session_id:
         raise HTTPException(status_code=404, detail="Run not found")
     return run
 
 
 async def _session_response(session) -> SessionResponse:
-    message_count = await store._messages.count_messages(session.id)  # noqa: SLF001
+    message_count = await store.message_count(session.id)
     meta = await store.get_meta(session.id)
     last_usage, last_step_usage = meta.parsed_usage() if meta else (None, None)
     return SessionResponse(
         id=session.id,
         sandbox_id=session.sandbox.id,
-        workdir=str(session.sandbox._workdir),
+        workdir=str(session.workdir),
         network=session.sandbox.network,
         model=session.model or os.environ.get("OPENROUTER_MODEL") or default_model_for_provider(),
         message_count=message_count,
@@ -164,12 +166,8 @@ async def _session_response(session) -> SessionResponse:
 
 
 def _resolve_workspace_path(session, rel_path: str) -> Path:
-    workdir = Path(session.sandbox._workdir).resolve()
-    clean = rel_path.strip().lstrip("/")
-    candidate = (workdir / clean).resolve()
-    try:
-        candidate.relative_to(workdir)
-    except ValueError:
+    candidate = resolve_under_workdir(session.workdir, rel_path)
+    if candidate is None:
         raise HTTPException(status_code=400, detail="Path escapes workspace") from None
     return candidate
 
@@ -246,7 +244,7 @@ def _validate_pwd(session, pwd: str | None) -> str | None:
         raise HTTPException(status_code=404, detail="pwd folder not found")
     if not target.is_dir():
         raise HTTPException(status_code=400, detail="pwd must be a directory")
-    rel = str(target.relative_to(Path(session.sandbox._workdir).resolve())).replace("\\", "/")
+    rel = str(target.relative_to(session.workdir.resolve())).replace("\\", "/")
     return rel if rel != "." else ""
 
 
@@ -488,7 +486,7 @@ async def list_files(
     if not target.is_dir():
         raise HTTPException(status_code=400, detail="Not a directory")
 
-    workdir = Path(session.sandbox._workdir).resolve()
+    workdir = session.workdir.resolve()
     scanned: list[tuple[bool, str, FileEntry]] = []
     with os.scandir(target) as entries:
         for entry in entries:
@@ -527,7 +525,7 @@ async def read_file(
         content = target.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         raise HTTPException(status_code=415, detail="Binary file cannot be displayed") from None
-    rel = str(target.relative_to(Path(session.sandbox._workdir).resolve())).replace("\\", "/")
+    rel = str(target.relative_to(session.workdir.resolve())).replace("\\", "/")
     return FileContentResponse(path=rel, content=content, size=target.stat().st_size)
 
 
@@ -544,7 +542,7 @@ async def read_file_raw(
         raise HTTPException(status_code=400, detail="Path is a directory")
     if not _is_previewable_image(target):
         raise HTTPException(status_code=415, detail="File type does not support raw preview")
-    rel = str(target.relative_to(Path(session.sandbox._workdir).resolve())).replace("\\", "/")
+    rel = str(target.relative_to(session.workdir.resolve())).replace("\\", "/")
     return Response(
         content=target.read_bytes(),
         media_type=_media_type_for(target),
@@ -558,7 +556,7 @@ async def read_file_raw(
 @app.get("/api/sessions/{session_id}/folders", response_model=FolderListResponse)
 async def list_folders(session_id: str) -> FolderListResponse:
     session = await _require_session(session_id)
-    workdir = Path(session.sandbox._workdir).resolve()
+    workdir = session.workdir.resolve()
     return FolderListResponse(folders=_list_workspace_folders(workdir))
 
 
@@ -583,13 +581,13 @@ async def create_folder(session_id: str, body: CreateFolderRequest) -> FolderCre
         target.mkdir(parents=False, exist_ok=False)
     except OSError as e:
         raise HTTPException(status_code=500, detail="Failed to create folder") from e
-    workdir = Path(session.sandbox._workdir).resolve()
+    workdir = session.workdir.resolve()
     rel = str(target.relative_to(workdir)).replace("\\", "/")
     return FolderCreateResponse(path=rel if rel != "." else "")
 
 
-@app.get("/api/config")
-async def get_config() -> dict[str, Any]:
+@app.get("/api/config", response_model=ConfigResponse)
+async def get_config() -> ConfigResponse:
     mcp_connections = load_mcp_connections()
     manager = get_manager()
     sandbox_status = manager.status_dict() if manager.started else None

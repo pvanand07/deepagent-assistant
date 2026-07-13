@@ -142,19 +142,23 @@ class SandboxManager:
         self._fix_it = _VIRT_HELP
         self._started = True
 
+    def _activate_backend(self, *, stub: bool = False) -> None:
+        """Attach the shared backend after the sandbox is ready."""
+        from microsandbox_sandbox import MicrosandboxSandbox
+
+        self._backend = MicrosandboxSandbox(manager=self, stub=stub)
+        self._healthy = True
+        self._degraded_reason = None
+        self._fix_it = None
+        self._started = True
+
     async def startup(self) -> None:
         if use_stub_backend():
             self._loop = asyncio.get_running_loop()
             self._workdir = default_workdir()
             self._network = default_network()
             self._workdir.mkdir(parents=True, exist_ok=True)
-            from microsandbox_sandbox import MicrosandboxSandbox
-
-            self._backend = MicrosandboxSandbox(manager=self, stub=True)
-            self._healthy = True
-            self._degraded_reason = None
-            self._fix_it = None
-            self._started = True
+            self._activate_backend(stub=True)
             return
 
         self._loop = asyncio.get_running_loop()
@@ -178,13 +182,7 @@ class SandboxManager:
             self._enter_degraded(f"microsandbox could not create a microVM: {exc}")
             return
 
-        from microsandbox_sandbox import MicrosandboxSandbox
-
-        self._backend = MicrosandboxSandbox(manager=self)
-        self._healthy = True
-        self._degraded_reason = None
-        self._fix_it = None
-        self._started = True
+        self._activate_backend()
 
     async def retry_sandbox(self) -> dict[str, Any]:
         """Attempt to create the microVM after a degraded start."""
@@ -198,13 +196,7 @@ class SandboxManager:
             if not is_installed():
                 await install()
             await self._create_sandbox()
-            from microsandbox_sandbox import MicrosandboxSandbox
-
-            self._backend = MicrosandboxSandbox(manager=self)
-            self._healthy = True
-            self._degraded_reason = None
-            self._fix_it = None
-            self._started = True
+            self._activate_backend()
         except Exception as exc:
             self._enter_degraded(f"microsandbox retry failed: {exc}")
         return self.status_dict()
@@ -220,13 +212,7 @@ class SandboxManager:
         (self._workdir / LOG_DIR_REL).mkdir(parents=True, exist_ok=True)
 
         if use_stub_backend():
-            from microsandbox_sandbox import MicrosandboxSandbox
-
-            self._backend = MicrosandboxSandbox(manager=self, stub=True)
-            self._healthy = True
-            self._degraded_reason = None
-            self._fix_it = None
-            self._started = True
+            self._activate_backend(stub=True)
             return self.status_dict()
 
         if not self._started:
@@ -259,12 +245,7 @@ class SandboxManager:
                 if not is_installed():
                     await install()
                 await self._create_sandbox()
-                from microsandbox_sandbox import MicrosandboxSandbox
-
-                self._backend = MicrosandboxSandbox(manager=self)
-                self._healthy = True
-                self._degraded_reason = None
-                self._fix_it = None
+                self._activate_backend()
             except Exception as exc:
                 self._enter_degraded(f"sandbox recreate after settings failed: {exc}")
         return self.status_dict()
