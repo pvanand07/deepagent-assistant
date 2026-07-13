@@ -9,7 +9,7 @@
   and copies src/, frontend/, and agents/ into sidecar/ so packaged Deep Agent
   can run:
 
-    .\sidecar\python.exe -m uvicorn api:app --host 127.0.0.1 --port 8010
+    .\sidecar\python.exe -m uvicorn deep_agent.api.app:app --host 127.0.0.1 --port 8010
 
   with PYTHONPATH pointing at sidecar\src (also set by the Tauri shell).
 
@@ -182,13 +182,13 @@ Copy-Tree (Join-Path $RepoRoot "agents") (Join-Path $OutDir "agents")
 Get-ChildItem -Path $OutDir -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
-Write-Step "Smoke: import api:app"
+Write-Step "Smoke: import deep_agent.api.app:app"
 $prevPythonPath = $env:PYTHONPATH
 $prevDesktop = $env:DEEPAGENT_DESKTOP
 $env:PYTHONPATH = Join-Path $OutDir "src"
 $env:DEEPAGENT_DESKTOP = "1"
 try {
-    & $PythonExe -c "from api import app; print('api:app ok')"
+    & $PythonExe -c "from deep_agent.api.app import app; print('deep_agent.api.app:app ok')"
     if ($LASTEXITCODE -ne 0) {
         throw "Packaged import smoke failed with exit $LASTEXITCODE"
     }
@@ -204,7 +204,7 @@ $prevDesktop = $env:DEEPAGENT_DESKTOP
 $env:PYTHONPATH = Join-Path $OutDir "src"
 $env:DEEPAGENT_DESKTOP = "1"
 $uvicorn = Start-Process -FilePath $PythonExe -ArgumentList @(
-    "-m", "uvicorn", "api:app", "--host", "127.0.0.1", "--port", "$HealthPort"
+    "-m", "uvicorn", "deep_agent.api.app:app", "--host", "127.0.0.1", "--port", "$HealthPort"
 ) -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $env:TEMP "da-uvicorn-out.log") -RedirectStandardError (Join-Path $env:TEMP "da-uvicorn-err.log")
 try {
     $ok = $false
@@ -238,5 +238,5 @@ Write-Host ""
 Write-Host "Sidecar ready at $OutDir" -ForegroundColor Green
 Write-Host "  python:  $PythonExe"
 $srcPath = Join-Path $OutDir "src"
-Write-Host "  run:     `$env:PYTHONPATH='$srcPath'; & '$PythonExe' -m uvicorn api:app --host 127.0.0.1 --port 8010"
+Write-Host "  run:     `$env:PYTHONPATH='$srcPath'; & '$PythonExe' -m uvicorn deep_agent.api.app:app --host 127.0.0.1 --port 8010"
 Write-Host "Next:      pnpm exec tauri build --bundles nsis"

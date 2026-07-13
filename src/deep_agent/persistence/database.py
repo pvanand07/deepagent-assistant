@@ -32,7 +32,7 @@ def default_data_dir() -> Path:
     without an override, defaults to ``%APPDATA%\\DeepAgent`` (see
     ``sandbox_config.resolve_data_dir``). Dev/browser keeps repo ``data/``.
     """
-    from sandbox_config import resolve_data_dir
+    from deep_agent.sandbox.config import resolve_data_dir
 
     return resolve_data_dir()
 

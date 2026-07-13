@@ -8,12 +8,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-
-from env_values import env_bool
+from deep_agent.sandbox.env import env_bool
 
 # Repo root (parent of src/), independent of process cwd.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Editable via Settings API / AppData ``.env``.
 SETTINGS_ENV_KEYS = (
@@ -87,23 +85,18 @@ def env_dir() -> Path:
 
 
 def load_app_env() -> Path:
-    """Load ``.env`` then ``.env.local``.
+    """Prepare data dir and load JSON settings.
 
-    Desktop / ``DEEPAGENT_DATA_DIR``: load from the data dir (AppData).
-    Dev/browser: load from the repo root (today's defaults).
-
-    ``.env`` does not override existing process env. ``.env.local`` overrides
-    both ``.env`` and the process env so machine-local knobs win.
-    Safe to call more than once.
+    User LLM/sandbox prefs live only in ``settings.json`` + ``secrets.json``.
+    Repo / AppData ``.env`` files are **not** loaded for those keys (avoids
+    ``pnpm tauri`` reseeding Setup from a leftover project ``.env``).
+    Process env from the parent (Tauri / CI) still applies for paths/backends.
     """
     root = env_dir()
     root.mkdir(parents=True, exist_ok=True)
-    load_dotenv(root / ".env", override=False)
-    load_dotenv(root / ".env.local", override=True)
-    # When desktop also loads AppData, still allow a repo ``.env`` as a
-    # non-overriding fallback for developers running the sidecar locally.
-    if root != _REPO_ROOT:
-        load_dotenv(_REPO_ROOT / ".env", override=False)
+    from deep_agent.settings.store import load_settings
+
+    load_settings()
     return root
 
 
@@ -238,87 +231,93 @@ def normalize_settings_value(key: str, value: str) -> str:
 
 
 def read_settings_env() -> dict[str, str]:
-    """Return editable settings keys from process env (API key masked)."""
-    out: dict[str, str] = {}
-    for key in SETTINGS_ENV_KEYS:
-        val = os.environ.get(key, "")
-        if key == "OPENROUTER_API_KEY" and val:
-            if len(val) <= 8:
-                out[key] = "••••••••"
-            else:
-                out[key] = f"{val[:4]}…{val[-4:]}"
-            out[f"{key}_set"] = "true"
-        else:
-            out[key] = val
-            if key == "OPENROUTER_API_KEY":
-                out[f"{key}_set"] = "false"
+    """Backward-compatible flat view of settings (masked API key)."""
+    from deep_agent.settings.store import active_platform, load_settings, platform_api_key
+
+    cfg = load_settings()
+    platform = active_platform(cfg)
+    key = platform_api_key(platform["id"])
+    out: dict[str, str] = {
+        "DEEPAGENT_LLM_PROVIDER": str(platform.get("kind") or "openrouter"),
+        "DEEPAGENT_LLM_BASE_URL": (
+            ""
+            if platform.get("kind") == "openrouter"
+            else str(platform.get("base_url") or "")
+        ),
+        "OPENROUTER_MODEL": str(cfg.get("default_model") or ""),
+        "OPENROUTER_TEMPERATURE": str(cfg.get("temperature", 0.3)),
+        "OPENROUTER_SITE_URL": str(platform.get("site_url") or ""),
+        "OPENROUTER_SITE_NAME": str(platform.get("site_name") or ""),
+        "DEEPAGENT_NETWORK_ACCESS": (
+            "true" if (cfg.get("sandbox") or {}).get("network") else "false"
+        ),
+        "DEEPAGENT_SANDBOX_MEMORY": str(
+            (cfg.get("sandbox") or {}).get("memory_mib", DEFAULT_MEMORY_MIB)
+        ),
+        "DEEPAGENT_SANDBOX_CPUS": str((cfg.get("sandbox") or {}).get("cpus", DEFAULT_CPUS)),
+        "DEEPAGENT_DNS_NAMESERVERS": str(
+            (cfg.get("sandbox") or {}).get("dns_nameservers", "")
+        ),
+        "DEEPAGENT_EXEC_TIMEOUT": str(
+            (cfg.get("sandbox") or {}).get("exec_timeout", DEFAULT_EXEC_TIMEOUT)
+        ),
+        "DEEPAGENT_SANDBOX_IDLE_TIMEOUT": str(
+            (cfg.get("sandbox") or {}).get("idle_timeout", DEFAULT_IDLE_TIMEOUT)
+        ),
+    }
+    if key:
+        out["OPENROUTER_API_KEY"] = (
+            f"{key[:4]}…{key[-4:]}" if len(key) > 8 else "••••••••"
+        )
+        out["OPENROUTER_API_KEY_set"] = "true"
+    else:
+        out["OPENROUTER_API_KEY"] = ""
+        out["OPENROUTER_API_KEY_set"] = "false"
     return out
 
 
 def write_settings_env(updates: dict[str, str | None]) -> Path:
-    """Merge ``updates`` into ``{env_dir}/.env`` and refresh ``os.environ``.
+    """Map flat Settings form values into the JSON settings store."""
+    from deep_agent.settings.store import settings_path, update_from_ui
 
-    Keys with value ``None`` are left unchanged. Empty string removes the key
-    from the file and process env for non-secret fields (API key empty means
-    "leave as-is"). Network access is always stored as ``true`` / ``false``.
-    """
-    path = env_dir() / ".env"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    existing: dict[str, str] = {}
-    order: list[str] = []
-    other_lines: list[str] = []
-    if path.is_file():
-        for line in path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#") or "=" not in line:
-                other_lines.append(line)
-                continue
-            key, _, value = line.partition("=")
-            key = key.strip()
-            if key in SETTINGS_ENV_KEYS:
-                existing[key] = value
-                if key not in order:
-                    order.append(key)
-            else:
-                other_lines.append(line)
-
-    for key, raw in updates.items():
-        if key not in SETTINGS_ENV_KEYS:
-            continue
-        if raw is None:
-            continue
-        value = str(raw).strip()
-        if key == "OPENROUTER_API_KEY" and (not value or "…" in value or value.startswith("••••")):
-            # Masked / empty payload — keep existing secret.
-            continue
-        if key == "DEEPAGENT_NETWORK_ACCESS":
-            # Checkbox always persists explicitly (never "unset").
-            value = normalize_settings_value(key, value or "false")
-        if key not in order:
-            order.append(key)
-        if value:
-            existing[key] = value
-            os.environ[key] = value
-        else:
-            # Omit blank optional keys from the file so dotenv does not reload
-            # them as "" (which breaks float/int parsers that only default on unset).
-            existing.pop(key, None)
-            if key in os.environ and key != "OPENROUTER_API_KEY":
-                del os.environ[key]
-
-    lines: list[str] = []
-    if other_lines:
-        lines.extend(other_lines)
-        if lines and lines[-1] != "":
-            lines.append("")
-    for key in order:
-        if key in existing:
-            lines.append(f"{key}={existing[key]}")
-    for key in SETTINGS_ENV_KEYS:
-        if key in existing and key not in order:
-            lines.append(f"{key}={existing[key]}")
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-    return path
+    kind = (updates.get("DEEPAGENT_LLM_PROVIDER") or "openrouter").strip().lower()
+    payload: dict = {
+        "default_model": updates.get("OPENROUTER_MODEL") or "",
+        "temperature": updates.get("OPENROUTER_TEMPERATURE") or 0.3,
+        "platform": {
+            "id": kind,
+            "kind": kind,
+            "name": kind.title(),
+            "base_url": updates.get("DEEPAGENT_LLM_BASE_URL") or "",
+            "site_url": updates.get("OPENROUTER_SITE_URL") or "",
+            "site_name": updates.get("OPENROUTER_SITE_NAME") or "",
+            "api_key": updates.get("OPENROUTER_API_KEY") or "",
+        },
+        "sandbox": {},
+    }
+    if "DEEPAGENT_NETWORK_ACCESS" in updates:
+        payload["sandbox"]["network"] = str(updates.get("DEEPAGENT_NETWORK_ACCESS") or "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+    for src, dst in (
+        ("DEEPAGENT_SANDBOX_MEMORY", "memory_mib"),
+        ("DEEPAGENT_SANDBOX_CPUS", "cpus"),
+        ("DEEPAGENT_EXEC_TIMEOUT", "exec_timeout"),
+        ("DEEPAGENT_SANDBOX_IDLE_TIMEOUT", "idle_timeout"),
+    ):
+        if src in updates and updates.get(src) not in (None, ""):
+            payload["sandbox"][dst] = updates.get(src)
+    if "DEEPAGENT_DNS_NAMESERVERS" in updates:
+        payload["sandbox"]["dns_nameservers"] = updates.get("DEEPAGENT_DNS_NAMESERVERS") or ""
+    if not payload["sandbox"]:
+        del payload["sandbox"]
+    # Saving from Settings implies setup is done when a model is present.
+    if (updates.get("OPENROUTER_MODEL") or "").strip() or kind == "ollama":
+        payload["setup_complete"] = True
+    update_from_ui(payload)
+    return settings_path()
 
 
 # Load dotenv as soon as this module is imported (matches prior behavior).

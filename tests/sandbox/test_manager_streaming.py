@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from sandbox_manager import SandboxManager, reset_manager_for_tests
+from deep_agent.sandbox.manager import SandboxManager, reset_manager_for_tests
 
 
 @dataclass

@@ -11,9 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from deepagents.backends.protocol import ExecuteResponse
-
-from sandbox_config import (
+from deep_agent.sandbox.config import (
     LOG_DIR_REL,
     LOG_PREVIEW_LINES,
     LOG_RETENTION_BYTES,
@@ -52,7 +50,7 @@ class LockHolder:
 
 @dataclass
 class ExecResult:
-    response: ExecuteResponse
+    response: Any
     log_path: str | None = None
     busy: bool = False
 
@@ -91,6 +89,7 @@ class SandboxManager:
         self._backend: Any | None = None
         self._cancel_run: CancelRunFn | None = None
         self._started = False
+        self._starting = False
         self._create_lock = asyncio.Lock()
         self._healthy = False
         self._degraded_reason: str | None = None
@@ -101,12 +100,16 @@ class SandboxManager:
         return self._started
 
     @property
+    def starting(self) -> bool:
+        return self._starting
+
+    @property
     def healthy(self) -> bool:
         return self._healthy
 
     @property
     def degraded(self) -> bool:
-        return self._started and not self._healthy
+        return self._started and not self._healthy and not self._starting
 
     @property
     def loop(self) -> asyncio.AbstractEventLoop:
@@ -134,6 +137,12 @@ class SandboxManager:
     def bind_cancel_run(self, cancel_run: CancelRunFn) -> None:
         self._cancel_run = cancel_run
 
+    def begin_startup(self) -> None:
+        """Mark sandbox as starting before the background task is scheduled."""
+        self._starting = True
+        self._started = False
+        self._healthy = False
+
     def _enter_degraded(self, reason: str) -> None:
         self._healthy = False
         self._backend = None
@@ -144,7 +153,7 @@ class SandboxManager:
 
     def _activate_backend(self, *, stub: bool = False) -> None:
         """Attach the shared backend after the sandbox is ready."""
-        from microsandbox_sandbox import MicrosandboxSandbox
+        from deep_agent.sandbox.backend import MicrosandboxSandbox
 
         self._backend = MicrosandboxSandbox(manager=self, stub=stub)
         self._healthy = True
@@ -153,36 +162,42 @@ class SandboxManager:
         self._started = True
 
     async def startup(self) -> None:
-        if use_stub_backend():
+        self._starting = True
+        self._started = False
+        self._healthy = False
+        try:
+            if use_stub_backend():
+                self._loop = asyncio.get_running_loop()
+                self._workdir = default_workdir()
+                self._network = default_network()
+                self._workdir.mkdir(parents=True, exist_ok=True)
+                self._activate_backend(stub=True)
+                return
+
             self._loop = asyncio.get_running_loop()
             self._workdir = default_workdir()
             self._network = default_network()
             self._workdir.mkdir(parents=True, exist_ok=True)
-            self._activate_backend(stub=True)
-            return
+            (self._workdir / LOG_DIR_REL).mkdir(parents=True, exist_ok=True)
 
-        self._loop = asyncio.get_running_loop()
-        self._workdir = default_workdir()
-        self._network = default_network()
-        self._workdir.mkdir(parents=True, exist_ok=True)
-        (self._workdir / LOG_DIR_REL).mkdir(parents=True, exist_ok=True)
+            try:
+                from microsandbox import is_installed, install
 
-        try:
-            from microsandbox import is_installed, install
+                if not is_installed():
+                    await install()
+            except Exception as exc:
+                self._enter_degraded(f"microsandbox install/check failed: {exc}")
+                return
 
-            if not is_installed():
-                await install()
-        except Exception as exc:
-            self._enter_degraded(f"microsandbox install/check failed: {exc}")
-            return
+            try:
+                await self._create_sandbox()
+            except Exception as exc:
+                self._enter_degraded(f"microsandbox could not create a microVM: {exc}")
+                return
 
-        try:
-            await self._create_sandbox()
-        except Exception as exc:
-            self._enter_degraded(f"microsandbox could not create a microVM: {exc}")
-            return
-
-        self._activate_backend()
+            self._activate_backend()
+        finally:
+            self._starting = False
 
     async def retry_sandbox(self) -> dict[str, Any]:
         """Attempt to create the microVM after a degraded start."""
@@ -326,8 +341,17 @@ class SandboxManager:
 
     def status_dict(self) -> dict[str, Any]:
         holder = self._holder
+        if use_stub_backend():
+            backend = "stub"
+        elif self._healthy:
+            backend = "microsandbox"
+        elif self._starting:
+            backend = "starting"
+        else:
+            backend = "unavailable"
         return {
             "started": self._started,
+            "starting": self._starting,
             "healthy": self._healthy,
             "degraded": self.degraded,
             "degraded_reason": self._degraded_reason,
@@ -342,9 +366,7 @@ class SandboxManager:
             "holder_since": holder.since if holder else None,
             "default_lock_wait": sandbox_lock_wait(),
             "default_exec_timeout": exec_timeout(),
-            "backend": "stub" if use_stub_backend() else (
-                "microsandbox" if self._healthy else "unavailable"
-            ),
+            "backend": backend,
         }
 
     async def wait_for_lock(self, wait_seconds: int | None = None) -> dict[str, Any]:
@@ -407,6 +429,8 @@ class SandboxManager:
                 "Wait with sandbox_wait (configure wait_seconds), or ask the user "
                 "before cancel_sandbox_holder."
             )
+            from deepagents.backends.protocol import ExecuteResponse
+
             return ExecResult(
                 response=ExecuteResponse(output=msg, exit_code=None, truncated=False),
                 busy=True,
@@ -438,6 +462,8 @@ class SandboxManager:
             if timed_out:
                 effective = exec_timeout() if timeout is None else timeout
                 suffix_parts.append(f"\n[Command timed out after {effective}s]")
+            from deepagents.backends.protocol import ExecuteResponse
+
             return ExecResult(
                 response=ExecuteResponse(
                     output=preview + "".join(suffix_parts),

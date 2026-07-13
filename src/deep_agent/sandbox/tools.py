@@ -7,7 +7,7 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from sandbox_manager import get_manager
+from deep_agent.sandbox.manager import get_manager
 
 
 def build_sandbox_tools() -> list[Any]:

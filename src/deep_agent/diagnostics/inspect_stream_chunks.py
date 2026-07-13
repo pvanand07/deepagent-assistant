@@ -7,9 +7,9 @@ import os
 import sys
 from pathlib import Path
 
-from agent import build_agent
-from sandbox_manager import get_manager
-from streaming import iter_agent_turn_events
+from deep_agent.agent_factory import build_agent
+from deep_agent.sandbox.manager import get_manager
+from deep_agent.chat.streaming import iter_agent_turn_events
 
 
 async def inspect_stream() -> None:

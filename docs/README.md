@@ -2,6 +2,7 @@
 
 | Doc | Purpose |
 |-----|---------|
+| [project-architecture/BUILD_FROM_SCRATCH.md](./project-architecture/BUILD_FROM_SCRATCH.md) | Complete implementation blueprint: runtime topology, data/API contracts, sandbox, frontend, desktop shell, and packaging |
 | [LICENSES.md](./LICENSES.md) | Third-party licenses and redistribution notes for shipping with microsandbox |
 | [microsandbox-migration.md](./microsandbox-migration.md) | Agreed plan to replace bubblewrap with microsandbox (desktop) |
 | [tauri-migration.md](./tauri-migration.md) | Agreed plan to wrap the app in a Tauri 2 Windows shell |

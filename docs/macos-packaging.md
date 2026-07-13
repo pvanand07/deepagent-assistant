@@ -26,7 +26,7 @@ dual-OS GitHub Actions producing Windows + Mac artifacts. Complements
 | 12 | Windows CI | NSIS + portable zip |
 | 13 | UX | Platform menu label + macOS degraded virt copy |
 | 14 | Unix sidecar stop | `process_group(0)` + group `SIGKILL` |
-| 15 | CI smoke | `from api import app` + brief `/health` |
+| 15 | CI smoke | `from deep_agent.api.app import app` + brief `/health` |
 | 16 | Min macOS | `11.0` (matches microsandbox `macosx_11_0_arm64` wheel) |
 | 17 | Releases | Prerelease tag `unsigned-YYYYMMDD-HHMM` (UTC); assets named below |
 | 18 | Docs | This file + Phase 5 stub in `tauri-migration.md` |

@@ -273,7 +273,7 @@ fn spawn_uvicorn(paths: &SidecarPaths, port: u16) -> Result<Child, SidecarError>
         cmd.args([
             "-m",
             "uvicorn",
-            "api:app",
+            "deep_agent.api.app:app",
             "--host",
             host,
             "--port",
@@ -294,7 +294,7 @@ fn spawn_uvicorn(paths: &SidecarPaths, port: u16) -> Result<Child, SidecarError>
         cmd.args([
             "run",
             "uvicorn",
-            "api:app",
+            "deep_agent.api.app:app",
             "--host",
             host,
             "--port",
@@ -318,7 +318,7 @@ fn spawn_uvicorn(paths: &SidecarPaths, port: u16) -> Result<Child, SidecarError>
         cmd.args([
             "-m",
             "uvicorn",
-            "api:app",
+            "deep_agent.api.app:app",
             "--host",
             host,
             "--port",

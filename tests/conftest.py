@@ -8,10 +8,10 @@ from unittest.mock import patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from api import app
-from sandbox_manager import get_manager, reset_manager_for_tests
-from session_persistence import AppDB, CheckpointManager, MessageDB
-from sessions import SessionStore, store
+from deep_agent.api.app import app
+from deep_agent.sandbox.manager import get_manager, reset_manager_for_tests
+from deep_agent.persistence.database import AppDB, CheckpointManager, MessageDB
+from deep_agent.chat.sessions import SessionStore, store
 
 from helpers.stubs import stub_build_session
 
@@ -55,6 +55,12 @@ async def client(
     workspace_dir,
     data_dir,
 ) -> AsyncIterator[AsyncClient]:
+    from deep_agent.settings.store import (
+        default_settings,
+        reset_settings_cache,
+        save_settings,
+    )
+
     monkeypatch.setenv("DEEPAGENT_WORKDIR", str(workspace_dir))
     monkeypatch.setenv("DEEPAGENT_DATA_DIR", str(data_dir))
     monkeypatch.setenv("DEEPAGENT_APP_DB", str(data_dir / "app.sqlite"))
@@ -62,6 +68,13 @@ async def client(
     monkeypatch.setenv("DEEPAGENT_CHECKPOINT_DB", str(data_dir / "checkpoints.sqlite"))
     monkeypatch.setenv("DEEPAGENT_MAX_CONCURRENT_RUNS", "4")
     monkeypatch.setenv("DEEPAGENT_SANDBOX_BACKEND", "stub")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key-for-unit-tests")
+
+    reset_settings_cache()
+    cfg = default_settings()
+    cfg["setup_complete"] = True
+    cfg["default_model"] = "test-model"
+    save_settings(cfg, {"platforms": {"openrouter": {"api_keys": ["sk-test-key-for-unit-tests"]}}})
 
     await _close_persistence()
     _reset_store()
@@ -85,6 +98,7 @@ async def client(
     await _close_persistence()
     _reset_store()
     reset_manager_for_tests()
+    reset_settings_cache()
 
 
 @pytest.fixture

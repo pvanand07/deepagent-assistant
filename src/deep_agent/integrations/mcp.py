@@ -15,16 +15,13 @@ import re
 from pathlib import Path
 from typing import Any
 
-from langchain_core.tools import BaseTool
-from langchain_mcp_adapters.client import MultiServerMCPClient
-
-from env_values import env_bool
+from deep_agent.sandbox.env import env_bool
 
 logger = logging.getLogger(__name__)
 
 _ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _expand_env(value: str) -> str:
@@ -80,7 +77,7 @@ def _normalize_server_entry(entry: dict[str, Any]) -> dict[str, Any] | None:
 
 def _config_paths() -> list[Path]:
     """Search order: ``DEEPAGENT_MCP_CONFIG``, then desktop AppData, then repo."""
-    from sandbox_config import is_desktop_mode, resolve_data_dir
+    from deep_agent.sandbox.config import is_desktop_mode, resolve_data_dir
 
     paths: list[Path] = []
     override = os.environ.get("DEEPAGENT_MCP_CONFIG")
@@ -147,8 +144,10 @@ def load_mcp_connections() -> dict[str, dict[str, Any]]:
 
 async def aload_mcp_tools(
     connections: dict[str, dict[str, Any]] | None = None,
-) -> tuple[list[BaseTool], list[str]]:
+) -> tuple[list[Any], list[str]]:
     """Connect to configured MCP servers and return (tools, server_names)."""
+    from langchain_mcp_adapters.client import MultiServerMCPClient
+
     resolved = connections if connections is not None else load_mcp_connections()
     if not resolved:
         return [], []
@@ -160,7 +159,7 @@ async def aload_mcp_tools(
 
 def load_mcp_tools(
     connections: dict[str, dict[str, Any]] | None = None,
-) -> tuple[list[BaseTool], list[str]]:
+) -> tuple[list[Any], list[str]]:
     """Synchronous wrapper around :func:`aload_mcp_tools`."""
     try:
         asyncio.get_running_loop()

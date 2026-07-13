@@ -10,12 +10,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agent import _default_network, _default_workdir, build_agent
-from mcp_tools import load_mcp_tools
-from message_summary import messages_after_baseline, summary_from_messages
-from openrouter_model import default_model_for_provider
-from runs import RunManager
-from session_persistence import (
+from deep_agent.chat.messages import messages_after_baseline, summary_from_messages
+from deep_agent.integrations.model_provider import default_model_for_provider
+from deep_agent.chat.runs import RunManager
+from deep_agent.persistence.database import (
     AppDB,
     CheckpointManager,
     MessageDB,
@@ -23,7 +21,8 @@ from session_persistence import (
     SessionMeta,
     thread_config,
 )
-from streaming import rollback_uncommitted_turn
+from deep_agent.sandbox.config import default_network, default_workdir
+from deep_agent.chat.streaming import rollback_uncommitted_turn
 
 
 @dataclass
@@ -95,7 +94,15 @@ class SessionStore:
     def _resolved_model(self, model: str | None) -> str:
         return model or os.environ.get("OPENROUTER_MODEL") or default_model_for_provider()
 
+    def is_agent_ready(self, session_id: str) -> bool:
+        return session_id in self._sessions
+
+    def get_cached(self, session_id: str) -> AgentSession | None:
+        return self._sessions.get(session_id)
+
     async def _get_mcp(self) -> tuple[list, list[str]]:
+        from deep_agent.integrations.mcp import load_mcp_tools
+
         async with self._mcp_lock:
             if self._mcp_cache is None:
                 tools, servers = await asyncio.to_thread(load_mcp_tools)
@@ -103,9 +110,10 @@ class SessionStore:
             return self._mcp_cache
 
     async def _build_session(self, meta: SessionMeta) -> AgentSession:
-        mcp_tools, mcp_servers = await self._get_mcp()
-        from sandbox_manager import get_manager
+        from deep_agent.agent_factory import build_agent
+        from deep_agent.sandbox.manager import get_manager
 
+        mcp_tools, mcp_servers = await self._get_mcp()
         manager = get_manager()
         sandbox = manager.backend if manager.healthy else None
         agent, sandbox, mcp_meta = await asyncio.to_thread(
@@ -151,21 +159,20 @@ class SessionStore:
         *,
         model: str | None = None,
         with_subagents: bool = True,
-    ) -> AgentSession:
+    ) -> SessionMeta:
+        """Create session metadata only — agent hydrates on first chat."""
         now = time.time()
         meta = SessionMeta(
             id=uuid.uuid4().hex,
             model=self._resolved_model(model),
-            network=_default_network(),
-            workdir=_default_workdir(),
+            network=default_network(),
+            workdir=str(default_workdir()),
             with_subagents=with_subagents,
             created_at=now,
             updated_at=now,
         )
-        session = await self._build_session(meta)
         await self._db.upsert_session(meta)
-        self._sessions[session.id] = session
-        return session
+        return meta
 
     async def get(self, session_id: str, *, hydrate: bool = True) -> AgentSession | None:
         cached = self._sessions.get(session_id)

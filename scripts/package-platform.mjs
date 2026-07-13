@@ -107,7 +107,7 @@ async function smokeHealth() {
 
   const importSmoke = spawnSync(
     python,
-    ["-c", "from api import app; print('api:app ok')"],
+    ["-c", "from deep_agent.api.app import app; print('deep_agent.api.app:app ok')"],
     { cwd: root, stdio: "inherit", env },
   );
   if (importSmoke.status !== 0) process.exit(importSmoke.status ?? 1);
@@ -115,7 +115,7 @@ async function smokeHealth() {
   const port = 18766;
   const child = spawn(
     python,
-    ["-m", "uvicorn", "api:app", "--host", "127.0.0.1", "--port", String(port)],
+    ["-m", "uvicorn", "deep_agent.api.app:app", "--host", "127.0.0.1", "--port", String(port)],
     { cwd: root, env, stdio: "ignore" },
   );
 

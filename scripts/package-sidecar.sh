@@ -4,7 +4,7 @@
 # Uses `uv python install` (python-build-standalone) and copies the managed install
 # into sidecar/, then installs deps from uv.lock. Packaged Deep Agent runs:
 #
-#   ./sidecar/bin/python3 -m uvicorn api:app --host 127.0.0.1 --port 8010
+#   ./sidecar/bin/python3 -m uvicorn deep_agent.api.app:app --host 127.0.0.1 --port 8010
 #
 # Usage:
 #   ./scripts/package-sidecar.sh
@@ -160,14 +160,14 @@ cp -R "$REPO_ROOT/frontend" "$OUT_DIR/frontend"
 cp -R "$REPO_ROOT/agents" "$OUT_DIR/agents"
 find "$OUT_DIR" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 
-step "Smoke: import api:app"
+step "Smoke: import deep_agent.api.app:app"
 export PYTHONPATH="$OUT_DIR/src"
 export DEEPAGENT_DESKTOP=1
-"$PYTHON_BIN" -c "from api import app; print('api:app ok')"
+"$PYTHON_BIN" -c "from deep_agent.api.app import app; print('deep_agent.api.app:app ok')"
 
 step "Smoke: brief uvicorn /health"
 PORT=18765
-"$PYTHON_BIN" -m uvicorn api:app --host 127.0.0.1 --port "$PORT" &
+"$PYTHON_BIN" -m uvicorn deep_agent.api.app:app --host 127.0.0.1 --port "$PORT" &
 UV_PID=$!
 cleanup() { kill "$UV_PID" 2>/dev/null || true; wait "$UV_PID" 2>/dev/null || true; }
 trap cleanup EXIT
@@ -186,5 +186,5 @@ printf 'health ok\n'
 
 printf '\nSidecar ready at %s\n' "$OUT_DIR"
 printf '  python:  %s\n' "$PYTHON_BIN"
-printf '  run:     PYTHONPATH=%s/src %s -m uvicorn api:app --host 127.0.0.1 --port 8010\n' "$OUT_DIR" "$PYTHON_BIN"
+printf '  run:     PYTHONPATH=%s/src %s -m uvicorn deep_agent.api.app:app --host 127.0.0.1 --port 8010\n' "$OUT_DIR" "$PYTHON_BIN"
 printf 'Next:      pnpm exec tauri build --bundles dmg\n'

@@ -12,7 +12,7 @@ from helpers.stubs import slow_turn, success_turn, token_burst_turn
 
 
 @pytest.mark.asyncio
-@patch("runs.iter_agent_turn_events", new=success_turn)
+@patch("deep_agent.chat.runs.iter_agent_turn_events", new=success_turn)
 async def test_chat_returns_202_and_completes_with_done_event(
     client: AsyncClient,
     session_id: str,
@@ -42,7 +42,7 @@ async def test_chat_returns_202_and_completes_with_done_event(
 
 
 @pytest.mark.asyncio
-@patch("runs.iter_agent_turn_events", new=success_turn)
+@patch("deep_agent.chat.runs.iter_agent_turn_events", new=success_turn)
 async def test_sse_events_have_monotonic_sequence_numbers(
     client: AsyncClient,
     session_id: str,
@@ -60,7 +60,7 @@ async def test_sse_events_have_monotonic_sequence_numbers(
 
 
 @pytest.mark.asyncio
-@patch("runs.iter_agent_turn_events", new=success_turn)
+@patch("deep_agent.chat.runs.iter_agent_turn_events", new=success_turn)
 async def test_sse_resume_after_cursor(
     client: AsyncClient,
     session_id: str,
@@ -87,7 +87,7 @@ async def test_sse_resume_after_cursor(
 
 
 @pytest.mark.asyncio
-@patch("runs.iter_agent_turn_events", new=success_turn)
+@patch("deep_agent.chat.runs.iter_agent_turn_events", new=success_turn)
 async def test_finished_run_replays_from_event_log(
     client: AsyncClient,
     session_id: str,
@@ -105,7 +105,7 @@ async def test_finished_run_replays_from_event_log(
 
 
 @pytest.mark.asyncio
-@patch("runs.iter_agent_turn_events", new=token_burst_turn)
+@patch("deep_agent.chat.runs.iter_agent_turn_events", new=token_burst_turn)
 async def test_token_events_coalesced_in_persisted_log(
     client: AsyncClient,
     session_id: str,
@@ -126,14 +126,14 @@ async def test_token_events_coalesced_in_persisted_log(
 
 
 async def store_run_events_from_db(run_id: str) -> list[dict]:
-    from session_persistence import AppDB
+    from deep_agent.persistence.database import AppDB
 
     db = await AppDB.get()
     return await db.read_run_events(run_id, after_seq=0)
 
 
 @pytest.mark.asyncio
-@patch("runs.iter_agent_turn_events", new=slow_turn)
+@patch("deep_agent.chat.runs.iter_agent_turn_events", new=slow_turn)
 async def test_concurrent_chat_returns_409_with_active_run_id(
     client: AsyncClient,
     session_id: str,
@@ -163,7 +163,7 @@ async def test_concurrent_chat_returns_409_with_active_run_id(
 
 
 @pytest.mark.asyncio
-@patch("runs.iter_agent_turn_events", new=slow_turn)
+@patch("deep_agent.chat.runs.iter_agent_turn_events", new=slow_turn)
 async def test_cancel_run_emits_cancelled_and_clears_active(
     client: AsyncClient,
     session_id: str,
@@ -188,7 +188,7 @@ async def test_cancel_run_emits_cancelled_and_clears_active(
 
 
 @pytest.mark.asyncio
-@patch("runs.iter_agent_turn_events", new=slow_turn)
+@patch("deep_agent.chat.runs.iter_agent_turn_events", new=slow_turn)
 async def test_chat_stop_cancels_active_run(
     client: AsyncClient,
     session_id: str,
@@ -207,7 +207,7 @@ async def test_chat_stop_cancels_active_run(
 
 
 @pytest.mark.asyncio
-@patch("runs.iter_agent_turn_events", new=slow_turn)
+@patch("deep_agent.chat.runs.iter_agent_turn_events", new=slow_turn)
 async def test_sse_disconnect_does_not_cancel_run(
     client: AsyncClient,
     session_id: str,
@@ -232,7 +232,7 @@ async def test_sse_disconnect_does_not_cancel_run(
 
 
 @pytest.mark.asyncio
-@patch("runs.iter_agent_turn_events", new=success_turn)
+@patch("deep_agent.chat.runs.iter_agent_turn_events", new=success_turn)
 async def test_messages_and_summary_after_completed_run(
     client: AsyncClient,
     session_id: str,
@@ -256,7 +256,7 @@ async def test_messages_and_summary_after_completed_run(
 
 
 @pytest.mark.asyncio
-@patch("runs.iter_agent_turn_events", new=success_turn)
+@patch("deep_agent.chat.runs.iter_agent_turn_events", new=success_turn)
 async def test_last_event_id_header_resume(
     client: AsyncClient,
     session_id: str,

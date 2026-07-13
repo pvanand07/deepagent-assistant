@@ -1,7 +1,7 @@
 """FastAPI HTTP API for the sandboxed deep agent (HTML GUI backend).
 
 Run (from repo root):
-    PYTHONPATH=src uvicorn api:app --host 0.0.0.0 --port 8010
+    PYTHONPATH=src uvicorn deep_agent.api.app:app --host 0.0.0.0 --port 8010
 
 Chat contract (run-based):
     POST /api/sessions/{sid}/chat                     -> 202 {run_id}   (starts a background run)
@@ -33,11 +33,11 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Load repo-root .env / .env.local before other app modules read os.environ.
-from sandbox_config import (
+from deep_agent.sandbox.config import (
+    SANDBOX_NAME,
     configure_file_logging,
     default_network,
     default_workdir,
-    env_dir,
     is_desktop_mode,
     load_app_env,
     read_settings_env,
@@ -48,9 +48,8 @@ from sandbox_config import (
 load_app_env()
 configure_file_logging()
 
-from agent import _default_workdir
-from sandbox_manager import get_manager
-from api_models import (
+from deep_agent.sandbox.manager import get_manager
+from deep_agent.api.models import (
     ActiveRunResponse,
     CancelResponse,
     ChatRequest,
@@ -72,30 +71,55 @@ from api_models import (
     SettingsResponse,
     SettingsUpdateRequest,
 )
-from mcp_tools import load_mcp_connections
-from message_summary import serialize_messages
-from openrouter_model import default_model_for_provider, llm_provider
-from runs import RunConflictError
-from sessions import store
-from workspace_paths import resolve_under_workdir
+from deep_agent.integrations.mcp import load_mcp_connections
+from deep_agent.chat.messages import serialize_messages
+from deep_agent.integrations.model_provider import default_model_for_provider, llm_provider
+from deep_agent.chat.runs import RunConflictError
+from deep_agent.chat.sessions import store
+from deep_agent.sandbox.paths import resolve_under_workdir
 
 _SSE_HEARTBEAT_SECONDS = 15
 
 
+async def _warmup_agent_imports() -> None:
+    """Prefetch heavy agent deps so the first Send is faster."""
+    try:
+        await asyncio.to_thread(__import__, "deep_agent.agent_factory")
+    except Exception:
+        pass
+
+
+async def _cancel_task(task: asyncio.Task | None) -> None:
+    if task is None or task.done():
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        pass
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    from agent import ensure_agents_copied
+    from deep_agent.agent_factory import ensure_agents_copied
 
     if is_desktop_mode() or os.environ.get("DEEPAGENT_DATA_DIR"):
         ensure_agents_copied()
     await store.startup()
     manager = get_manager()
-    await manager.startup()
     assert store.runs is not None
     manager.bind_cancel_run(store.runs.cancel)
+    # Do not await sandbox/agent warm-up — /health must succeed ASAP.
+    manager.begin_startup()
+    sandbox_task = asyncio.create_task(manager.startup())
+    warmup_task = asyncio.create_task(_warmup_agent_imports())
     try:
         yield
     finally:
+        await _cancel_task(warmup_task)
+        await _cancel_task(sandbox_task)
         await store.close()
         await manager.shutdown()
 
@@ -131,11 +155,16 @@ def _session_summary(meta) -> SessionSummary:
     )
 
 
-async def _require_session(session_id: str):
-    session = await store.get(session_id)
-    if session is None:
+async def _require_meta(session_id: str):
+    meta = await store.get_meta(session_id)
+    if meta is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return session
+    return meta
+
+
+def _meta_workdir(meta) -> Path:
+    raw = getattr(meta, "workdir", None) or str(default_workdir())
+    return Path(raw)
 
 
 async def _require_run(session_id: str, run_id: str):
@@ -145,28 +174,47 @@ async def _require_run(session_id: str, run_id: str):
     return run
 
 
-async def _session_response(session) -> SessionResponse:
-    message_count = await store.message_count(session.id)
-    meta = await store.get_meta(session.id)
-    last_usage, last_step_usage = meta.parsed_usage() if meta else (None, None)
+async def _session_response_from_meta(meta) -> SessionResponse:
+    message_count = await store.message_count(meta.id)
+    last_usage, last_step_usage = meta.parsed_usage()
+    cached = store.get_cached(meta.id)
+    manager = get_manager()
+    if cached is not None:
+        sandbox_id = getattr(cached.sandbox, "id", SANDBOX_NAME)
+        network = bool(getattr(cached.sandbox, "network", meta.network))
+        workdir = str(cached.workdir)
+        mcp_servers = cached.mcp_servers
+        mcp_tool_names = cached.mcp_tool_names
+        subagent_names = cached.subagent_names
+    else:
+        backend = manager.backend if manager.healthy else None
+        sandbox_id = getattr(backend, "id", None) or (
+            SANDBOX_NAME if manager.healthy or manager.starting else "pending"
+        )
+        network = bool(meta.network)
+        workdir = str(_meta_workdir(meta))
+        mcp_servers = []
+        mcp_tool_names = []
+        subagent_names = []
     return SessionResponse(
-        id=session.id,
-        sandbox_id=session.sandbox.id,
-        workdir=str(session.workdir),
-        network=session.sandbox.network,
-        model=session.model or os.environ.get("OPENROUTER_MODEL") or default_model_for_provider(),
+        id=meta.id,
+        sandbox_id=str(sandbox_id),
+        workdir=workdir,
+        network=network,
+        model=meta.model or os.environ.get("OPENROUTER_MODEL") or default_model_for_provider(),
         message_count=message_count,
-        mcp_servers=session.mcp_servers,
-        mcp_tool_names=session.mcp_tool_names,
-        subagent_names=session.subagent_names,
-        active_run_id=store.runs.active_run_id(session.id),
+        mcp_servers=mcp_servers,
+        mcp_tool_names=mcp_tool_names,
+        subagent_names=subagent_names,
+        active_run_id=store.runs.active_run_id(meta.id) if store.runs else None,
         last_usage=last_usage,
         last_step_usage=last_step_usage,
+        agent_ready=cached is not None,
     )
 
 
-def _resolve_workspace_path(session, rel_path: str) -> Path:
-    candidate = resolve_under_workdir(session.workdir, rel_path)
+def _resolve_workspace_path(workdir: Path, rel_path: str) -> Path:
+    candidate = resolve_under_workdir(workdir, rel_path)
     if candidate is None:
         raise HTTPException(status_code=400, detail="Path escapes workspace") from None
     return candidate
@@ -236,15 +284,15 @@ def _is_previewable_image(path: Path) -> bool:
     return path.suffix.lower() in _PREVIEWABLE_IMAGE_SUFFIXES
 
 
-def _validate_pwd(session, pwd: str | None) -> str | None:
+def _validate_pwd(workdir: Path, pwd: str | None) -> str | None:
     if pwd is None or not pwd.strip():
         return None
-    target = _resolve_workspace_path(session, pwd)
+    target = _resolve_workspace_path(workdir, pwd)
     if not target.exists():
         raise HTTPException(status_code=404, detail="pwd folder not found")
     if not target.is_dir():
         raise HTTPException(status_code=400, detail="pwd must be a directory")
-    rel = str(target.relative_to(session.workdir.resolve())).replace("\\", "/")
+    rel = str(target.relative_to(workdir.resolve())).replace("\\", "/")
     return rel if rel != "." else ""
 
 
@@ -254,37 +302,66 @@ def _validate_pwd(session, pwd: str | None) -> str | None:
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     manager = get_manager()
-    status = manager.status_dict() if manager.started else None
-    healthy = bool(status and status.get("healthy"))
-    degraded = bool(status and status.get("degraded"))
+    status = manager.status_dict()
+    healthy = bool(status.get("healthy"))
+    degraded = bool(status.get("degraded"))
+    starting = bool(status.get("starting"))
     return HealthResponse(
         status="ok" if not degraded else "degraded",
-        sandbox_healthy=healthy if status else True,
+        sandbox_healthy=healthy,
         sandbox_degraded=degraded,
+        sandbox_starting=starting,
         sandbox_status=status,
     )
 
 
 @app.get("/api/settings", response_model=SettingsResponse)
 async def get_settings() -> SettingsResponse:
+    from deep_agent.settings.store import public_settings_view, settings_path
+
     data = resolve_data_dir()
     manager = get_manager()
+    view = public_settings_view()
+    path = str(settings_path())
     return SettingsResponse(
         desktop=is_desktop_mode(),
         data_dir=str(data),
         workdir=str(default_workdir()),
-        env_path=str(env_dir() / ".env"),
+        env_path=path,
+        settings_path=path,
         values=read_settings_env(),
-        sandbox_status=manager.status_dict() if manager.started else None,
+        config=view,
+        setup_required=bool(view.get("setup_required")),
+        sandbox_status=manager.status_dict(),
     )
 
 
 @app.put("/api/settings", response_model=SettingsResponse)
 async def put_settings(body: SettingsUpdateRequest) -> SettingsResponse:
-    from sandbox_config import sandbox_recreate_fingerprint
+    from deep_agent.sandbox.config import sandbox_recreate_fingerprint
+    from deep_agent.settings.store import update_from_ui
 
     before = sandbox_recreate_fingerprint()
-    write_settings_env(body.values)
+    try:
+        if body.config:
+            payload = dict(body.config)
+            if body.setup_complete is not None:
+                payload["setup_complete"] = body.setup_complete
+            update_from_ui(payload)
+        else:
+            values = dict(body.values)
+            if body.setup_complete is True:
+                # Ensure flat write marks setup done.
+                write_settings_env(values)
+                from deep_agent.settings.store import load_settings, save_settings
+
+                cfg = load_settings()
+                cfg["setup_complete"] = True
+                save_settings(cfg)
+            else:
+                write_settings_env(values)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     after = sandbox_recreate_fingerprint()
     recreated = False
     status = None
@@ -317,19 +394,19 @@ async def list_sessions() -> SessionListResponse:
 @app.post("/api/sessions", response_model=SessionResponse, status_code=201)
 async def create_session(body: CreateSessionRequest) -> SessionResponse:
     try:
-        session = await store.create(
+        meta = await store.create(
             model=body.model,
             with_subagents=body.with_subagents,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
-    return await _session_response(session)
+    return await _session_response_from_meta(meta)
 
 
 @app.get("/api/sessions/{session_id}", response_model=SessionResponse)
 async def get_session(session_id: str) -> SessionResponse:
-    session = await _require_session(session_id)
-    return await _session_response(session)
+    meta = await _require_meta(session_id)
+    return await _session_response_from_meta(meta)
 
 
 @app.delete("/api/sessions/{session_id}", status_code=204)
@@ -366,8 +443,8 @@ async def chat(session_id: str, body: ChatRequest) -> RunResponse:
     The run keeps executing even if no client is watching. Attach to
     ``GET .../runs/{run_id}/events`` to stream it.
     """
-    session = await _require_session(session_id)
-    pwd = _validate_pwd(session, body.pwd)
+    meta = await _require_meta(session_id)
+    pwd = _validate_pwd(_meta_workdir(meta), body.pwd)
     try:
         record = await store.start_chat(session_id, message=body.message, pwd=pwd)
     except RunConflictError as e:
@@ -479,14 +556,14 @@ async def list_files(
     session_id: str,
     path: str = Query("", description="Path relative to workspace root"),
 ) -> FileListResponse:
-    session = await _require_session(session_id)
-    target = _resolve_workspace_path(session, path)
+    meta = await _require_meta(session_id)
+    workdir = _meta_workdir(meta).resolve()
+    target = _resolve_workspace_path(workdir, path)
     if not target.exists():
         raise HTTPException(status_code=404, detail="Path not found")
     if not target.is_dir():
         raise HTTPException(status_code=400, detail="Not a directory")
 
-    workdir = session.workdir.resolve()
     scanned: list[tuple[bool, str, FileEntry]] = []
     with os.scandir(target) as entries:
         for entry in entries:
@@ -515,8 +592,9 @@ async def read_file(
     session_id: str,
     path: str = Query(..., description="File path relative to workspace root"),
 ) -> FileContentResponse:
-    session = await _require_session(session_id)
-    target = _resolve_workspace_path(session, path)
+    meta = await _require_meta(session_id)
+    workdir = _meta_workdir(meta).resolve()
+    target = _resolve_workspace_path(workdir, path)
     if not target.exists():
         raise HTTPException(status_code=404, detail="File not found")
     if target.is_dir():
@@ -525,7 +603,7 @@ async def read_file(
         content = target.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         raise HTTPException(status_code=415, detail="Binary file cannot be displayed") from None
-    rel = str(target.relative_to(session.workdir.resolve())).replace("\\", "/")
+    rel = str(target.relative_to(workdir)).replace("\\", "/")
     return FileContentResponse(path=rel, content=content, size=target.stat().st_size)
 
 
@@ -534,15 +612,16 @@ async def read_file_raw(
     session_id: str,
     path: str = Query(..., description="File path relative to workspace root"),
 ) -> Response:
-    session = await _require_session(session_id)
-    target = _resolve_workspace_path(session, path)
+    meta = await _require_meta(session_id)
+    workdir = _meta_workdir(meta).resolve()
+    target = _resolve_workspace_path(workdir, path)
     if not target.exists():
         raise HTTPException(status_code=404, detail="File not found")
     if target.is_dir():
         raise HTTPException(status_code=400, detail="Path is a directory")
     if not _is_previewable_image(target):
         raise HTTPException(status_code=415, detail="File type does not support raw preview")
-    rel = str(target.relative_to(session.workdir.resolve())).replace("\\", "/")
+    rel = str(target.relative_to(workdir)).replace("\\", "/")
     return Response(
         content=target.read_bytes(),
         media_type=_media_type_for(target),
@@ -555,8 +634,8 @@ async def read_file_raw(
 
 @app.get("/api/sessions/{session_id}/folders", response_model=FolderListResponse)
 async def list_folders(session_id: str) -> FolderListResponse:
-    session = await _require_session(session_id)
-    workdir = session.workdir.resolve()
+    meta = await _require_meta(session_id)
+    workdir = _meta_workdir(meta).resolve()
     return FolderListResponse(folders=_list_workspace_folders(workdir))
 
 
@@ -566,10 +645,11 @@ async def list_folders(session_id: str) -> FolderListResponse:
     status_code=201,
 )
 async def create_folder(session_id: str, body: CreateFolderRequest) -> FolderCreateResponse:
-    session = await _require_session(session_id)
+    meta = await _require_meta(session_id)
+    workdir = _meta_workdir(meta).resolve()
     name = _validate_folder_name(body.name)
     parent = body.parent.strip().lstrip("/")
-    parent_path = _resolve_workspace_path(session, parent)
+    parent_path = _resolve_workspace_path(workdir, parent)
     if not parent_path.exists():
         raise HTTPException(status_code=404, detail="Parent folder not found")
     if not parent_path.is_dir():
@@ -581,19 +661,20 @@ async def create_folder(session_id: str, body: CreateFolderRequest) -> FolderCre
         target.mkdir(parents=False, exist_ok=False)
     except OSError as e:
         raise HTTPException(status_code=500, detail="Failed to create folder") from e
-    workdir = session.workdir.resolve()
     rel = str(target.relative_to(workdir)).replace("\\", "/")
     return FolderCreateResponse(path=rel if rel != "." else "")
 
 
 @app.get("/api/config", response_model=ConfigResponse)
 async def get_config() -> ConfigResponse:
+    from deep_agent.settings.store import has_api_key_for_active, setup_required
+
     mcp_connections = load_mcp_connections()
     manager = get_manager()
-    sandbox_status = manager.status_dict() if manager.started else None
+    sandbox_status = manager.status_dict()
     return {
         "default_model": os.environ.get("OPENROUTER_MODEL") or default_model_for_provider(),
-        "default_workdir": _default_workdir(),
+        "default_workdir": str(default_workdir()),
         "default_network": default_network(),
         "mcp_enabled": bool(mcp_connections),
         "mcp_servers": list(mcp_connections.keys()),
@@ -601,15 +682,18 @@ async def get_config() -> ConfigResponse:
         "sandbox_backend": os.environ.get("DEEPAGENT_SANDBOX_BACKEND", "microsandbox"),
         "desktop": is_desktop_mode(),
         "data_dir": str(resolve_data_dir()),
-        "sandbox_healthy": bool(sandbox_status and sandbox_status.get("healthy")),
-        "sandbox_degraded": bool(sandbox_status and sandbox_status.get("degraded")),
+        "sandbox_healthy": bool(sandbox_status.get("healthy")),
+        "sandbox_degraded": bool(sandbox_status.get("degraded")),
+        "sandbox_starting": bool(sandbox_status.get("starting")),
         "sandbox_status": sandbox_status,
         "llm_provider": llm_provider(),
-        "has_api_key": bool(os.environ.get("OPENROUTER_API_KEY"))
+        "has_api_key": has_api_key_for_active()
+        or bool(os.environ.get("OPENROUTER_API_KEY"))
         or llm_provider() == "ollama",
+        "setup_required": setup_required(),
     }
 
 
-_FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+_FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 if _FRONTEND_DIR.is_dir():
     app.mount("/", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")

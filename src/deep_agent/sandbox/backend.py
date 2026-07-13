@@ -23,11 +23,11 @@ from deepagents.backends.sandbox import (
 )
 from deepagents.backends.utils import _get_file_type
 
-from sandbox_config import SANDBOX_ROOT, default_network, exec_timeout
-from workspace_paths import resolve_under_workdir
+from deep_agent.sandbox.config import SANDBOX_ROOT, default_network, exec_timeout
+from deep_agent.sandbox.paths import resolve_under_workdir
 
 if TYPE_CHECKING:
-    from sandbox_manager import SandboxManager
+    from deep_agent.sandbox.manager import SandboxManager
 
 
 class MicrosandboxSandbox(BaseSandbox):

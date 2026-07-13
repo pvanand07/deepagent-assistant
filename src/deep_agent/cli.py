@@ -3,7 +3,7 @@
 Usage:
     uv run --directory . python -c "import sys; sys.path.insert(0,'src'); from cli import main; main()"
     # or with PYTHONPATH:
-    PYTHONPATH=src uv run python src/cli.py
+    PYTHONPATH=src uv run python -m deep_agent.cli
 
 Network and workdir are app-wide (``DEEPAGENT_NETWORK_ACCESS``,
 ``DEEPAGENT_WORKDIR``). Type 'exit' or Ctrl-D to quit. Type '/reset' to clear
@@ -17,14 +17,14 @@ import asyncio
 import os
 import sys
 
-from sandbox_config import load_app_env
+from deep_agent.sandbox.config import load_app_env
 
 load_app_env()
 
-from agent import build_agent
-from sandbox_manager import get_manager
-from session_persistence import CheckpointManager
-from streaming import iter_agent_turn_events
+from deep_agent.agent_factory import build_agent
+from deep_agent.sandbox.manager import get_manager
+from deep_agent.persistence.database import CheckpointManager
+from deep_agent.chat.streaming import iter_agent_turn_events
 
 CLI_THREAD_ID = os.environ.get("DEEPAGENT_CLI_THREAD_ID", "cli")
 

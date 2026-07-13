@@ -25,19 +25,19 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from message_summary import (
+from deep_agent.chat.messages import (
     last_assistant_text,
     messages_after_baseline,
     serialize_messages,
     user_message_payload,
 )
-from session_persistence import AppDB, MessageDB, RunRecord, thread_config
-from streaming import (
+from deep_agent.persistence.database import AppDB, MessageDB, RunRecord, thread_config
+from deep_agent.chat.streaming import (
     capture_baseline_ids,
     iter_agent_turn_events,
     rollback_uncommitted_turn,
 )
-from sandbox_manager import current_run_id, current_session_id
+from deep_agent.sandbox.manager import current_run_id, current_session_id
 
 # Live-only events: fanned out to connected subscribers, never persisted.
 _EPHEMERAL_TYPES = {"usage_estimate"}

@@ -11,6 +11,7 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     sandbox_healthy: bool = True
     sandbox_degraded: bool = False
+    sandbox_starting: bool = False
     sandbox_status: dict[str, Any] | None = None
 
 
@@ -18,14 +19,21 @@ class SettingsResponse(BaseModel):
     desktop: bool = False
     data_dir: str
     workdir: str
-    env_path: str
+    env_path: str = ""  # deprecated: was .env path; now settings.json path
+    settings_path: str = ""
     values: dict[str, str] = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict)
+    setup_required: bool = False
     sandbox_recreated: bool = False
     sandbox_status: dict[str, Any] | None = None
 
 
 class SettingsUpdateRequest(BaseModel):
+    """Accept flat legacy ``values`` and/or structured ``config`` payload."""
+
     values: dict[str, str] = Field(default_factory=dict)
+    config: dict[str, Any] | None = None
+    setup_complete: bool | None = None
 
 
 class ConfigResponse(BaseModel):
@@ -40,9 +48,11 @@ class ConfigResponse(BaseModel):
     data_dir: str
     sandbox_healthy: bool
     sandbox_degraded: bool
+    sandbox_starting: bool = False
     sandbox_status: dict[str, Any] | None = None
     llm_provider: str
     has_api_key: bool
+    setup_required: bool = False
 
 
 class CreateSessionRequest(BaseModel):
@@ -66,6 +76,7 @@ class SessionResponse(BaseModel):
     active_run_id: str | None = None
     last_usage: dict[str, Any] | None = None
     last_step_usage: dict[str, Any] | None = None
+    agent_ready: bool = False
 
 
 class SessionSummary(BaseModel):

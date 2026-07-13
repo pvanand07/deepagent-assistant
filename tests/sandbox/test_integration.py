@@ -22,7 +22,7 @@ async def test_manager_exec_and_log(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("DEEPAGENT_SANDBOX_BACKEND", "microsandbox")
     monkeypatch.setenv("DEEPAGENT_SANDBOX_IDLE_TIMEOUT", "60")
 
-    from sandbox_manager import SandboxManager, reset_manager_for_tests
+    from deep_agent.sandbox.manager import SandboxManager, reset_manager_for_tests
 
     reset_manager_for_tests()
     mgr = SandboxManager()

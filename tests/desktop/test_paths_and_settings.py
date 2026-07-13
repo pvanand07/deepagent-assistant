@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
-from agent import ensure_agents_copied, resolve_agents_dir
-from sandbox_config import (
+from deep_agent.agent_factory import ensure_agents_copied, resolve_agents_dir
+from deep_agent.sandbox.config import (
     default_workdir,
     env_dir,
     is_desktop_mode,
@@ -18,8 +18,8 @@ from sandbox_config import (
     resolve_data_dir,
     write_settings_env,
 )
-from sandbox_manager import SandboxManager, get_manager, reset_manager_for_tests
-from session_persistence import default_data_dir
+from deep_agent.sandbox.manager import SandboxManager, get_manager, reset_manager_for_tests
+from deep_agent.persistence.database import default_data_dir
 
 
 def test_resolve_data_dir_prefers_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -47,43 +47,65 @@ def test_default_workdir_desktop_documents(
     monkeypatch.delenv("CODEX_GUI_WORKSPACE", raising=False)
     home = tmp_path / "home"
     home.mkdir()
-    monkeypatch.setattr("sandbox_config.Path.home", staticmethod(lambda: home))
+    monkeypatch.setattr("deep_agent.sandbox.config.Path.home", staticmethod(lambda: home))
     expected = (home / "Documents" / "DeepAgent" / "workspace").resolve()
     assert default_workdir() == expected
 
 
-def test_load_app_env_from_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_load_app_env_ignores_dotenv(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from deep_agent.settings.store import load_settings, reset_settings_cache, settings_path
+
     data = tmp_path / "data"
     data.mkdir()
-    (data / ".env").write_text("OPENROUTER_MODEL=from-data-dir\n", encoding="utf-8")
+    (data / ".env").write_text(
+        "OPENROUTER_MODEL=from-data-dir\n"
+        "OPENROUTER_API_KEY=sk-migrate-test-key\n"
+        "DEEPAGENT_LLM_PROVIDER=ollama\n"
+        "DEEPAGENT_LLM_BASE_URL=http://127.0.0.1:1234/v1\n",
+        encoding="utf-8",
+    )
     monkeypatch.setenv("DEEPAGENT_DATA_DIR", str(data))
     monkeypatch.delenv("DEEPAGENT_DESKTOP", raising=False)
     monkeypatch.delenv("OPENROUTER_MODEL", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPAGENT_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("DEEPAGENT_LLM_BASE_URL", raising=False)
+    reset_settings_cache()
     root = load_app_env()
     assert root == data.resolve()
     assert env_dir() == data.resolve()
-    assert __import__("os").environ.get("OPENROUTER_MODEL") == "from-data-dir"
+    assert not settings_path().is_file()
+    cfg = load_settings()
+    assert cfg["setup_complete"] is False
+    assert cfg["default_model"] != "from-data-dir"
+    assert cfg["platforms"][0]["kind"] == "openrouter"
 
 
-def test_write_and_read_settings_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_write_and_read_settings_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from deep_agent.settings.store import reset_settings_cache, settings_path
+
     data = tmp_path / "data"
     data.mkdir()
     monkeypatch.setenv("DEEPAGENT_DATA_DIR", str(data))
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-old-secret-key-1234")
+    reset_settings_cache()
     write_settings_env(
         {
             "OPENROUTER_API_KEY": "sk-new-secret-key-9999",
             "OPENROUTER_MODEL": "openai/gpt-5",
+            "DEEPAGENT_LLM_PROVIDER": "openrouter",
             "DEEPAGENT_NETWORK_ACCESS": "true",
             "DEEPAGENT_SANDBOX_MEMORY": "2048",
             "DEEPAGENT_DNS_NAMESERVERS": "1.1.1.1,8.8.8.8",
         }
     )
-    env_text = (data / ".env").read_text(encoding="utf-8")
-    assert "OPENROUTER_MODEL=openai/gpt-5" in env_text
-    assert "sk-new-secret-key-9999" in env_text
-    assert "DEEPAGENT_NETWORK_ACCESS=true" in env_text
-    assert "DEEPAGENT_SANDBOX_MEMORY=2048" in env_text
+    assert settings_path().is_file()
+    assert not (data / ".env").exists() or "OPENROUTER_MODEL" not in (data / ".env").read_text(
+        encoding="utf-8"
+    )
+    secrets = (data / "secrets.json").read_text(encoding="utf-8")
+    assert "sk-new-secret-key-9999" in secrets
     values = read_settings_env()
     assert values["OPENROUTER_MODEL"] == "openai/gpt-5"
     assert values["OPENROUTER_API_KEY_set"] == "true"
@@ -96,12 +118,21 @@ def test_write_and_read_settings_env(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 def test_write_settings_network_false_persists(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    from deep_agent.settings.store import load_settings, reset_settings_cache
+
     data = tmp_path / "data"
     data.mkdir()
     monkeypatch.setenv("DEEPAGENT_DATA_DIR", str(data))
-    write_settings_env({"DEEPAGENT_NETWORK_ACCESS": "false"})
-    env_text = (data / ".env").read_text(encoding="utf-8")
-    assert "DEEPAGENT_NETWORK_ACCESS=false" in env_text
+    reset_settings_cache()
+    write_settings_env(
+        {
+            "DEEPAGENT_LLM_PROVIDER": "ollama",
+            "OPENROUTER_MODEL": "llama3.2",
+            "DEEPAGENT_NETWORK_ACCESS": "false",
+        }
+    )
+    cfg = load_settings()
+    assert cfg["sandbox"]["network"] is False
     assert __import__("os").environ.get("DEEPAGENT_NETWORK_ACCESS") == "false"
 
 
@@ -119,7 +150,7 @@ def test_agents_first_run_copy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 
 
 def test_mcp_config_prefers_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from mcp_tools import _config_paths
+    from deep_agent.integrations.mcp import _config_paths
 
     data = tmp_path / "data"
     data.mkdir()
@@ -215,11 +246,13 @@ async def test_health_and_config_report_degraded(
     body = health.json()
     assert body["status"] == "degraded"
     assert body["sandbox_degraded"] is True
+    assert body["sandbox_starting"] is False
     assert body["sandbox_status"]["degraded_reason"] == "test degraded"
 
     cfg = await client.get("/api/config")
     assert cfg.status_code == 200
     assert cfg.json()["sandbox_degraded"] is True
+    assert cfg.json()["sandbox_starting"] is False
 
 
 @pytest.mark.asyncio
@@ -240,9 +273,10 @@ async def test_settings_api_roundtrip(
     assert put.status_code == 200
     assert put.json()["values"]["OPENROUTER_MODEL"] == "test/model-phase2"
     assert put.json()["sandbox_recreated"] is False
-    env_file = data_dir / ".env"
-    assert env_file.is_file()
-    assert "OPENROUTER_MODEL=test/model-phase2" in env_file.read_text(encoding="utf-8")
+    settings_file = data_dir / "settings.json"
+    assert settings_file.is_file()
+    assert "test/model-phase2" in settings_file.read_text(encoding="utf-8")
+    assert put.json().get("setup_required") is False
 
 
 @pytest.mark.asyncio
@@ -276,9 +310,9 @@ async def test_settings_api_persists_network_and_recreates_stub(
     assert body["values"]["DEEPAGENT_EXEC_TIMEOUT"] == "90"
     assert body["sandbox_status"]["network"] is True
 
-    env_text = (data_dir / ".env").read_text(encoding="utf-8")
-    assert "DEEPAGENT_NETWORK_ACCESS=true" in env_text
-    assert "DEEPAGENT_SANDBOX_MEMORY=1536" in env_text
+    settings_text = (data_dir / "settings.json").read_text(encoding="utf-8")
+    assert '"network": true' in settings_text.replace("True", "true")
+    assert "1536" in settings_text
 
     cfg = await client.get("/api/config")
     assert cfg.status_code == 200

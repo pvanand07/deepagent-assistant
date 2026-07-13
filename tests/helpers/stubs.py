@@ -12,7 +12,8 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from sessions import AgentSession, SessionMeta, SessionStore
+from deep_agent.chat.sessions import AgentSession, SessionStore
+from deep_agent.persistence.database import SessionMeta
 
 
 @dataclass

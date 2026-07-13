@@ -6,7 +6,7 @@ import base64
 from pathlib import Path
 from types import SimpleNamespace
 
-from microsandbox_sandbox import MicrosandboxSandbox
+from deep_agent.sandbox.backend import MicrosandboxSandbox
 
 
 def _sandbox(workdir: Path) -> MicrosandboxSandbox:

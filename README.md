@@ -25,12 +25,13 @@ One shared microVM per app process:
 
 | Path | Purpose |
 |------|---------|
-| `src/sandbox_manager.py` | App-scoped VM lifecycle, exec lock, command logs |
-| `src/microsandbox_sandbox.py` | `BaseSandbox` impl (async `aexecute`, host-direct files) |
-| `src/sandbox_tools.py` | `sandbox_status` / `sandbox_wait` / `cancel_sandbox_holder` |
-| `src/agent.py` | Wires model + sandbox + MCP + subagents |
-| `src/api.py` | FastAPI HTTP API for the web GUI |
-| `src/cli.py` | Interactive terminal chat loop |
+| `src/deep_agent/sandbox/` | MicroVM lifecycle, backend adapter, configuration, paths, and sandbox tools |
+| `src/deep_agent/chat/` | Sessions, runs, stream events, and message summaries |
+| `src/deep_agent/api/` | FastAPI application and API models |
+| `src/deep_agent/integrations/` | MCP loading and model-provider integration |
+| `src/deep_agent/persistence/` | SQLite checkpoints, session metadata, messages, and event storage |
+| `src/deep_agent/agent_factory.py` | Wires model, sandbox, MCP, and subagents |
+| `src/deep_agent/cli.py` | Interactive terminal chat loop |
 | `Dockerfile.sandbox` | Guest OCI image definition (dev build / release pull) |
 | `frontend/` | Static HTML/CSS/JS GUI (served by FastAPI) |
 | `desktop-stub/` | Tauri boot chrome only (“Starting Deep Agent…”) |
@@ -66,14 +67,14 @@ asyncio.run(install() if not is_installed() else asyncio.sleep(0)); print('runti
 
 # 4. Run the API + GUI (default guest image: python:3.12-slim, pulled on first start)
 mkdir -p workspace data
-DEEPAGENT_WORKDIR="$PWD/workspace" PYTHONPATH=src uv run uvicorn api:app --host 127.0.0.1 --port 8010
+DEEPAGENT_WORKDIR="$PWD/workspace" PYTHONPATH=src uv run uvicorn deep_agent.api.app:app --host 127.0.0.1 --port 8010
 # Open http://127.0.0.1:8010
 ```
 
 CLI:
 
 ```bash
-DEEPAGENT_WORKDIR="$PWD/workspace" PYTHONPATH=src uv run python src/cli.py
+DEEPAGENT_WORKDIR="$PWD/workspace" PYTHONPATH=src uv run python -m deep_agent.cli
 ```
 
 ## Desktop shell (Tauri)
@@ -99,7 +100,7 @@ pnpm build:release
 #   pnpm exec tauri build --bundles nsis   # Windows
 #   pnpm exec tauri build --bundles dmg    # macOS
 #   pnpm package:portable                  # Windows only
-#   pnpm package:smoke                     # import api:app + /health
+#   pnpm package:smoke                     # import deep_agent.api.app:app + /health
 ```
 
 **CI:** GitHub Actions → **Desktop build (unsigned)** (`workflow_dispatch`) builds Windows +
@@ -164,7 +165,7 @@ export DEEPAGENT_SANDBOX_IMAGE=deepagent-workspace:dev
 DEEPAGENT_SANDBOX_BACKEND=stub PYTHONPATH=src uv run pytest
 
 # Optional real microsandbox integration (requires virt + guest image)
-DEEPAGENT_MSB_INTEGRATION=1 PYTHONPATH=src uv run pytest tests/test_msb_integration.py
+DEEPAGENT_MSB_INTEGRATION=1 PYTHONPATH=src uv run pytest tests/sandbox/test_integration.py
 ```
 
 ## Security notes

@@ -137,7 +137,7 @@ Do **not** use production `stub` sandbox for this path (host execution undermine
 | Daily agent/UI | `uv run uvicorn` + browser (unchanged) |
 | Shell work | FastAPI in one terminal; `pnpm tauri dev` opens WebView to loopback URL |
 | Production-like smoke | Tauri spawns directory sidecar (same as packaged) |
-| CLI | `src/cli.py` remains supported for debug |
+| CLI | `src/deep_agent/cli.py` remains supported for debug |
 
 ---
 
@@ -172,7 +172,7 @@ Do **not** use production `stub` sandbox for this path (host execution undermine
 - [x] Package script: embeddable CPython + locked deps → `sidecar/` (`scripts/package-sidecar.ps1` / `pnpm package:sidecar`)
 - [x] Bundle frontend static + agents defaults + sidecar into Tauri resources (`tauri.conf.json` → `$RESOURCE/sidecar/`; frontend/agents copied into sidecar layout)
 - [x] `tauri build` → NSIS (+ portable zip of release exe + resources); unsigned. Note: Tauri v2 `bundle.targets` has no `portable` enum — `scripts/package-portable.ps1` / `pnpm package:portable` (or `pnpm build:release`)
-- [x] Smoke (non-GUI): packaged `api:app` import + brief uvicorn `/health`. Full install / image-pull / chat / sandbox exec needs interactive virt (WHP); degraded mode remains the designed path when virt fails — do not use stub as production degraded.
+- [x] Smoke (non-GUI): packaged `deep_agent.api.app:app` import + brief uvicorn `/health`. Full install / image-pull / chat / sandbox exec needs interactive virt (WHP); degraded mode remains the designed path when virt fails — do not use stub as production degraded.
 - [x] Packaged spawn uses `resources/sidecar/python.exe -m uvicorn`; `tauri dev` keeps `uv run` fallback
 
 ### Phase 4 — Polish (optional, after ship)

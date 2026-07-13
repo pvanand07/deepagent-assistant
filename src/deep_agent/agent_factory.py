@@ -20,17 +20,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from deepagents import SubAgent, create_deep_agent
-
-from mcp_tools import load_mcp_tools
-from openrouter_model import get_openrouter_model
-from pwd_middleware import AgentContext, PwdContextMiddleware
-from sandbox_config import default_network, default_workdir, is_desktop_mode, resolve_data_dir
-from sandbox_tools import build_sandbox_tools
+from deep_agent.sandbox.config import default_network, default_workdir, is_desktop_mode, resolve_data_dir
 
 logger = logging.getLogger(__name__)
 
-_REPO_AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
+_REPO_AGENTS_DIR = Path(__file__).resolve().parents[2] / "agents"
 
 
 @dataclass
@@ -187,10 +181,12 @@ from Settings or after fixing the host.
 """
 
 
-def load_subagents_from_toml(agents_dir: Path | None = None) -> list[SubAgent]:
+def load_subagents_from_toml(agents_dir: Path | None = None) -> list[dict[str, Any]]:
     """Load codex-style agent TOML definitions as deepagents SubAgent specs."""
+    from deep_agent.integrations.model_provider import get_openrouter_model
+
     root = agents_dir or resolve_agents_dir()
-    subagents: list[SubAgent] = []
+    subagents: list[dict[str, Any]] = []
 
     for path in sorted(root.glob("*.toml")):
         data = tomllib.loads(path.read_text(encoding="utf-8"))
@@ -199,7 +195,7 @@ def load_subagents_from_toml(agents_dir: Path | None = None) -> list[SubAgent]:
             msg = f"{path}: missing system_prompt"
             raise ValueError(msg)
 
-        subagent: SubAgent = {
+        subagent: dict[str, Any] = {
             "name": data["name"],
             "description": data["description"],
             "system_prompt": system_prompt.strip(),
@@ -237,15 +233,22 @@ def build_agent(
         (agent, sandbox, mcp_meta). The VM is owned by ``SandboxManager``;
         ``sandbox.cleanup()`` is a no-op for the shared backend.
     """
+    from deepagents import create_deep_agent
+
+    from deep_agent.agent_context import AgentContext, PwdContextMiddleware
+    from deep_agent.integrations.mcp import load_mcp_tools
+    from deep_agent.integrations.model_provider import get_openrouter_model
+    from deep_agent.sandbox.tools import build_sandbox_tools
+
     model = get_openrouter_model(model=model_name)
 
     if sandbox_available is None:
-        from sandbox_manager import get_manager
+        from deep_agent.sandbox.manager import get_manager
 
         sandbox_available = get_manager().healthy
 
     if sandbox is None and sandbox_available:
-        from sandbox_manager import get_manager
+        from deep_agent.sandbox.manager import get_manager
 
         sandbox = get_manager().backend
 
@@ -302,7 +305,7 @@ def build_agent(
 if __name__ == "__main__":
     import asyncio
 
-    from sandbox_manager import get_manager
+    from deep_agent.sandbox.manager import get_manager
 
     async def _main() -> None:
         mgr = get_manager()
