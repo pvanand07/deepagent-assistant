@@ -106,6 +106,8 @@ jobs:
 
       - name: Portable zip (Windows)
         if: matrix.platform == 'windows'
+        env:
+          APP_VERSION: ${{ steps.ver.outputs.version }}
         run: pnpm package:portable
 
       - name: Stage release assets (Windows)

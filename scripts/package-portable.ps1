@@ -14,7 +14,8 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$ReleaseDir = ""
+    [string]$ReleaseDir = "",
+    [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,6 +25,20 @@ if (-not $ReleaseDir) {
     $ReleaseDir = Join-Path $RepoRoot "src-tauri\target\release"
 }
 $ReleaseDir = Resolve-Path $ReleaseDir
+
+if (-not $Version) {
+    $Version = ($env:APP_VERSION -as [string]).Trim()
+}
+if (-not $Version) {
+    $confPath = Join-Path $RepoRoot "src-tauri\tauri.conf.json"
+    if (Test-Path $confPath) {
+        $conf = Get-Content -Raw -Path $confPath | ConvertFrom-Json
+        $Version = [string]$conf.version
+    }
+}
+if (-not $Version) {
+    throw "Version not set. Pass -Version, set APP_VERSION, or set version in src-tauri/tauri.conf.json."
+}
 
 $ExeCandidates = @(
     (Join-Path $ReleaseDir "Deep Agent.exe"),
@@ -36,7 +51,7 @@ if (-not $Exe) {
 
 $PortableRoot = Join-Path $ReleaseDir "bundle\portable"
 $StageDir = Join-Path $PortableRoot "Deep Agent"
-$ZipPath = Join-Path $PortableRoot "Deep-Agent-0.1.0-windows-x64-portable.zip"
+$ZipPath = Join-Path $PortableRoot "Deep-Agent-$Version-windows-x64-portable.zip"
 
 if (Test-Path $PortableRoot) {
     Remove-Item -Recurse -Force $PortableRoot
