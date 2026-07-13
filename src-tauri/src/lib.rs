@@ -5,6 +5,8 @@
 //! See docs/tauri-migration.md.
 
 mod sidecar;
+#[cfg(desktop)]
+mod updater;
 
 use std::sync::Mutex;
 
@@ -24,7 +26,7 @@ struct StatusPayload {
     detail: Option<String>,
 }
 
-struct AppState {
+pub(crate) struct AppState {
     sidecar: Mutex<Option<SidecarHandle>>,
     paths: Mutex<SidecarPaths>,
 }
@@ -90,7 +92,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     Menu::with_items(app, &[&app_menu])
 }
 
-fn kill_sidecar(state: &AppState) {
+pub(crate) fn kill_sidecar(state: &AppState) {
     if let Ok(mut guard) = state.sidecar.lock() {
         if let Some(handle) = guard.take() {
             handle.kill();
@@ -116,6 +118,13 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }));
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+        builder = builder.invoke_handler(tauri::generate_handler![
+            updater::get_app_version,
+            updater::updater_check,
+            updater::updater_install,
+            updater::updater_snooze,
+        ]);
     }
 
     builder
@@ -162,6 +171,8 @@ pub fn run() {
                         }
                         emit_status(&handle, "API ready — opening UI…", false, None);
                         navigate_main(&handle, &url);
+                        #[cfg(desktop)]
+                        updater::spawn_launch_check(handle.clone());
                     }
                     Err(err) => {
                         emit_status(

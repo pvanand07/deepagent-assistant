@@ -282,9 +282,9 @@
             <p class="settings-panel-desc">App identity, paths, and version info.</p>
             <div class="mb-6">
               <div class="text-lg font-semibold">Deep Agent</div>
-              <div class="text-sm text-muted-foreground mt-1">Version <strong class="text-foreground font-medium">0.1.0</strong> · Tauri desktop + Python sidecar</div>
+              <div class="text-sm text-muted-foreground mt-1">Version <strong class="text-foreground font-medium">{{ appVersion }}</strong> · Tauri desktop + Python sidecar</div>
               <div class="flex flex-wrap gap-2 mt-3">
-                <button type="button" class="settings-btn-secondary" @click="settingsToast('Update check is not available yet')">Check for updates</button>
+                <button type="button" class="settings-btn-secondary" :disabled="updateChecking || updateInstalling" @click="checkForUpdates(true)">{{ updateChecking ? 'Checking…' : 'Check for updates' }}</button>
               </div>
             </div>
             <div class="settings-card">
@@ -465,6 +465,23 @@
             <div class="settings-modal-foot">
               <button type="button" class="settings-btn-secondary" @click="closeModal">Cancel</button>
               <button type="button" class="settings-btn-primary" @click="confirmImportMcp">Confirm</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-overlay" :class="{ open: modal === 'app-update' }" @click.self="closeUpdateModal">
+          <div class="settings-modal">
+            <div class="settings-modal-head">
+              <h2 class="text-base font-semibold">Update available</h2>
+              <button type="button" class="settings-icon-btn" @click="closeUpdateModal">×</button>
+            </div>
+            <div class="settings-modal-body">
+              <p class="text-sm">Version <strong>{{ pendingUpdateVersion }}</strong> is available.</p>
+              <p class="text-xs text-muted-foreground mt-2">Updating will stop any active agent runs and restart Deep Agent.</p>
+            </div>
+            <div class="settings-modal-foot">
+              <button type="button" class="settings-btn-secondary" :disabled="updateInstalling" @click="snoozeUpdate">Later</button>
+              <button type="button" class="settings-btn-primary" :disabled="updateInstalling" @click="installUpdate">{{ updateInstalling ? 'Installing…' : 'Update' }}</button>
             </div>
           </div>
         </div>
@@ -781,11 +798,10 @@
 
             <!-- Meta toolbar -->
             <div class="flex items-center gap-1.5 overflow-hidden px-3 pb-2.5 pt-0">
-              <span class="inline-flex h-8 min-w-0 max-w-28 shrink items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs text-muted-foreground sm:max-w-40"
-                :title="'Model: ' + modelLabel">
-                <p-icon name="cpu" :size="14" class="shrink-0 text-muted-foreground/70" />
-                <span class="min-w-0 truncate">{{ modelLabel }}</span>
-              </span>
+              <model-picker ref="modelPickerEl" :streaming="streaming" :selected="selectedModelId"
+                :groups="modelPickerGroups" :close-signal="modelCloseSignal"
+                :loading="modelPickerLoading"
+                @select="selectModel" @add="openAddModelFromPicker" @open="ensurePickerModels" />
 
               <pwd-picker ref="pwdPickerEl" :streaming="streaming" :folders="workspaceFolders"
                 :selected="selectedPwd" :close-signal="pwdCloseSignal" />

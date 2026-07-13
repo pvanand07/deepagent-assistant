@@ -18,6 +18,7 @@ const ICON_PATHS = {
   "caret-down": "M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z",
   download: "M224,152v56a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V152a8,8,0,0,1,16,0v56H208V152a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,132.69V40a8,8,0,0,0-16,0v92.69L93.66,106.34a8,8,0,0,0-11.32,11.32Z",
   cpu: "M112,96h32a8,8,0,0,1,8,8v48a8,8,0,0,1-8,8H112a8,8,0,0,1-8-8V104A8,8,0,0,1,112,96Zm120,40a8,8,0,0,1-8,8H208v16a32,32,0,0,1-32,32H160v16a8,8,0,0,1-16,0V192H112v16a8,8,0,0,1-16,0V192H80a32,32,0,0,1-32-32V144H32a8,8,0,0,1,0-16H48V96H32a8,8,0,0,1,0-16H48V64A32,32,0,0,1,80,32H96V16a8,8,0,0,1,16,0V32h32V16a8,8,0,0,1,16,0V32h16a32,32,0,0,1,32,32V80h16a8,8,0,0,1,0,16H208v32h16A8,8,0,0,1,232,136ZM192,64a16,16,0,0,0-16-16H80A16,16,0,0,0,64,64v96a16,16,0,0,0,16,16h96a16,16,0,0,0,16-16Z",
+  search: "M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z",
   info: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z",
   warning: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm-8,56a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm8,104a12,12,0,1,1,12-12A12,12,0,0,1,128,184Z",
   x: "M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z",
@@ -369,12 +370,174 @@ const PwdPicker = {
   `,
 };
 
+const ModelPicker = {
+  name: "ModelPicker",
+  components: { PIcon },
+  props: {
+    streaming: { type: Boolean, default: false },
+    selected: { type: String, default: "" },
+    groups: { type: Array, default: () => [] },
+    closeSignal: { type: Number, default: 0 },
+    loading: { type: Boolean, default: false },
+  },
+  emits: ["select", "add", "open"],
+  data() {
+    return { menuOpen: false, menuStyle: {}, search: "" };
+  },
+  computed: {
+    label() {
+      const m = (this.selected || "").trim();
+      if (!m) return "Select model";
+      return m;
+    },
+    filteredGroups() {
+      const q = (this.search || "").toLowerCase().trim();
+      const out = [];
+      for (const g of this.groups || []) {
+        const models = (g.models || []).filter((m) => {
+          if (!q) return true;
+          return (m.id || "").toLowerCase().includes(q);
+        });
+        if (models.length) out.push({ name: g.name, models });
+      }
+      return out;
+    },
+  },
+  watch: {
+    closeSignal() {
+      this.menuOpen = false;
+    },
+    streaming(val) {
+      if (val) this.menuOpen = false;
+    },
+    menuOpen(val) {
+      if (val) {
+        this.search = "";
+        this.$emit("open");
+        this.$nextTick(() => {
+          this.positionMenu();
+          const input = this.$refs.searchInput;
+          if (input) input.focus();
+        });
+      }
+    },
+    groups() {
+      if (this.menuOpen) this.$nextTick(() => this.positionMenu());
+    },
+  },
+  mounted() {
+    this._onDocClick = (e) => {
+      if (!this.menuOpen) return;
+      const target = e.target;
+      if (target.closest("[data-model-menu]") || this.$el.contains(target)) return;
+      this.menuOpen = false;
+    };
+    this._onLayout = () => { if (this.menuOpen) this.positionMenu(); };
+    document.addEventListener("click", this._onDocClick);
+    window.addEventListener("resize", this._onLayout);
+    window.addEventListener("scroll", this._onLayout, true);
+  },
+  beforeUnmount() {
+    document.removeEventListener("click", this._onDocClick);
+    window.removeEventListener("resize", this._onLayout);
+    window.removeEventListener("scroll", this._onLayout, true);
+  },
+  methods: {
+    toggle() {
+      this.menuOpen = !this.menuOpen;
+    },
+    close() {
+      this.menuOpen = false;
+    },
+    positionMenu() {
+      const r = this.$el.getBoundingClientRect();
+      const menuWidth = Math.min(Math.max(280, r.width), window.innerWidth - 16);
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - menuWidth - 8));
+      this.menuStyle = {
+        position: "fixed",
+        left: `${left}px`,
+        bottom: `${window.innerHeight - r.top + 8}px`,
+        width: `${menuWidth}px`,
+        zIndex: 200,
+      };
+    },
+    pick(id) {
+      this.menuOpen = false;
+      if (id && id !== this.selected) this.$emit("select", id);
+    },
+    onAdd() {
+      this.menuOpen = false;
+      this.$emit("add");
+    },
+  },
+  template: `
+    <div class="relative min-w-0 max-w-40 shrink sm:min-w-[9rem] sm:max-w-56">
+      <button type="button" data-model-picker-trigger :disabled="streaming"
+        class="inline-flex h-8 w-full items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        aria-haspopup="listbox" :aria-expanded="String(menuOpen)" :title="'Model: ' + label">
+        <p-icon name="cpu" :size="14" class="shrink-0 text-muted-foreground/70" />
+        <span class="min-w-0 truncate">{{ label }}</span>
+        <p-icon name="caret-down" :size="11"
+          class="shrink-0 text-muted-foreground/50 transition-transform duration-150"
+          :class="{ 'rotate-180': menuOpen }" />
+      </button>
+      <teleport to="body">
+        <div v-if="menuOpen" :style="menuStyle"
+          class="overflow-hidden rounded-xl border border-border bg-background shadow-lg"
+          role="listbox" aria-label="Select model" data-model-menu>
+          <div class="border-b border-border p-2">
+            <div class="flex h-8 items-center gap-2 rounded-lg bg-muted px-2.5">
+              <p-icon name="search" :size="13" class="shrink-0 text-muted-foreground/60" />
+              <input ref="searchInput" v-model="search" type="text" placeholder="Search models"
+                class="min-w-0 flex-1 border-0 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
+                @keydown.escape.stop="close()" />
+            </div>
+          </div>
+          <div class="scrollbar-hide max-h-64 overflow-y-auto p-1">
+            <p v-if="loading" class="px-2.5 py-3 text-xs text-muted-foreground">Loading models…</p>
+            <template v-else-if="filteredGroups.length">
+              <div v-for="group in filteredGroups" :key="group.name" class="mb-0.5">
+                <p class="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground">{{ group.name }}</p>
+                <ul class="flex flex-col gap-0.5">
+                  <li v-for="mod in group.models" :key="mod.id">
+                    <button type="button" role="option"
+                      :aria-selected="String(mod.id === selected)"
+                      class="flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs leading-5 transition-colors"
+                      :class="mod.id === selected
+                        ? 'bg-muted font-medium text-foreground'
+                        : 'text-foreground hover:bg-muted'"
+                      @click="pick(mod.id)">
+                      <span class="grid size-3.5 shrink-0 place-items-center">
+                        <p-icon v-if="mod.id === selected" name="check" :size="12" class="text-accent" />
+                      </span>
+                      <span class="min-w-0 flex-1 truncate font-mono">{{ mod.id }}</span>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </template>
+            <p v-else class="px-2.5 py-3 text-xs text-muted-foreground">No matching models</p>
+          </div>
+          <div class="border-t border-border p-1">
+            <button type="button"
+              class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              @click="onAdd">
+              <p-icon name="plus" :size="12" class="shrink-0" />
+              <span>Add Model</span>
+            </button>
+          </div>
+        </div>
+      </teleport>
+    </div>
+  `,
+};
+
 /* ---------------------------------------------------------------- */
 /* App                                                               */
 /* ---------------------------------------------------------------- */
 
 createApp({
-  components: { FileNode, PIcon, PwdPicker },
+  components: { FileNode, PIcon, PwdPicker, ModelPicker },
   setup() {
     /* ---------- session / config ---------- */
     const config = ref(null);
@@ -423,6 +586,11 @@ createApp({
     const modal = ref("");
     const toastMsg = ref("");
     let toastTimer = null;
+    const appVersion = ref("0.1.0");
+    const updateChecking = ref(false);
+    const updateInstalling = ref(false);
+    const pendingUpdateVersion = ref("");
+    let updateEventUnlisten = null;
     const platformDraft = reactive({
       isNew: false, id: "", name: "", kind: "openrouter", base_url: "",
       api_key: "", api_key_set: false, site_url: "", site_name: "", enabled: true,
@@ -539,10 +707,26 @@ createApp({
       || ""
     );
     const modelLabel = computed(() => {
-      const m = session.value?.model || config.value?.default_model || "";
-      if (!m) return "Loading model…";
-      return m.split("/").pop().replace(/-/g, " ");
+      const m = (session.value?.model || config.value?.default_model || "").trim();
+      if (!m) return "Select model";
+      return m;
     });
+    const selectedModelId = computed(() =>
+      (session.value?.model || config.value?.default_model || "").trim()
+    );
+    const modelPickerGroups = computed(() => {
+      const platforms = settingsConfig.platforms || [];
+      return platforms
+        .filter((p) => p.enabled !== false)
+        .map((p) => ({
+          name: p.name || p.id,
+          models: (p.models || []).filter((m) => m.enabled !== false).map((m) => ({ id: m.id })),
+        }))
+        .filter((g) => g.models.length);
+    });
+    const modelPickerLoading = ref(false);
+    const modelCloseSignal = ref(0);
+    const modelPickerEl = ref(null);
     const username = computed(() => config.value?.username || "User");
     const userInitial = computed(() => {
       const name = username.value.trim();
@@ -892,7 +1076,61 @@ createApp({
       pwdPickerEl.value?.close?.();
     }
 
+    function closeModelMenu() {
+      modelCloseSignal.value += 1;
+      modelPickerEl.value?.close?.();
+    }
+
+    async function ensurePickerModels() {
+      closePwdMenu();
+      if ((settingsConfig.platforms || []).length) return;
+      modelPickerLoading.value = true;
+      try {
+        await loadSettings();
+      } catch {
+        /* picker shows empty / no matches */
+      } finally {
+        modelPickerLoading.value = false;
+      }
+    }
+
+    async function selectModel(modelId) {
+      const mid = (modelId || "").trim();
+      if (!mid || !sessionId.value || streaming.value) return;
+      if ((session.value?.model || "") === mid) return;
+      closeModelMenu();
+      try {
+        const updated = await api(`/api/sessions/${sessionId.value}`, {
+          method: "PATCH",
+          body: JSON.stringify({ model: mid }),
+        });
+        session.value = { ...session.value, ...updated, model: updated.model || mid };
+        if (config.value) config.value.default_model = mid;
+        settingsConfig.default_model = mid;
+        const owner = (settingsConfig.platforms || []).find((p) =>
+          (p.models || []).some((m) => m.id === mid)
+        );
+        if (owner) settingsConfig.active_platform_id = owner.id;
+      } catch (e) {
+        showError(e.message || "Failed to switch model");
+      }
+    }
+
+    async function openAddModelFromPicker() {
+      closeModelMenu();
+      settingsPanel.value = "models";
+      await openSettings();
+      try {
+        await loadSettings();
+        const plats = (settingsConfig.platforms || []).filter((p) => p.enabled !== false);
+        if (plats.length === 1) openAddModel(plats[0]);
+      } catch {
+        /* settings page is enough */
+      }
+    }
+
     function onPwdPickerOpen() {
+      closeModelMenu();
       const fromTree = collectFoldersFromTree();
       if (fromTree.length > 1) workspaceFolders.value = fromTree;
       loadWorkspaceFolders();
@@ -1489,7 +1727,12 @@ createApp({
     async function createSession() {
       if (sessionId.value) snapshotWorkspace(sessionId.value);
       abortRunReader();
-      session.value = await api("/api/sessions", { method: "POST", body: "{}" });
+      const preferred =
+        (session.value?.model || config.value?.default_model || "").trim() || undefined;
+      session.value = await api("/api/sessions", {
+        method: "POST",
+        body: JSON.stringify(preferred ? { model: preferred } : {}),
+      });
       sessionId.value = session.value.id;
       sessionStorage.setItem(SESSION_KEY, sessionId.value);
       resetChatUi();
@@ -1521,6 +1764,97 @@ createApp({
       toastMsg.value = msg;
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => { toastMsg.value = ""; }, 2200);
+    }
+
+    function tauriInvoke(cmd, args) {
+      const invoke = window.__TAURI__?.core?.invoke;
+      if (typeof invoke !== "function") {
+        return Promise.reject(new Error("not-tauri"));
+      }
+      return invoke(cmd, args);
+    }
+
+    function isTauriShell() {
+      return typeof window.__TAURI__?.core?.invoke === "function";
+    }
+
+    function showUpdateDialog(version) {
+      if (!version) return;
+      pendingUpdateVersion.value = String(version);
+      modal.value = "app-update";
+    }
+
+    function closeUpdateModal() {
+      if (updateInstalling.value) return;
+      if (modal.value === "app-update") modal.value = "";
+    }
+
+    async function loadAppVersion() {
+      if (!isTauriShell()) return;
+      try {
+        const v = await tauriInvoke("get_app_version");
+        if (v) appVersion.value = String(v);
+      } catch {
+        /* keep fallback */
+      }
+    }
+
+    async function checkForUpdates(manual) {
+      if (!isTauriShell()) {
+        if (manual) settingsToast("Update check is only available in the desktop app");
+        return;
+      }
+      updateChecking.value = true;
+      try {
+        const info = await tauriInvoke("updater_check");
+        if (info && info.available && info.version) {
+          showUpdateDialog(info.version);
+        } else if (manual) {
+          settingsToast("You're up to date");
+        }
+      } catch (e) {
+        if (manual) settingsToast(e?.message || "Update check failed");
+      } finally {
+        updateChecking.value = false;
+      }
+    }
+
+    async function snoozeUpdate() {
+      const version = pendingUpdateVersion.value;
+      try {
+        if (version) await tauriInvoke("updater_snooze", { version });
+      } catch (e) {
+        settingsToast(e?.message || "Could not snooze update");
+        return;
+      }
+      modal.value = "";
+      settingsToast("Remind me in 7 days");
+    }
+
+    async function installUpdate() {
+      if (!isTauriShell()) return;
+      updateInstalling.value = true;
+      try {
+        await tauriInvoke("updater_install");
+        // App should restart; if we return, install finished without relaunch.
+        settingsToast("Update installed — restarting…");
+      } catch (e) {
+        updateInstalling.value = false;
+        settingsToast(e?.message || "Update failed");
+      }
+    }
+
+    async function bindUpdateEvents() {
+      const listen = window.__TAURI__?.event?.listen;
+      if (typeof listen !== "function") return;
+      try {
+        updateEventUnlisten = await listen("update-available", (event) => {
+          const payload = event?.payload || {};
+          if (payload.version) showUpdateDialog(payload.version);
+        });
+      } catch {
+        /* ignore */
+      }
     }
 
     function closeModal() {
@@ -2118,6 +2452,7 @@ createApp({
         return;
       }
       pollSandboxUntilSettled().catch(() => {});
+      loadSettings().catch(() => {});
 
       const saved = sessionStorage.getItem(SESSION_KEY);
       if (saved && sessionList.value.some((s) => s.id === saved)) {
@@ -2208,6 +2543,8 @@ createApp({
       document.addEventListener("click", onPwdPickerCapture, true);
       document.addEventListener("click", onDocClick);
       document.addEventListener("keydown", onKeydown);
+      loadAppVersion();
+      bindUpdateEvents();
       ensureSession().catch((e) => {
         showError(e.message || "Failed to connect to API");
         sidebarSubtitle.value = "Start API on port 8010";
@@ -2222,6 +2559,10 @@ createApp({
       document.removeEventListener("keydown", onKeydown);
       stopToolTimer();
       clearPreviewBlob();
+      if (typeof updateEventUnlisten === "function") {
+        try { updateEventUnlisten(); } catch {}
+        updateEventUnlisten = null;
+      }
       // Detach the observer only -- the server-side run keeps going.
       abortRunReader();
     });
@@ -2230,6 +2571,8 @@ createApp({
       iconBtn: ICON_BTN,
       // session / chrome
       session, sessionId, sessionList, sessionListLoading, chatTitle, chatSubtitle, modelLabel, sidebarSubtitle,
+      selectedModelId, modelPickerGroups, modelPickerLoading, modelCloseSignal, modelPickerEl,
+      selectModel, openAddModelFromPicker, ensurePickerModels,
       username, userInitial,
       sessionInfoOpen, sessionInfoEl, sessionInfoRows,
       loadSessionList, switchSession, deleteSession, isRunning,
@@ -2239,6 +2582,8 @@ createApp({
       modal, toastMsg, platformDraft, modelSearch, catalogModels, catalogLoading,
       catalogError, selectedCatalogIds, filteredCatalog, modelDraft,
       mcpServers, mcpMeta, mcpStatus, mcpDraft, mcpImportJson, mcpImportError,
+      appVersion, updateChecking, updateInstalling, pendingUpdateVersion,
+      checkForUpdates, snoozeUpdate, installUpdate, closeUpdateModal,
       settingsToast, closeModal, togglePlatformCollapsed, togglePlatformEnabled,
       setDefaultModel, toggleModelEnabled, removeModel, removePlatform,
       openAddPlatform, openEditPlatform, savePlatformDraft, openAddModel,

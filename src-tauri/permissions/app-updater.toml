@@ -1,0 +1,19 @@
+[[permission]]
+identifier = "allow-get-app-version"
+description = "Allows reading the app package version for the About panel."
+commands.allow = ["get_app_version"]
+
+[[permission]]
+identifier = "allow-updater-check"
+description = "Allows checking GitHub Releases for a newer app version."
+commands.allow = ["updater_check"]
+
+[[permission]]
+identifier = "allow-updater-install"
+description = "Allows downloading and installing an app update (stops the sidecar first)."
+commands.allow = ["updater_install"]
+
+[[permission]]
+identifier = "allow-updater-snooze"
+description = "Allows snoozing an update prompt for seven days."
+commands.allow = ["updater_snooze"]

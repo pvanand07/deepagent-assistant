@@ -37,7 +37,7 @@ References:
 | 18 | Scaffold frontend | **Stub only** — product UI remains FastAPI-served Vue |
 | 19 | Settings UI | **In-app Vue panel** writing AppData `.env` (+ menu “Open config folder”) |
 | 20 | MCP config | **AppData `.mcp.json`** (`DEEPAGENT_MCP_CONFIG` override still works) |
-| 21 | Auto-update | **None** in phase 1 |
+| 21 | Auto-update | Single-track Tauri updater (OS-unsigned; Tauri-signed); floor `v0.2.0` — see macos-packaging.md |
 | 22 | Fonts | **Vendor** Geist (or equivalent) with UI |
 | 23 | Paths | Config/DB: `%APPDATA%\DeepAgent\` · Workspace: `%USERPROFILE%\Documents\DeepAgent\workspace` |
 | 24 | Tauri layout | Official **`src-tauri/`** at repo root |
@@ -177,7 +177,8 @@ Do **not** use production `stub` sandbox for this path (host execution undermine
 
 ### Phase 4 — Polish (optional, after ship)
 
-- [ ] Code signing / notarization, auto-update
+- [x] Auto-update (single-track Tauri updater; OS-unsigned; see macos-packaging.md)
+- [ ] Code signing / notarization
 - [ ] PyInstaller single-file experiment
 - [ ] React/modern frontend rewrite
 - [ ] Bundle preloaded guest image
@@ -186,7 +187,7 @@ Do **not** use production `stub` sandbox for this path (host execution undermine
 
 See **[macos-packaging.md](./macos-packaging.md)** for the full decision record and
 implementation plan (unsigned arm64 DMG, relocatable CPython sidecar, Hypervisor
-entitlements, `workflow_dispatch` Releases). Linux installers remain a later phase.
+entitlements, `workflow_dispatch` smoke + tag `v*` ship releases). Linux installers remain a later phase.
 
 ---
 
@@ -195,7 +196,8 @@ entitlements, `workflow_dispatch` Releases). Linux installers remain a later pha
 - React / TanStack rewrite
 - PyInstaller single binary as primary
 - macOS / Linux installers (macOS: see Phase 5 / macos-packaging.md)
-- Auto-update / code signing
+- OS code signing / notarization (updater uses Tauri signatures only for now)
+- Update channels (stable/beta)
 - Tray / close-to-tray
 - FastAPI ↔ Rust Unix socket bridge
 - Shipping a preloaded OCI guest image

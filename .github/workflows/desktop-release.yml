@@ -1,0 +1,263 @@
+# Semver desktop release (OS-unsigned, Tauri updater-signed).
+# Trigger: push tag vX.Y.Z — publishes a non-prerelease GitHub Release (latest).
+# Smoke builds remain on workflow_dispatch via desktop-build.yml.
+name: Desktop release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            bundles: nsis
+          - os: macos-14
+            platform: macos
+            bundles: dmg
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        id: ver
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "Tag must be vX.Y.Z (got: $TAG)" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Inject version into Tauri manifests
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, re
+          version = os.environ["VERSION"]
+          conf_path = pathlib.Path("src-tauri/tauri.conf.json")
+          conf = json.loads(conf_path.read_text(encoding="utf-8"))
+          conf["version"] = version
+          conf_path.write_text(json.dumps(conf, indent=2) + "\n", encoding="utf-8")
+          cargo = pathlib.Path("src-tauri/Cargo.toml")
+          text = cargo.read_text(encoding="utf-8")
+          text2, n = re.subn(r'(?m)^version\s*=\s*"[^"]*"', f'version = "{version}"', text, count=1)
+          if n != 1:
+              raise SystemExit("failed to patch Cargo.toml version")
+          cargo.write_text(text2, encoding="utf-8")
+          print(f"Injected version {version}")
+          PY
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Package sidecar
+        run: pnpm package:sidecar
+
+      - name: Sidecar smoke (import + /health)
+        run: pnpm package:smoke
+
+      - name: Tauri build (updater-signed)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm exec tauri build --bundles ${{ matrix.bundles }}
+
+      - name: Portable zip (Windows)
+        if: matrix.platform == 'windows'
+        run: pnpm package:portable
+
+      - name: Stage release assets (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-assets | Out-Null
+          $nsis = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*setup.exe" -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $nsis) { throw "NSIS setup.exe not found" }
+          Copy-Item $nsis.FullName "dist-assets/Deep-Agent-$env:APP_VERSION-windows-x64-setup.exe"
+
+          $zip = "src-tauri/target/release/bundle/portable/Deep-Agent-$env:APP_VERSION-windows-x64-portable.zip"
+          if (-not (Test-Path $zip)) { throw "Portable zip not found: $zip" }
+          Copy-Item $zip "dist-assets/Deep-Agent-$env:APP_VERSION-windows-x64-portable.zip"
+
+          $updater = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*.nsis.zip" -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $updater) { throw "NSIS updater zip (*.nsis.zip) not found — is createUpdaterArtifacts enabled and TAURI_SIGNING_PRIVATE_KEY set?" }
+          Copy-Item $updater.FullName "dist-assets/Deep-Agent-$env:APP_VERSION-windows-x64-setup.nsis.zip"
+          $sig = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*.nsis.zip.sig" -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $sig) { throw "NSIS updater signature (*.nsis.zip.sig) not found" }
+          Copy-Item $sig.FullName "dist-assets/Deep-Agent-$env:APP_VERSION-windows-x64-setup.nsis.zip.sig"
+          Get-ChildItem dist-assets
+
+      - name: Stage release assets (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          mkdir -p dist-assets
+          dmg=$(find src-tauri/target/release/bundle/dmg -name '*.dmg' | head -n 1)
+          if [[ -z "$dmg" ]]; then
+            echo "DMG not found under bundle/dmg" >&2
+            find src-tauri/target/release/bundle -type f || true
+            exit 1
+          fi
+          cp "$dmg" "dist-assets/Deep-Agent-${APP_VERSION}-macos-arm64.dmg"
+
+          upd=$(find src-tauri/target/release/bundle -name '*.app.tar.gz' | head -n 1)
+          if [[ -z "$upd" ]]; then
+            echo "macOS updater artifact (*.app.tar.gz) not found" >&2
+            find src-tauri/target/release/bundle -type f || true
+            exit 1
+          fi
+          cp "$upd" "dist-assets/Deep-Agent-${APP_VERSION}-macos-arm64.app.tar.gz"
+          sig=$(find src-tauri/target/release/bundle -name '*.app.tar.gz.sig' | head -n 1)
+          if [[ -z "$sig" ]]; then
+            echo "macOS updater signature (*.app.tar.gz.sig) not found" >&2
+            exit 1
+          fi
+          cp "$sig" "dist-assets/Deep-Agent-${APP_VERSION}-macos-arm64.app.tar.gz.sig"
+          ls -la dist-assets
+
+      - name: Upload job artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-agent-release-${{ matrix.platform }}-${{ steps.ver.outputs.version }}
+          path: dist-assets/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve version from tag
+        id: ver
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: collected
+
+      - name: Flatten assets + write latest.json
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.ver.outputs.version }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p release-assets
+          find collected -type f -print -exec cp {} release-assets/ \;
+          ls -la release-assets
+
+          test -f "release-assets/Deep-Agent-${APP_VERSION}-windows-x64-setup.exe"
+          test -f "release-assets/Deep-Agent-${APP_VERSION}-windows-x64-portable.zip"
+          test -f "release-assets/Deep-Agent-${APP_VERSION}-macos-arm64.dmg"
+          test -f "release-assets/Deep-Agent-${APP_VERSION}-windows-x64-setup.nsis.zip"
+          test -f "release-assets/Deep-Agent-${APP_VERSION}-windows-x64-setup.nsis.zip.sig"
+          test -f "release-assets/Deep-Agent-${APP_VERSION}-macos-arm64.app.tar.gz"
+          test -f "release-assets/Deep-Agent-${APP_VERSION}-macos-arm64.app.tar.gz.sig"
+
+          export BASE="https://github.com/${REPO}/releases/download/${TAG}"
+          export PUB_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          python - <<'PY'
+          import json, os
+          version = os.environ["APP_VERSION"]
+          base = os.environ["BASE"]
+          pub_date = os.environ["PUB_DATE"]
+          win_sig = open(
+              f"release-assets/Deep-Agent-{version}-windows-x64-setup.nsis.zip.sig",
+              encoding="utf-8",
+          ).read().strip()
+          mac_sig = open(
+              f"release-assets/Deep-Agent-{version}-macos-arm64.app.tar.gz.sig",
+              encoding="utf-8",
+          ).read().strip()
+          doc = {
+              "version": version,
+              "notes": f"Deep Agent {version}",
+              "pub_date": pub_date,
+              "platforms": {
+                  "windows-x86_64": {
+                      "signature": win_sig,
+                      "url": f"{base}/Deep-Agent-{version}-windows-x64-setup.nsis.zip",
+                  },
+                  "darwin-aarch64": {
+                      "signature": mac_sig,
+                      "url": f"{base}/Deep-Agent-{version}-macos-arm64.app.tar.gz",
+                  },
+              },
+          }
+          with open("release-assets/latest.json", "w", encoding="utf-8") as f:
+              json.dump(doc, f, indent=2)
+              f.write("\n")
+          print("Wrote latest.json")
+          PY
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: Deep Agent ${{ steps.ver.outputs.version }}
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            Desktop release **${{ steps.ver.outputs.version }}** (OS-unsigned; Tauri updater-signed).
+
+            - Windows: NSIS installer + portable zip (portable is download-only; no in-app update)
+            - macOS: Apple Silicon DMG (Gatekeeper will warn; not notarized)
+            - Auto-update: `latest.json` + signed updater artifacts for NSIS / macOS app
+
+            **First updater-capable floor:** install `v0.2.0` (or newer) manually once; later versions update in-app.
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
