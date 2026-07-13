@@ -100,6 +100,16 @@ class SessionStore:
     def get_cached(self, session_id: str) -> AgentSession | None:
         return self._sessions.get(session_id)
 
+    def invalidate_runtime(self) -> None:
+        """Drop cached agents and MCP tools so the next chat rebuilds them.
+
+        Does not cancel in-flight runs; those keep their existing agent until done.
+        """
+        for session in list(self._sessions.values()):
+            session.cleanup()
+        self._sessions.clear()
+        self._mcp_cache = None
+
     async def _get_mcp(self) -> tuple[list, list[str]]:
         from deep_agent.integrations.mcp import load_mcp_tools
 

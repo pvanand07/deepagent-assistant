@@ -53,6 +53,27 @@ def secrets_path() -> Path:
     return resolve_data_dir() / SECRETS_FILENAME
 
 
+DEFAULT_MODEL_TEMPERATURE = 0.3
+
+
+def _normalize_model_entry(m: Any, *, default_temp: float = DEFAULT_MODEL_TEMPERATURE) -> dict[str, Any] | None:
+    if isinstance(m, str) and m.strip():
+        return {"id": m.strip(), "enabled": True, "temperature": default_temp}
+    if not isinstance(m, dict) or not m.get("id"):
+        return None
+    temp = default_temp
+    if m.get("temperature") is not None:
+        try:
+            temp = float(m["temperature"])
+        except (TypeError, ValueError):
+            pass
+    return {
+        "id": str(m["id"]).strip(),
+        "enabled": bool(m.get("enabled", True)),
+        "temperature": temp,
+    }
+
+
 def _default_platform(kind: str) -> dict[str, Any]:
     if kind == KIND_OLLAMA:
         return {
@@ -63,7 +84,9 @@ def _default_platform(kind: str) -> dict[str, Any]:
             "enabled": True,
             "site_url": "",
             "site_name": "",
-            "models": [{"id": "gemma4", "enabled": True}],
+            "models": [
+                {"id": "gemma4", "enabled": True, "temperature": DEFAULT_MODEL_TEMPERATURE}
+            ],
         }
     if kind == KIND_CUSTOM:
         return {
@@ -74,7 +97,9 @@ def _default_platform(kind: str) -> dict[str, Any]:
             "enabled": True,
             "site_url": "",
             "site_name": "",
-            "models": [{"id": "gpt-4o", "enabled": True}],
+            "models": [
+                {"id": "gpt-4o", "enabled": True, "temperature": DEFAULT_MODEL_TEMPERATURE}
+            ],
         }
     return {
         "id": "openrouter",
@@ -84,7 +109,13 @@ def _default_platform(kind: str) -> dict[str, Any]:
         "enabled": True,
         "site_url": "http://localhost",
         "site_name": "deep-agent",
-        "models": [{"id": "anthropic/claude-sonnet-4.5", "enabled": True}],
+        "models": [
+            {
+                "id": "anthropic/claude-sonnet-4.5",
+                "enabled": True,
+                "temperature": DEFAULT_MODEL_TEMPERATURE,
+            }
+        ],
     }
 
 
@@ -160,14 +191,11 @@ def _normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
             models: list[dict[str, Any]] = []
             if isinstance(models_in, list):
                 for m in models_in:
-                    if isinstance(m, dict) and m.get("id"):
-                        models.append(
-                            {"id": str(m["id"]).strip(), "enabled": bool(m.get("enabled", True))}
-                        )
-                    elif isinstance(m, str) and m.strip():
-                        models.append({"id": m.strip(), "enabled": True})
+                    entry = _normalize_model_entry(m)
+                    if entry:
+                        models.append(entry)
             if not models:
-                models = _default_platform(kind)["models"]
+                models = deepcopy(_default_platform(kind)["models"])
             base_url = str(item.get("base_url") or "").strip().rstrip("/")
             if kind == KIND_OPENROUTER and not base_url:
                 base_url = OPENROUTER_BASE_URL
@@ -308,6 +336,50 @@ def has_api_key_for_active() -> bool:
     return bool(platform_api_key(platform["id"]))
 
 
+def find_platform_for_model(
+    model_id: str, settings: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
+    cfg = settings or load_settings()
+    mid = (model_id or "").strip()
+    if not mid:
+        return None
+    for platform in cfg.get("platforms") or []:
+        for m in platform.get("models") or []:
+            if isinstance(m, dict) and str(m.get("id") or "").strip() == mid:
+                return platform
+    return None
+
+
+def temperature_for_model(
+    settings: dict[str, Any] | None = None, model_id: str | None = None
+) -> float:
+    """Temperature for a model id (default model if omitted)."""
+    cfg = settings or load_settings()
+    mid = (model_id or str(cfg.get("default_model") or "")).strip()
+    if mid:
+        for platform in cfg.get("platforms") or []:
+            for m in platform.get("models") or []:
+                if isinstance(m, dict) and str(m.get("id") or "").strip() == mid:
+                    try:
+                        return float(m.get("temperature", DEFAULT_MODEL_TEMPERATURE))
+                    except (TypeError, ValueError):
+                        break
+    try:
+        return float(cfg.get("temperature", DEFAULT_MODEL_TEMPERATURE))
+    except (TypeError, ValueError):
+        return DEFAULT_MODEL_TEMPERATURE
+
+
+def get_platform_by_id(
+    platform_id: str, settings: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
+    cfg = settings or load_settings()
+    for platform in cfg.get("platforms") or []:
+        if platform.get("id") == platform_id:
+            return platform
+    return None
+
+
 def apply_runtime_env(settings: dict[str, Any], secrets: dict[str, Any] | None = None) -> None:
     """Push active settings into ``os.environ`` for legacy readers."""
     platform = active_platform(settings)
@@ -325,7 +397,9 @@ def apply_runtime_env(settings: dict[str, Any], secrets: dict[str, Any] | None =
     model = str(settings.get("default_model") or "").strip()
     if model:
         os.environ["OPENROUTER_MODEL"] = model
-    os.environ["OPENROUTER_TEMPERATURE"] = str(settings.get("temperature", 0.3))
+    os.environ["OPENROUTER_TEMPERATURE"] = str(
+        temperature_for_model(settings, model) if model else settings.get("temperature", 0.3)
+    )
     if platform.get("site_url"):
         os.environ["OPENROUTER_SITE_URL"] = str(platform["site_url"])
     if platform.get("site_name"):
@@ -390,63 +464,146 @@ def public_settings_view() -> dict[str, Any]:
 def update_from_ui(payload: dict[str, Any]) -> dict[str, Any]:
     """Apply a Settings / Setup form payload and persist.
 
-    Expected keys (all optional except when completing setup):
+    Structured keys (preferred):
+      platforms: [{ id, name, kind, base_url, enabled, site_url, site_name, models, api_key? }]
       active_platform_id, default_model, temperature, setup_complete,
-      platform: { id, name, kind, base_url, site_url, site_name, api_key },
       sandbox: { network, memory_mib, cpus, dns_nameservers, exec_timeout, idle_timeout }
+
+    Legacy single-platform keys still accepted:
+      platform: { id, name, kind, base_url, site_url, site_name, api_key }
     """
     cfg = load_settings()
     secrets = load_secrets()
 
+    platforms_in = payload.get("platforms")
+    if isinstance(platforms_in, list):
+        normalized_platforms: list[dict[str, Any]] = []
+        for item in platforms_in:
+            if not isinstance(item, dict):
+                continue
+            kind = str(item.get("kind") or KIND_CUSTOM).lower()
+            if kind not in PLATFORM_KINDS:
+                kind = KIND_CUSTOM
+            pid = str(item.get("id") or kind).strip() or kind
+            models: list[dict[str, Any]] = []
+            for m in item.get("models") or []:
+                entry = _normalize_model_entry(m)
+                if entry:
+                    models.append(entry)
+            if not models:
+                models = deepcopy(_default_platform(kind)["models"])
+            base_url = str(item.get("base_url") or "").strip().rstrip("/")
+            if kind == KIND_OPENROUTER:
+                base_url = OPENROUTER_BASE_URL
+            elif kind == KIND_OLLAMA:
+                base_url = base_url or OLLAMA_BASE_URL
+            normalized_platforms.append(
+                {
+                    "id": pid,
+                    "name": str(item.get("name") or pid),
+                    "kind": kind,
+                    "base_url": base_url,
+                    "enabled": bool(item.get("enabled", True)),
+                    "site_url": str(item.get("site_url") or ""),
+                    "site_name": str(item.get("site_name") or ""),
+                    "models": models,
+                }
+            )
+            api_key = item.get("api_key")
+            if isinstance(api_key, str):
+                cleaned = api_key.strip()
+                if cleaned and "…" not in cleaned and not cleaned.startswith("••••"):
+                    secrets.setdefault("platforms", {})[pid] = {"api_keys": [cleaned]}
+        if normalized_platforms:
+            cfg["platforms"] = normalized_platforms
+            # Drop secrets for removed platforms.
+            keep = {p["id"] for p in normalized_platforms}
+            sec_plats = secrets.get("platforms") or {}
+            secrets["platforms"] = {k: v for k, v in sec_plats.items() if k in keep}
+
     platform_in = payload.get("platform") if isinstance(payload.get("platform"), dict) else {}
-    kind = str(platform_in.get("kind") or active_platform(cfg).get("kind") or KIND_OPENROUTER).lower()
-    if kind not in PLATFORM_KINDS:
-        kind = KIND_OPENROUTER
-    pid = str(platform_in.get("id") or kind).strip() or kind
+    if platform_in and not isinstance(platforms_in, list):
+        kind = str(
+            platform_in.get("kind") or active_platform(cfg).get("kind") or KIND_OPENROUTER
+        ).lower()
+        if kind not in PLATFORM_KINDS:
+            kind = KIND_OPENROUTER
+        pid = str(platform_in.get("id") or kind).strip() or kind
 
-    existing = None
-    for p in cfg["platforms"]:
-        if p["id"] == pid:
-            existing = p
-            break
-    if existing is None:
-        existing = _default_platform(kind)
-        existing["id"] = pid
-        cfg["platforms"].append(existing)
+        existing = None
+        for p in cfg["platforms"]:
+            if p["id"] == pid:
+                existing = p
+                break
+        if existing is None:
+            existing = _default_platform(kind)
+            existing["id"] = pid
+            cfg["platforms"].append(existing)
 
-    existing["kind"] = kind
-    existing["name"] = str(platform_in.get("name") or existing.get("name") or pid)
-    base_url = str(platform_in.get("base_url") or existing.get("base_url") or "").strip().rstrip("/")
-    if kind == KIND_OPENROUTER:
-        existing["base_url"] = OPENROUTER_BASE_URL
-    elif kind == KIND_OLLAMA:
-        existing["base_url"] = base_url or OLLAMA_BASE_URL
-    else:
-        existing["base_url"] = base_url
-    if "site_url" in platform_in:
-        existing["site_url"] = str(platform_in.get("site_url") or "")
-    if "site_name" in platform_in:
-        existing["site_name"] = str(platform_in.get("site_name") or "")
-    existing["enabled"] = True
+        existing["kind"] = kind
+        existing["name"] = str(platform_in.get("name") or existing.get("name") or pid)
+        base_url = str(platform_in.get("base_url") or existing.get("base_url") or "").strip().rstrip(
+            "/"
+        )
+        if kind == KIND_OPENROUTER:
+            existing["base_url"] = OPENROUTER_BASE_URL
+        elif kind == KIND_OLLAMA:
+            existing["base_url"] = base_url or OLLAMA_BASE_URL
+        else:
+            existing["base_url"] = base_url
+        if "site_url" in platform_in:
+            existing["site_url"] = str(platform_in.get("site_url") or "")
+        if "site_name" in platform_in:
+            existing["site_name"] = str(platform_in.get("site_name") or "")
+        if "enabled" in platform_in:
+            existing["enabled"] = bool(platform_in["enabled"])
+        else:
+            existing["enabled"] = True
 
-    model = str(payload.get("default_model") or cfg.get("default_model") or "").strip()
-    if model:
-        cfg["default_model"] = model
-        # Keep a single enabled model entry for the active platform for now.
-        existing["models"] = [{"id": model, "enabled": True}]
+        model = str(payload.get("default_model") or cfg.get("default_model") or "").strip()
+        if model:
+            cfg["default_model"] = model
+            # Setup / legacy: ensure default model exists on this platform.
+            ids = {
+                str(m.get("id"))
+                for m in (existing.get("models") or [])
+                if isinstance(m, dict)
+            }
+            if model not in ids:
+                existing["models"] = [
+                    {
+                        "id": model,
+                        "enabled": True,
+                        "temperature": DEFAULT_MODEL_TEMPERATURE,
+                    }
+                ]
+            cfg["active_platform_id"] = pid
 
-    cfg["active_platform_id"] = pid
+        api_key = platform_in.get("api_key")
+        if isinstance(api_key, str):
+            cleaned = api_key.strip()
+            if cleaned and "…" not in cleaned and not cleaned.startswith("••••"):
+                secrets.setdefault("platforms", {})[pid] = {"api_keys": [cleaned]}
+
+    if "default_model" in payload and payload["default_model"] is not None:
+        model = str(payload.get("default_model") or "").strip()
+        if model:
+            cfg["default_model"] = model
+            owner = find_platform_for_model(model, cfg)
+            if owner:
+                cfg["active_platform_id"] = owner["id"]
+
+    if "active_platform_id" in payload and payload["active_platform_id"]:
+        aid = str(payload["active_platform_id"]).strip()
+        ids = {p["id"] for p in cfg["platforms"]}
+        if aid in ids:
+            cfg["active_platform_id"] = aid
+
     if "temperature" in payload and payload["temperature"] is not None:
         try:
             cfg["temperature"] = float(payload["temperature"])
         except (TypeError, ValueError):
             pass
-
-    api_key = platform_in.get("api_key")
-    if isinstance(api_key, str):
-        cleaned = api_key.strip()
-        if cleaned and "…" not in cleaned and not cleaned.startswith("••••"):
-            secrets.setdefault("platforms", {})[pid] = {"api_keys": [cleaned]}
 
     sandbox_in = payload.get("sandbox") if isinstance(payload.get("sandbox"), dict) else None
     if sandbox_in:
@@ -469,8 +626,10 @@ def update_from_ui(payload: dict[str, Any]) -> dict[str, Any]:
 
     # Completing setup requires a usable provider.
     if cfg.get("setup_complete"):
-        if kind != KIND_OLLAMA and not platform_api_key(pid, secrets):
-            # Allow if process env still has a key (tests).
+        plat = active_platform(cfg)
+        kind = plat.get("kind")
+        pid = plat.get("id")
+        if kind != KIND_OLLAMA and not platform_api_key(str(pid), secrets):
             if not (os.environ.get("OPENROUTER_API_KEY") or "").strip():
                 raise ValueError("API key is required to finish setup for this provider.")
         if not (cfg.get("default_model") or "").strip():

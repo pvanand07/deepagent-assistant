@@ -3,6 +3,8 @@
 from deep_agent.settings.store import (
     active_platform,
     apply_runtime_env,
+    find_platform_for_model,
+    get_platform_by_id,
     has_api_key_for_active,
     load_secrets,
     load_settings,
@@ -10,12 +12,15 @@ from deep_agent.settings.store import (
     reset_settings_cache,
     save_settings,
     setup_required,
+    temperature_for_model,
     update_from_ui,
 )
 
 __all__ = [
     "active_platform",
     "apply_runtime_env",
+    "find_platform_for_model",
+    "get_platform_by_id",
     "has_api_key_for_active",
     "load_secrets",
     "load_settings",
@@ -23,5 +28,6 @@ __all__ = [
     "reset_settings_cache",
     "save_settings",
     "setup_required",
+    "temperature_for_model",
     "update_from_ui",
 ]

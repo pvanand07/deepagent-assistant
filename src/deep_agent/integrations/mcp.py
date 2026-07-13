@@ -95,7 +95,13 @@ def _config_paths() -> list[Path]:
     return paths
 
 
-def _load_mcp_servers_from_file() -> dict[str, dict[str, Any]]:
+def mcp_config_path() -> Path:
+    """Writable path for MCP config (create here on PUT)."""
+    return _config_paths()[0]
+
+
+def read_mcp_servers_raw() -> tuple[Path | None, dict[str, dict[str, Any]]]:
+    """Return (path used, servers dict). Path is None if nothing on disk."""
     for path in _config_paths():
         if not path.is_file():
             continue
@@ -106,9 +112,90 @@ def _load_mcp_servers_from_file() -> dict[str, dict[str, Any]]:
             continue
         servers = data.get("mcpServers") or data.get("mcp_servers")
         if isinstance(servers, dict):
-            logger.info("Loaded MCP server config from %s", path)
-            return servers
-    return {}
+            cleaned = {
+                str(name): entry
+                for name, entry in servers.items()
+                if isinstance(entry, dict)
+            }
+            return path, cleaned
+    return None, {}
+
+
+def validate_mcp_server_entry(name: str, entry: dict[str, Any]) -> None:
+    if not name.strip():
+        raise ValueError("Server name is required.")
+    if not isinstance(entry, dict):
+        raise ValueError(f"Server {name!r} must be an object.")
+    has_cmd = bool(entry.get("command"))
+    has_url = bool(entry.get("url"))
+    if not has_cmd and not has_url:
+        raise ValueError(f'Server {name!r} needs either "command" or "url".')
+
+
+def save_mcp_servers(servers: dict[str, Any], *, merge: bool = False) -> dict[str, dict[str, Any]]:
+    """Write ``mcpServers`` to the writable config path. Returns saved servers."""
+    if not isinstance(servers, dict):
+        raise ValueError("servers must be an object.")
+    path = mcp_config_path()
+    existing: dict[str, dict[str, Any]] = {}
+    if merge and path.is_file():
+        _, existing = read_mcp_servers_raw()
+        # Prefer the writable path contents if it exists.
+        if path.is_file():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                raw = data.get("mcpServers") or data.get("mcp_servers") or {}
+                if isinstance(raw, dict):
+                    existing = {
+                        str(k): v for k, v in raw.items() if isinstance(v, dict)
+                    }
+            except (OSError, json.JSONDecodeError):
+                pass
+
+    out: dict[str, dict[str, Any]] = dict(existing) if merge else {}
+    for name, entry in servers.items():
+        if entry is None:
+            out.pop(str(name), None)
+            continue
+        if not isinstance(entry, dict):
+            raise ValueError(f"Server {name!r} must be an object.")
+        validate_mcp_server_entry(str(name), entry)
+        out[str(name)] = entry
+
+    for name, entry in out.items():
+        validate_mcp_server_entry(name, entry)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"mcpServers": out}
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    logger.info("Wrote MCP config (%d servers) to %s", len(out), path)
+    return out
+
+
+async def test_mcp_server(name: str) -> dict[str, Any]:
+    """Connect to one MCP server and list tools."""
+    _, servers = read_mcp_servers_raw()
+    if not servers:
+        servers = _env_fallback_servers()
+    entry = servers.get(name)
+    if entry is None:
+        raise KeyError(f"Unknown MCP server: {name}")
+    conn = _normalize_server_entry(entry)
+    if conn is None:
+        raise ValueError(f"MCP server {name!r} is disabled or invalid.")
+    try:
+        tools, _ = await asyncio.wait_for(
+            aload_mcp_tools({name: conn}),
+            timeout=60.0,
+        )
+        return {"ok": True, "tool_count": len(tools), "error": None}
+    except Exception as exc:
+        return {"ok": False, "tool_count": None, "error": str(exc)}
+
+
+def _load_mcp_servers_from_file() -> dict[str, dict[str, Any]]:
+    _, servers = read_mcp_servers_raw()
+    return servers
 
 
 def _env_fallback_servers() -> dict[str, dict[str, Any]]:

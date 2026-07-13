@@ -394,41 +394,61 @@ createApp({
       apiKey: "",
       model: "anthropic/claude-sonnet-4.5",
     });
-    const settingsForm = reactive({
-      DEEPAGENT_LLM_PROVIDER: "openrouter",
-      DEEPAGENT_LLM_BASE_URL: "",
-      OPENROUTER_API_KEY: "",
-      OPENROUTER_MODEL: "",
-      OPENROUTER_TEMPERATURE: "",
-      OPENROUTER_SITE_URL: "",
-      OPENROUTER_SITE_NAME: "",
-      networkEnabled: false,
-      DEEPAGENT_SANDBOX_MEMORY: "",
-      DEEPAGENT_SANDBOX_CPUS: "",
-      DEEPAGENT_DNS_NAMESERVERS: "",
-      DEEPAGENT_EXEC_TIMEOUT: "",
-      DEEPAGENT_SANDBOX_IDLE_TIMEOUT: "",
+    const setupCatalog = ref([]);
+    const setupCatalogLoading = ref(false);
+    const setupCatalogError = ref("");
+    const settingsPanel = ref("models");
+    const settingsConfig = reactive({
+      platforms: [],
+      default_model: "",
+      active_platform_id: "",
+      temperature: 0.3,
     });
     const settingsMeta = reactive({
       data_dir: "", workdir: "", env_path: "", settings_path: "", values: {},
+    });
+    const sandboxForm = reactive({
+      network: false,
+      memory_mib: 2048,
+      cpus: 2,
+      dns_nameservers: "1.1.1.1,8.8.8.8",
+      exec_timeout: 120,
+      idle_timeout: 600,
     });
     const settingsSaving = ref(false);
     const settingsMessage = ref("");
     const settingsError = ref(false);
     const sandboxRetrying = ref(false);
-
-    const apiKeyPlaceholder = computed(() => {
-      if (settingsMeta.values?.OPENROUTER_API_KEY_set === "true") {
-        return "•••• (leave blank to keep)";
-      }
-      if (settingsForm.DEEPAGENT_LLM_PROVIDER === "ollama") return "optional";
-      if (settingsForm.DEEPAGENT_LLM_PROVIDER === "custom") return "sk-…";
-      return "sk-or-…";
+    const collapsedPlatforms = reactive({});
+    const modal = ref("");
+    const toastMsg = ref("");
+    let toastTimer = null;
+    const platformDraft = reactive({
+      isNew: false, id: "", name: "", kind: "openrouter", base_url: "",
+      api_key: "", api_key_set: false, site_url: "", site_name: "", enabled: true,
     });
-    const modelPlaceholder = computed(() => {
-      if (settingsForm.DEEPAGENT_LLM_PROVIDER === "ollama") return "llama3.2";
-      if (settingsForm.DEEPAGENT_LLM_PROVIDER === "custom") return "gpt-4o";
-      return "anthropic/claude-sonnet-4.5";
+    const addModelPlatformId = ref("");
+    const modelSearch = ref("");
+    const catalogModels = ref([]);
+    const catalogLoading = ref(false);
+    const catalogError = ref("");
+    const selectedCatalogIds = ref([]);
+    const modelDraft = reactive({ platformId: "", id: "", temperature: 0.3 });
+    const mcpServers = reactive({});
+    const mcpMeta = reactive({ path: "" });
+    const mcpStatus = reactive({});
+    const mcpDraft = reactive({
+      isNew: true, name: "", transport: "stdio", command: "", args: "",
+      url: "", bearer_token: "",
+    });
+    const mcpImportJson = ref(`{\n  "mcpServers": {\n  }\n}`);
+    const mcpImportError = ref("");
+
+    const filteredCatalog = computed(() => {
+      const q = (modelSearch.value || "").toLowerCase().trim();
+      const list = catalogModels.value || [];
+      if (!q) return list;
+      return list.filter((m) => m.id.toLowerCase().includes(q) || (m.name || "").toLowerCase().includes(q));
     });
 
     /* ---------- runs ----------
@@ -1497,36 +1517,161 @@ createApp({
       syncRouteFromHash();
     }
 
-    function envTruthy(value) {
-      return ["1", "true", "yes"].includes(String(value || "").toLowerCase());
+    function settingsToast(msg) {
+      toastMsg.value = msg;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toastMsg.value = ""; }, 2200);
     }
 
-    function applySettingsValues(v) {
-      settingsForm.DEEPAGENT_LLM_PROVIDER = v.DEEPAGENT_LLM_PROVIDER || "openrouter";
-      settingsForm.DEEPAGENT_LLM_BASE_URL = v.DEEPAGENT_LLM_BASE_URL || "";
-      settingsForm.OPENROUTER_MODEL = v.OPENROUTER_MODEL || "";
-      settingsForm.OPENROUTER_TEMPERATURE = v.OPENROUTER_TEMPERATURE || "";
-      settingsForm.OPENROUTER_SITE_URL = v.OPENROUTER_SITE_URL || "";
-      settingsForm.OPENROUTER_SITE_NAME = v.OPENROUTER_SITE_NAME || "";
-      settingsForm.networkEnabled = envTruthy(v.DEEPAGENT_NETWORK_ACCESS);
-      settingsForm.DEEPAGENT_SANDBOX_MEMORY = v.DEEPAGENT_SANDBOX_MEMORY || "";
-      settingsForm.DEEPAGENT_SANDBOX_CPUS = v.DEEPAGENT_SANDBOX_CPUS || "";
-      settingsForm.DEEPAGENT_DNS_NAMESERVERS = v.DEEPAGENT_DNS_NAMESERVERS || "";
-      settingsForm.DEEPAGENT_EXEC_TIMEOUT = v.DEEPAGENT_EXEC_TIMEOUT || "";
-      settingsForm.DEEPAGENT_SANDBOX_IDLE_TIMEOUT = v.DEEPAGENT_SANDBOX_IDLE_TIMEOUT || "";
+    function closeModal() {
+      modal.value = "";
     }
 
-    async function loadSettings() {
-      const data = await api("/api/settings");
+    function applySettingsPayload(data) {
+      const cfg = data.config || {};
       settingsMeta.data_dir = data.data_dir || "";
       settingsMeta.workdir = data.workdir || "";
       settingsMeta.env_path = data.env_path || "";
       settingsMeta.settings_path = data.settings_path || data.env_path || "";
       settingsMeta.values = data.values || {};
-      applySettingsValues(data.values || {});
-      settingsForm.OPENROUTER_API_KEY = "";
+      settingsConfig.platforms = Array.isArray(cfg.platforms) ? cfg.platforms.map((p) => ({
+        ...p,
+        models: (p.models || []).map((m) => ({
+          id: m.id,
+          enabled: m.enabled !== false,
+          temperature: m.temperature != null ? Number(m.temperature) : 0.3,
+        })),
+      })) : [];
+      settingsConfig.default_model = cfg.default_model || "";
+      settingsConfig.active_platform_id = cfg.active_platform_id || "";
+      settingsConfig.temperature = cfg.temperature != null ? Number(cfg.temperature) : 0.3;
+      const sb = cfg.sandbox || {};
+      sandboxForm.network = !!sb.network;
+      sandboxForm.memory_mib = sb.memory_mib ?? 2048;
+      sandboxForm.cpus = sb.cpus ?? 2;
+      sandboxForm.dns_nameservers = sb.dns_nameservers ?? "1.1.1.1,8.8.8.8";
+      sandboxForm.exec_timeout = sb.exec_timeout ?? 120;
+      sandboxForm.idle_timeout = sb.idle_timeout ?? 600;
+    }
+
+    async function putSettingsConfig(config, { setupComplete } = {}) {
+      const body = { config };
+      if (setupComplete != null) body.setup_complete = setupComplete;
+      const res = await fetch(`${API}/api/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try { detail = (await res.json()).detail || detail; } catch {}
+        throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      }
+      const data = await res.json();
+      applySettingsPayload(data);
+      return data;
+    }
+
+    function platformsPayload(extraPlatformApiKeys = {}) {
+      return settingsConfig.platforms.map((p) => {
+        const out = {
+          id: p.id,
+          name: p.name,
+          kind: p.kind,
+          base_url: p.base_url || "",
+          enabled: p.enabled !== false,
+          site_url: p.site_url || "",
+          site_name: p.site_name || "",
+          models: (p.models || []).map((m) => ({
+            id: m.id,
+            enabled: m.enabled !== false,
+            temperature: m.temperature != null ? Number(m.temperature) : 0.3,
+          })),
+        };
+        if (extraPlatformApiKeys[p.id]) out.api_key = extraPlatformApiKeys[p.id];
+        return out;
+      });
+    }
+
+    async function persistPlatforms(extraKeys = {}, extra = {}) {
+      settingsSaving.value = true;
       settingsMessage.value = "";
       settingsError.value = false;
+      try {
+        const data = await putSettingsConfig({
+          platforms: platformsPayload(extraKeys),
+          default_model: settingsConfig.default_model,
+          active_platform_id: settingsConfig.active_platform_id,
+          sandbox: {
+            network: !!sandboxForm.network,
+            memory_mib: sandboxForm.memory_mib,
+            cpus: sandboxForm.cpus,
+            dns_nameservers: sandboxForm.dns_nameservers,
+            exec_timeout: sandboxForm.exec_timeout,
+            idle_timeout: sandboxForm.idle_timeout,
+          },
+          ...extra,
+        });
+        if (data.sandbox_recreated) {
+          settingsMessage.value = "Saved. Sandbox recreated with the new network/resource settings.";
+        }
+        config.value = await api("/api/config");
+        return data;
+      } catch (e) {
+        settingsError.value = true;
+        settingsMessage.value = e.message || "Failed to save settings";
+        throw e;
+      } finally {
+        settingsSaving.value = false;
+      }
+    }
+
+    async function loadSettings() {
+      const data = await api("/api/settings");
+      applySettingsPayload(data);
+      settingsMessage.value = "";
+      settingsError.value = false;
+    }
+
+    function onSetupProviderChange() {
+      setupCatalog.value = [];
+      setupCatalogError.value = "";
+      if (setupForm.kind === "ollama") {
+        setupForm.model = setupForm.model || "gemma4";
+        setupForm.baseUrl = setupForm.baseUrl || "http://127.0.0.1:11434/v1";
+      }
+    }
+
+    async function loadSetupCatalog() {
+      setupCatalogLoading.value = true;
+      setupCatalogError.value = "";
+      try {
+        const kind = setupForm.kind || "openrouter";
+        if (kind !== "ollama" && !(setupForm.apiKey || "").trim()) {
+          throw new Error("Enter an API key first");
+        }
+        if (kind === "custom" && !(setupForm.baseUrl || "").trim()) {
+          throw new Error("Enter a base URL first");
+        }
+        await putSettingsConfig({
+          platform: {
+            id: kind,
+            kind,
+            name: kind === "openrouter" ? "OpenRouter" : kind === "ollama" ? "Ollama" : "Custom",
+            base_url: kind === "openrouter" ? "" : (setupForm.baseUrl || "").trim(),
+            api_key: (setupForm.apiKey || "").trim(),
+          },
+          default_model: (setupForm.model || "").trim() || undefined,
+        });
+        const data = await api(`/api/platforms/${encodeURIComponent(kind)}/models/available`);
+        setupCatalog.value = data.models || [];
+        if (!setupCatalog.value.length) setupCatalogError.value = "No models returned";
+      } catch (e) {
+        setupCatalogError.value = e.message || "Failed to list models";
+        setupCatalog.value = [];
+      } finally {
+        setupCatalogLoading.value = false;
+      }
     }
 
     async function finishSetup() {
@@ -1542,29 +1687,20 @@ createApp({
         if (kind === "custom" && !(setupForm.baseUrl || "").trim()) {
           throw new Error("Base URL is required for a custom provider");
         }
-        const res = await fetch(`${API}/api/settings`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        await putSettingsConfig(
+          {
             setup_complete: true,
-            config: {
-              setup_complete: true,
-              default_model: model,
-              platform: {
-                id: kind,
-                kind,
-                name: kind === "openrouter" ? "OpenRouter" : kind === "ollama" ? "Ollama" : "Custom",
-                base_url: kind === "openrouter" ? "" : (setupForm.baseUrl || "").trim(),
-                api_key: (setupForm.apiKey || "").trim(),
-              },
+            default_model: model,
+            platform: {
+              id: kind,
+              kind,
+              name: kind === "openrouter" ? "OpenRouter" : kind === "ollama" ? "Ollama" : "Custom",
+              base_url: kind === "openrouter" ? "" : (setupForm.baseUrl || "").trim(),
+              api_key: (setupForm.apiKey || "").trim(),
             },
-          }),
-        });
-        if (!res.ok) {
-          let detail = res.statusText;
-          try { detail = (await res.json()).detail || detail; } catch {}
-          throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
-        }
+          },
+          { setupComplete: true },
+        );
         config.value = await api("/api/config");
         setupRequired.value = !!config.value.setup_required;
         if (!setupRequired.value) {
@@ -1577,67 +1713,363 @@ createApp({
       }
     }
 
-    async function saveSettings() {
-      settingsSaving.value = true;
-      settingsMessage.value = "";
-      settingsError.value = false;
+    function togglePlatformCollapsed(id) {
+      collapsedPlatforms[id] = !collapsedPlatforms[id];
+    }
+
+    async function togglePlatformEnabled(plat, enabled) {
+      plat.enabled = enabled;
       try {
-        const kind = settingsForm.DEEPAGENT_LLM_PROVIDER || "openrouter";
-        const payload = {
-          setup_complete: true,
-          config: {
-            setup_complete: true,
-            default_model: settingsForm.OPENROUTER_MODEL,
-            temperature: settingsForm.OPENROUTER_TEMPERATURE || 0.3,
-            platform: {
-              id: kind,
-              kind,
-              name: kind === "openrouter" ? "OpenRouter" : kind === "ollama" ? "Ollama" : "Custom",
-              base_url: kind === "openrouter" ? "" : settingsForm.DEEPAGENT_LLM_BASE_URL,
-              site_url: settingsForm.OPENROUTER_SITE_URL,
-              site_name: settingsForm.OPENROUTER_SITE_NAME,
-              api_key: settingsForm.OPENROUTER_API_KEY,
-            },
-            sandbox: {
-              network: !!settingsForm.networkEnabled,
-              memory_mib: settingsForm.DEEPAGENT_SANDBOX_MEMORY || null,
-              cpus: settingsForm.DEEPAGENT_SANDBOX_CPUS || null,
-              dns_nameservers: settingsForm.DEEPAGENT_DNS_NAMESERVERS,
-              exec_timeout: settingsForm.DEEPAGENT_EXEC_TIMEOUT || null,
-              idle_timeout: settingsForm.DEEPAGENT_SANDBOX_IDLE_TIMEOUT || null,
-            },
-          },
+        await persistPlatforms();
+        settingsToast(enabled ? "Platform enabled" : "Platform disabled");
+      } catch {}
+    }
+
+    async function setDefaultModel(plat, mod) {
+      if (plat.enabled === false) {
+        settingsToast("Enable the platform first");
+        return;
+      }
+      settingsConfig.default_model = mod.id;
+      settingsConfig.active_platform_id = plat.id;
+      try {
+        await persistPlatforms();
+        settingsToast(`Default: ${mod.id}`);
+      } catch {}
+    }
+
+    async function toggleModelEnabled(plat, mod, enabled) {
+      mod.enabled = enabled;
+      try {
+        await persistPlatforms();
+      } catch {}
+    }
+
+    async function removeModel(plat, mod) {
+      if (settingsConfig.default_model === mod.id) {
+        settingsToast("Pick another default before removing this model");
+        return;
+      }
+      plat.models = (plat.models || []).filter((m) => m.id !== mod.id);
+      try {
+        await persistPlatforms();
+        settingsToast("Model removed");
+      } catch {}
+    }
+
+    async function removePlatform(plat) {
+      if (settingsConfig.platforms.length <= 1) {
+        settingsToast("Keep at least one platform");
+        return;
+      }
+      if (settingsConfig.active_platform_id === plat.id || settingsConfig.default_model &&
+          (plat.models || []).some((m) => m.id === settingsConfig.default_model)) {
+        settingsToast("Switch default model off this platform first");
+        return;
+      }
+      settingsConfig.platforms = settingsConfig.platforms.filter((p) => p.id !== plat.id);
+      try {
+        await persistPlatforms();
+        settingsToast("Platform removed");
+      } catch {}
+    }
+
+    function openAddPlatform(kind) {
+      platformDraft.isNew = true;
+      platformDraft.id = kind === "custom" ? `custom-${Date.now().toString(36)}` : kind;
+      platformDraft.kind = kind;
+      platformDraft.name = kind === "openrouter" ? "OpenRouter" : kind === "ollama" ? "Ollama" : "Custom";
+      platformDraft.base_url = kind === "ollama" ? "http://127.0.0.1:11434/v1" : "";
+      platformDraft.api_key = "";
+      platformDraft.api_key_set = false;
+      platformDraft.site_url = kind === "openrouter" ? "http://localhost" : "";
+      platformDraft.site_name = kind === "openrouter" ? "deep-agent" : "";
+      platformDraft.enabled = true;
+      modal.value = "edit-platform";
+    }
+
+    function openEditPlatform(plat) {
+      platformDraft.isNew = false;
+      platformDraft.id = plat.id;
+      platformDraft.kind = plat.kind;
+      platformDraft.name = plat.name || plat.id;
+      platformDraft.base_url = plat.base_url || "";
+      platformDraft.api_key = "";
+      platformDraft.api_key_set = !!plat.api_key_set;
+      platformDraft.site_url = plat.site_url || "";
+      platformDraft.site_name = plat.site_name || "";
+      platformDraft.enabled = plat.enabled !== false;
+      modal.value = "edit-platform";
+    }
+
+    async function savePlatformDraft() {
+      const kind = platformDraft.kind;
+      if (kind !== "ollama" && !(platformDraft.api_key || "").trim() && !platformDraft.api_key_set) {
+        settingsToast("API key is required");
+        return;
+      }
+      if (kind === "custom" && !(platformDraft.base_url || "").trim()) {
+        settingsToast("Base URL is required");
+        return;
+      }
+      let plat = settingsConfig.platforms.find((p) => p.id === platformDraft.id);
+      if (!plat) {
+        plat = {
+          id: platformDraft.id,
+          name: platformDraft.name,
+          kind,
+          base_url: platformDraft.base_url,
+          enabled: true,
+          site_url: platformDraft.site_url,
+          site_name: platformDraft.site_name,
+          models: [],
+          api_key_set: false,
         };
-        const res = await fetch(`${API}/api/settings`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          let detail = res.statusText;
-          try { detail = (await res.json()).detail || detail; } catch {}
-          throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
-        }
-        const data = await res.json();
-        settingsMeta.data_dir = data.data_dir || "";
-        settingsMeta.workdir = data.workdir || "";
-        settingsMeta.env_path = data.env_path || "";
-        settingsMeta.settings_path = data.settings_path || data.env_path || "";
-        settingsMeta.values = data.values || {};
-        applySettingsValues(data.values || {});
-        settingsForm.OPENROUTER_API_KEY = "";
-        if (data.sandbox_recreated) {
-          settingsMessage.value = "Saved. Sandbox recreated with the new network/resource settings.";
-        } else {
-          settingsMessage.value = "Saved to " + (settingsMeta.settings_path || "settings.json") + ".";
-        }
-        config.value = await api("/api/config");
-        setupRequired.value = !!config.value.setup_required;
+        settingsConfig.platforms.push(plat);
+      } else {
+        plat.name = platformDraft.name;
+        plat.base_url = platformDraft.base_url;
+        plat.site_url = platformDraft.site_url;
+        plat.site_name = platformDraft.site_name;
+        plat.enabled = platformDraft.enabled;
+      }
+      const keys = {};
+      if ((platformDraft.api_key || "").trim()) keys[plat.id] = platformDraft.api_key.trim();
+      try {
+        await persistPlatforms(keys);
+        closeModal();
+        settingsToast("Platform saved");
+      } catch {}
+    }
+
+    function openAddModel(plat) {
+      addModelPlatformId.value = plat.id;
+      modelSearch.value = "";
+      selectedCatalogIds.value = [];
+      catalogModels.value = [];
+      catalogError.value = "";
+      modal.value = "add-model";
+      loadCatalogForAdd();
+    }
+
+    async function loadCatalogForAdd() {
+      const pid = addModelPlatformId.value;
+      if (!pid) return;
+      catalogLoading.value = true;
+      catalogError.value = "";
+      try {
+        const q = encodeURIComponent(modelSearch.value || "");
+        const data = await api(`/api/platforms/${encodeURIComponent(pid)}/models/available?q=${q}`);
+        catalogModels.value = data.models || [];
       } catch (e) {
-        settingsError.value = true;
-        settingsMessage.value = e.message || "Failed to save settings";
+        catalogError.value = e.message || "Catalog unavailable";
+        catalogModels.value = [];
       } finally {
-        settingsSaving.value = false;
+        catalogLoading.value = false;
+      }
+    }
+
+    async function confirmAddModels() {
+      const plat = settingsConfig.platforms.find((p) => p.id === addModelPlatformId.value);
+      if (!plat) return;
+      const existing = new Set((plat.models || []).map((m) => m.id));
+      const toAdd = [...selectedCatalogIds.value];
+      const custom = (modelSearch.value || "").trim();
+      if (custom && !toAdd.includes(custom) && !existing.has(custom)) toAdd.push(custom);
+      for (const id of toAdd) {
+        if (!existing.has(id)) {
+          plat.models = plat.models || [];
+          plat.models.push({ id, enabled: true, temperature: 0.3 });
+          existing.add(id);
+        }
+      }
+      if (!toAdd.length) {
+        settingsToast("Nothing selected");
+        return;
+      }
+      try {
+        await persistPlatforms();
+        closeModal();
+        settingsToast(`Added ${toAdd.length} model${toAdd.length > 1 ? "s" : ""}`);
+      } catch {}
+    }
+
+    function openModelSettings(plat, mod) {
+      modelDraft.platformId = plat.id;
+      modelDraft.id = mod.id;
+      modelDraft.temperature = mod.temperature != null ? Number(mod.temperature) : 0.3;
+      modal.value = "model-settings";
+    }
+
+    async function setDefaultModelFromDraft() {
+      const plat = settingsConfig.platforms.find((p) => p.id === modelDraft.platformId);
+      const mod = plat?.models?.find((m) => m.id === modelDraft.id);
+      if (plat && mod) await setDefaultModel(plat, mod);
+    }
+
+    async function saveModelDraft() {
+      const plat = settingsConfig.platforms.find((p) => p.id === modelDraft.platformId);
+      const mod = plat?.models?.find((m) => m.id === modelDraft.id);
+      if (!mod) return;
+      mod.temperature = Number(modelDraft.temperature);
+      try {
+        await persistPlatforms();
+        closeModal();
+        settingsToast("Model settings saved");
+      } catch {}
+    }
+
+    async function testModel(plat, mod) {
+      settingsToast("Testing…");
+      try {
+        const res = await fetch(`${API}/api/platforms/${encodeURIComponent(plat.id)}/models/test`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: mod.id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        if (data.ok) settingsToast(`OK · ${data.latency_ms}ms`);
+        else settingsToast(data.error || "Test failed");
+      } catch (e) {
+        settingsToast(e.message || "Test failed");
+      }
+    }
+
+    async function saveSandbox() {
+      try {
+        const data = await persistPlatforms();
+        settingsMessage.value = data.sandbox_recreated
+          ? "Saved. Sandbox recreated with the new network/resource settings."
+          : "Sandbox settings saved.";
+        settingsToast(settingsMessage.value);
+      } catch {}
+    }
+
+    function mcpHasAuth(entry) {
+      return !!(entry.bearer_token || (entry.headers && Object.keys(entry.headers).length));
+    }
+
+    async function loadMcp() {
+      const data = await api("/api/mcp");
+      mcpMeta.path = data.path || "";
+      Object.keys(mcpServers).forEach((k) => delete mcpServers[k]);
+      Object.assign(mcpServers, data.servers || {});
+    }
+
+    async function putMcpServers(servers, { merge = false } = {}) {
+      const res = await fetch(`${API}/api/mcp`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ servers, merge }),
+      });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try { detail = (await res.json()).detail || detail; } catch {}
+        throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      }
+      const data = await res.json();
+      mcpMeta.path = data.path || "";
+      Object.keys(mcpServers).forEach((k) => delete mcpServers[k]);
+      Object.assign(mcpServers, data.servers || {});
+      return data;
+    }
+
+    function openAddMcp() {
+      Object.assign(mcpDraft, {
+        isNew: true, name: "", transport: "stdio", command: "", args: "",
+        url: "", bearer_token: "",
+      });
+      modal.value = "mcp";
+    }
+
+    function openEditMcp(name, entry) {
+      const isStdio = !!entry.command;
+      Object.assign(mcpDraft, {
+        isNew: false,
+        name,
+        transport: isStdio ? "stdio" : (entry.type || entry.transport || "http"),
+        command: entry.command || "",
+        args: Array.isArray(entry.args) ? entry.args.join(" ") : (entry.args || ""),
+        url: entry.url || "",
+        bearer_token: entry.bearer_token || "",
+      });
+      modal.value = "mcp";
+    }
+
+    async function saveMcpDraft() {
+      const name = (mcpDraft.name || "").trim();
+      if (!name) { settingsToast("Name is required"); return; }
+      const entry = {};
+      if (mcpDraft.transport === "stdio") {
+        if (!(mcpDraft.command || "").trim()) { settingsToast("Command is required"); return; }
+        entry.command = mcpDraft.command.trim();
+        const args = (mcpDraft.args || "").trim();
+        if (args) entry.args = args.split(/\s+/);
+      } else {
+        if (!(mcpDraft.url || "").trim()) { settingsToast("URL is required"); return; }
+        entry.url = mcpDraft.url.trim();
+        entry.type = mcpDraft.transport;
+        if ((mcpDraft.bearer_token || "").trim()) entry.bearer_token = mcpDraft.bearer_token.trim();
+      }
+      try {
+        await putMcpServers({ [name]: entry }, { merge: true });
+        closeModal();
+        settingsToast(`Saved MCP “${name}”`);
+      } catch (e) {
+        settingsToast(e.message || "Failed to save MCP");
+      }
+    }
+
+    async function removeMcp(name) {
+      const next = { ...mcpServers };
+      delete next[name];
+      try {
+        await putMcpServers(next, { merge: false });
+        delete mcpStatus[name];
+        settingsToast(`Removed ${name}`);
+      } catch (e) {
+        settingsToast(e.message || "Failed to remove");
+      }
+    }
+
+    async function testMcp(name) {
+      settingsToast(`Testing ${name}…`);
+      try {
+        const data = await api(`/api/mcp/${encodeURIComponent(name)}/test`, { method: "POST" });
+        mcpStatus[name] = data.ok ? "ok" : "err";
+        settingsToast(data.ok ? `OK · ${data.tool_count} tools` : (data.error || "Failed"));
+      } catch (e) {
+        mcpStatus[name] = "err";
+        settingsToast(e.message || "Test failed");
+      }
+    }
+
+    function openImportMcp() {
+      mcpImportError.value = "";
+      modal.value = "import-mcp";
+    }
+
+    async function confirmImportMcp() {
+      mcpImportError.value = "";
+      let data;
+      try {
+        data = JSON.parse(mcpImportJson.value);
+      } catch (err) {
+        mcpImportError.value = "Invalid JSON: " + err.message;
+        return;
+      }
+      const servers = data && data.mcpServers;
+      if (!servers || typeof servers !== "object" || Array.isArray(servers)) {
+        mcpImportError.value = 'Expected a top-level "mcpServers" object.';
+        return;
+      }
+      try {
+        await putMcpServers(servers, { merge: true });
+        closeModal();
+        settingsToast(`Imported ${Object.keys(servers).length} server(s)`);
+      } catch (e) {
+        mcpImportError.value = e.message || "Import failed";
       }
     }
 
@@ -1752,6 +2184,10 @@ createApp({
     }
     function onKeydown(e) {
       if (e.key === "Escape") {
+        if (modal.value) {
+          closeModal();
+          return;
+        }
         closePwdMenu();
         sessionInfoOpen.value = false;
         sidebarOpen.value = false;
@@ -1797,9 +2233,20 @@ createApp({
       username, userInitial,
       sessionInfoOpen, sessionInfoEl, sessionInfoRows,
       loadSessionList, switchSession, deleteSession, isRunning,
-      route, openSettings, closeSettings, settingsForm, settingsMeta, settingsSaving,
-      settingsMessage, settingsError, saveSettings, apiKeyPlaceholder, modelPlaceholder,
+      route, openSettings, closeSettings,
+      settingsPanel, settingsConfig, settingsMeta, settingsSaving,
+      settingsMessage, settingsError, sandboxForm, collapsedPlatforms,
+      modal, toastMsg, platformDraft, modelSearch, catalogModels, catalogLoading,
+      catalogError, selectedCatalogIds, filteredCatalog, modelDraft,
+      mcpServers, mcpMeta, mcpStatus, mcpDraft, mcpImportJson, mcpImportError,
+      settingsToast, closeModal, togglePlatformCollapsed, togglePlatformEnabled,
+      setDefaultModel, toggleModelEnabled, removeModel, removePlatform,
+      openAddPlatform, openEditPlatform, savePlatformDraft, openAddModel,
+      loadCatalogForAdd, confirmAddModels, openModelSettings, setDefaultModelFromDraft,
+      saveModelDraft, testModel, saveSandbox, mcpHasAuth, loadMcp, openAddMcp,
+      openEditMcp, saveMcpDraft, removeMcp, testMcp, openImportMcp, confirmImportMcp,
       setupRequired, setupForm, setupSaving, setupError, finishSetup,
+      setupCatalog, setupCatalogLoading, setupCatalogError, onSetupProviderChange, loadSetupCatalog,
       sandboxDegraded, sandboxDegradedReason, sandboxStarting, sandboxRetrying, retrySandbox,
       // chat
       timeline, draft, streaming, thinking, errorMessage, canSend,

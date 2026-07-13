@@ -157,3 +157,33 @@ class CreateFolderRequest(BaseModel):
 
 class FolderCreateResponse(BaseModel):
     path: str
+
+
+class AvailableModelsResponse(BaseModel):
+    models: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ModelTestRequest(BaseModel):
+    model: str = Field(..., min_length=1)
+
+
+class ModelTestResponse(BaseModel):
+    ok: bool
+    latency_ms: int = 0
+    error: str | None = None
+
+
+class McpConfigResponse(BaseModel):
+    path: str
+    servers: dict[str, Any] = Field(default_factory=dict)
+
+
+class McpConfigUpdateRequest(BaseModel):
+    servers: dict[str, Any] = Field(default_factory=dict)
+    merge: bool = False
+
+
+class McpTestResponse(BaseModel):
+    ok: bool
+    tool_count: int | None = None
+    error: str | None = None

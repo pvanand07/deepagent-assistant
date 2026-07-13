@@ -51,6 +51,7 @@ configure_file_logging()
 from deep_agent.sandbox.manager import get_manager
 from deep_agent.api.models import (
     ActiveRunResponse,
+    AvailableModelsResponse,
     CancelResponse,
     ChatRequest,
     ConfigResponse,
@@ -62,7 +63,12 @@ from deep_agent.api.models import (
     FolderCreateResponse,
     FolderListResponse,
     HealthResponse,
+    McpConfigResponse,
+    McpConfigUpdateRequest,
+    McpTestResponse,
     MessagesResponse,
+    ModelTestRequest,
+    ModelTestResponse,
     ResetResponse,
     RunResponse,
     SessionListResponse,
@@ -338,6 +344,7 @@ async def get_settings() -> SettingsResponse:
 
 @app.put("/api/settings", response_model=SettingsResponse)
 async def put_settings(body: SettingsUpdateRequest) -> SettingsResponse:
+    from deep_agent.integrations.model_catalog import clear_catalog_cache
     from deep_agent.sandbox.config import sandbox_recreate_fingerprint
     from deep_agent.settings.store import update_from_ui
 
@@ -362,6 +369,8 @@ async def put_settings(body: SettingsUpdateRequest) -> SettingsResponse:
                 write_settings_env(values)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    clear_catalog_cache()
+    store.invalidate_runtime()
     after = sandbox_recreate_fingerprint()
     recreated = False
     status = None
@@ -377,6 +386,81 @@ async def put_settings(body: SettingsUpdateRequest) -> SettingsResponse:
     if status is not None:
         resp.sandbox_status = status
     return resp
+
+
+@app.get(
+    "/api/platforms/{platform_id}/models/available",
+    response_model=AvailableModelsResponse,
+)
+async def get_available_models(
+    platform_id: str,
+    q: str = Query("", description="Optional filter substring"),
+) -> AvailableModelsResponse:
+    from deep_agent.integrations.model_catalog import list_available_models
+
+    try:
+        models = await asyncio.to_thread(
+            list_available_models, platform_id, query=q
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return AvailableModelsResponse(models=models)
+
+
+@app.post(
+    "/api/platforms/{platform_id}/models/test",
+    response_model=ModelTestResponse,
+)
+async def post_test_model(
+    platform_id: str, body: ModelTestRequest
+) -> ModelTestResponse:
+    from deep_agent.integrations.model_catalog import test_model
+
+    try:
+        result = await asyncio.to_thread(test_model, platform_id, body.model)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ModelTestResponse(**result)
+
+
+@app.get("/api/mcp", response_model=McpConfigResponse)
+async def get_mcp_config() -> McpConfigResponse:
+    from deep_agent.integrations.mcp import mcp_config_path, read_mcp_servers_raw
+
+    path_used, servers = read_mcp_servers_raw()
+    path = str(path_used) if path_used else str(mcp_config_path())
+    return McpConfigResponse(path=path, servers=servers)
+
+
+@app.put("/api/mcp", response_model=McpConfigResponse)
+async def put_mcp_config(body: McpConfigUpdateRequest) -> McpConfigResponse:
+    from deep_agent.integrations.mcp import mcp_config_path, save_mcp_servers
+
+    try:
+        servers = save_mcp_servers(body.servers, merge=body.merge)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    store.invalidate_runtime()
+    return McpConfigResponse(path=str(mcp_config_path()), servers=servers)
+
+
+@app.post("/api/mcp/{name}/test", response_model=McpTestResponse)
+async def post_test_mcp(name: str) -> McpTestResponse:
+    from deep_agent.integrations.mcp import test_mcp_server
+
+    try:
+        result = await test_mcp_server(name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return McpTestResponse(**result)
 
 
 @app.post("/api/sandbox/retry")

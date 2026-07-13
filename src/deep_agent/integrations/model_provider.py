@@ -127,11 +127,16 @@ def get_chat_model(
     if temperature is not None:
         resolved_temperature = temperature
     else:
+        from deep_agent.settings.store import temperature_for_model
+
         try:
-            resolved_temperature = float(cfg.get("temperature", 0.3))
-        except (TypeError, ValueError):
-            raw_temp = (os.environ.get("OPENROUTER_TEMPERATURE") or "").strip()
-            resolved_temperature = float(raw_temp) if raw_temp else 0.3
+            resolved_temperature = temperature_for_model(cfg, resolved_model)
+        except Exception:
+            try:
+                resolved_temperature = float(cfg.get("temperature", 0.3))
+            except (TypeError, ValueError):
+                raw_temp = (os.environ.get("OPENROUTER_TEMPERATURE") or "").strip()
+                resolved_temperature = float(raw_temp) if raw_temp else 0.3
 
     default_headers = None
     if provider == "openrouter":
