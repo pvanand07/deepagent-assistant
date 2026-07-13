@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -21,6 +22,13 @@ SETTINGS_ENV_KEYS = (
     "OPENROUTER_TEMPERATURE",
     "OPENROUTER_SITE_URL",
     "OPENROUTER_SITE_NAME",
+    # Shared sandbox (AppData-persisted on desktop builds)
+    "DEEPAGENT_NETWORK_ACCESS",
+    "DEEPAGENT_SANDBOX_MEMORY",
+    "DEEPAGENT_SANDBOX_CPUS",
+    "DEEPAGENT_DNS_NAMESERVERS",
+    "DEEPAGENT_SANDBOX_IDLE_TIMEOUT",
+    "DEEPAGENT_EXEC_TIMEOUT",
 )
 
 SANDBOX_NAME = "deepagent"
@@ -220,6 +228,24 @@ def use_stub_backend() -> bool:
     return os.environ.get("DEEPAGENT_SANDBOX_BACKEND", "microsandbox").lower() == "stub"
 
 
+def sandbox_recreate_fingerprint() -> tuple[Any, ...]:
+    """Effective VM settings; changes imply microVM recreate."""
+    return (
+        default_network(),
+        sandbox_memory_mib(),
+        sandbox_cpus(),
+        sandbox_dns_nameservers(),
+        sandbox_idle_timeout(),
+    )
+
+
+def normalize_settings_value(key: str, value: str) -> str:
+    """Canonicalize a settings value before writing to ``.env``."""
+    if key == "DEEPAGENT_NETWORK_ACCESS":
+        return "true" if value.lower() in {"1", "true", "yes"} else "false"
+    return value
+
+
 def read_settings_env() -> dict[str, str]:
     """Return editable settings keys from process env (API key masked)."""
     out: dict[str, str] = {}
@@ -241,9 +267,9 @@ def read_settings_env() -> dict[str, str]:
 def write_settings_env(updates: dict[str, str | None]) -> Path:
     """Merge ``updates`` into ``{env_dir}/.env`` and refresh ``os.environ``.
 
-    Keys with value ``None`` or empty string are left unchanged (except when
-    explicitly clearing is needed — empty string removes the key from the file
-    and process env for non-secret fields; API key empty means "leave as-is").
+    Keys with value ``None`` are left unchanged. Empty string removes the key
+    from the file and process env for non-secret fields (API key empty means
+    "leave as-is"). Network access is always stored as ``true`` / ``false``.
     """
     path = env_dir() / ".env"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -274,6 +300,9 @@ def write_settings_env(updates: dict[str, str | None]) -> Path:
         if key == "OPENROUTER_API_KEY" and (not value or "…" in value or value.startswith("••••")):
             # Masked / empty payload — keep existing secret.
             continue
+        if key == "DEEPAGENT_NETWORK_ACCESS":
+            # Checkbox always persists explicitly (never "unset").
+            value = normalize_settings_value(key, value or "false")
         if key not in order:
             order.append(key)
         if value:

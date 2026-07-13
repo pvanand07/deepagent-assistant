@@ -1085,7 +1085,7 @@ createApp({
       OPENROUTER_TEMPERATURE: "",
       OPENROUTER_SITE_URL: "",
       OPENROUTER_SITE_NAME: "",
-      networkEnabled: true,
+      networkEnabled: false,
       DEEPAGENT_SANDBOX_MEMORY: "",
       DEEPAGENT_SANDBOX_CPUS: "",
       DEEPAGENT_DNS_NAMESERVERS: "",
@@ -2167,20 +2167,33 @@ createApp({
       syncRouteFromHash();
     }
 
+    function envTruthy(value) {
+      return ["1", "true", "yes"].includes(String(value || "").toLowerCase());
+    }
+
+    function applySettingsValues(v) {
+      settingsForm.DEEPAGENT_LLM_PROVIDER = v.DEEPAGENT_LLM_PROVIDER || "openrouter";
+      settingsForm.DEEPAGENT_LLM_BASE_URL = v.DEEPAGENT_LLM_BASE_URL || "";
+      settingsForm.OPENROUTER_MODEL = v.OPENROUTER_MODEL || "";
+      settingsForm.OPENROUTER_TEMPERATURE = v.OPENROUTER_TEMPERATURE || "";
+      settingsForm.OPENROUTER_SITE_URL = v.OPENROUTER_SITE_URL || "";
+      settingsForm.OPENROUTER_SITE_NAME = v.OPENROUTER_SITE_NAME || "";
+      settingsForm.networkEnabled = envTruthy(v.DEEPAGENT_NETWORK_ACCESS);
+      settingsForm.DEEPAGENT_SANDBOX_MEMORY = v.DEEPAGENT_SANDBOX_MEMORY || "";
+      settingsForm.DEEPAGENT_SANDBOX_CPUS = v.DEEPAGENT_SANDBOX_CPUS || "";
+      settingsForm.DEEPAGENT_DNS_NAMESERVERS = v.DEEPAGENT_DNS_NAMESERVERS || "";
+      settingsForm.DEEPAGENT_EXEC_TIMEOUT = v.DEEPAGENT_EXEC_TIMEOUT || "";
+      settingsForm.DEEPAGENT_SANDBOX_IDLE_TIMEOUT = v.DEEPAGENT_SANDBOX_IDLE_TIMEOUT || "";
+    }
+
     async function loadSettings() {
       const data = await api("/api/settings");
       settingsMeta.data_dir = data.data_dir || "";
       settingsMeta.workdir = data.workdir || "";
       settingsMeta.env_path = data.env_path || "";
       settingsMeta.values = data.values || {};
-      const v = data.values || {};
-      settingsForm.DEEPAGENT_LLM_PROVIDER = v.DEEPAGENT_LLM_PROVIDER || "openrouter";
-      settingsForm.DEEPAGENT_LLM_BASE_URL = v.DEEPAGENT_LLM_BASE_URL || "";
+      applySettingsValues(data.values || {});
       settingsForm.OPENROUTER_API_KEY = "";
-      settingsForm.OPENROUTER_MODEL = v.OPENROUTER_MODEL || "";
-      settingsForm.OPENROUTER_TEMPERATURE = v.OPENROUTER_TEMPERATURE || "";
-      settingsForm.OPENROUTER_SITE_URL = v.OPENROUTER_SITE_URL || "";
-      settingsForm.OPENROUTER_SITE_NAME = v.OPENROUTER_SITE_NAME || "";
       settingsMessage.value = "";
       settingsError.value = false;
     }
@@ -2198,6 +2211,12 @@ createApp({
           OPENROUTER_TEMPERATURE: settingsForm.OPENROUTER_TEMPERATURE,
           OPENROUTER_SITE_URL: settingsForm.OPENROUTER_SITE_URL,
           OPENROUTER_SITE_NAME: settingsForm.OPENROUTER_SITE_NAME,
+          DEEPAGENT_NETWORK_ACCESS: settingsForm.networkEnabled ? "true" : "false",
+          DEEPAGENT_SANDBOX_MEMORY: String(settingsForm.DEEPAGENT_SANDBOX_MEMORY || "").trim(),
+          DEEPAGENT_SANDBOX_CPUS: String(settingsForm.DEEPAGENT_SANDBOX_CPUS || "").trim(),
+          DEEPAGENT_DNS_NAMESERVERS: String(settingsForm.DEEPAGENT_DNS_NAMESERVERS || "").trim(),
+          DEEPAGENT_EXEC_TIMEOUT: String(settingsForm.DEEPAGENT_EXEC_TIMEOUT || "").trim(),
+          DEEPAGENT_SANDBOX_IDLE_TIMEOUT: String(settingsForm.DEEPAGENT_SANDBOX_IDLE_TIMEOUT || "").trim(),
         };
         if (payload.DEEPAGENT_LLM_PROVIDER === "openrouter") {
           // OpenRouter uses its fixed base URL; clear any leftover custom URL.
@@ -2218,10 +2237,13 @@ createApp({
         settingsMeta.workdir = data.workdir || "";
         settingsMeta.env_path = data.env_path || "";
         settingsMeta.values = data.values || {};
+        applySettingsValues(data.values || {});
         settingsForm.OPENROUTER_API_KEY = "";
-        settingsForm.DEEPAGENT_LLM_PROVIDER = data.values?.DEEPAGENT_LLM_PROVIDER || settingsForm.DEEPAGENT_LLM_PROVIDER;
-        settingsForm.DEEPAGENT_LLM_BASE_URL = data.values?.DEEPAGENT_LLM_BASE_URL || "";
-        settingsMessage.value = "Saved. New chats use the updated provider/model/key.";
+        if (data.sandbox_recreated) {
+          settingsMessage.value = "Saved. Sandbox recreated with the new network/resource settings.";
+        } else {
+          settingsMessage.value = "Saved. Settings written to " + (data.env_path || ".env") + ".";
+        }
         config.value = await api("/api/config");
       } catch (e) {
         settingsError.value = true;

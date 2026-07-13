@@ -270,19 +270,38 @@ async def health() -> HealthResponse:
 @app.get("/api/settings", response_model=SettingsResponse)
 async def get_settings() -> SettingsResponse:
     data = resolve_data_dir()
+    manager = get_manager()
     return SettingsResponse(
         desktop=is_desktop_mode(),
         data_dir=str(data),
         workdir=str(default_workdir()),
         env_path=str(env_dir() / ".env"),
         values=read_settings_env(),
+        sandbox_status=manager.status_dict() if manager.started else None,
     )
 
 
 @app.put("/api/settings", response_model=SettingsResponse)
 async def put_settings(body: SettingsUpdateRequest) -> SettingsResponse:
+    from sandbox_config import sandbox_recreate_fingerprint
+
+    before = sandbox_recreate_fingerprint()
     write_settings_env(body.values)
-    return await get_settings()
+    after = sandbox_recreate_fingerprint()
+    recreated = False
+    status = None
+    if before != after:
+        manager = get_manager()
+        try:
+            status = await manager.recreate_from_env()
+            recreated = True
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    resp = await get_settings()
+    resp.sandbox_recreated = recreated
+    if status is not None:
+        resp.sandbox_status = status
+    return resp
 
 
 @app.post("/api/sandbox/retry")

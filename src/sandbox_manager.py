@@ -209,6 +209,66 @@ class SandboxManager:
             self._enter_degraded(f"microsandbox retry failed: {exc}")
         return self.status_dict()
 
+    async def recreate_from_env(self) -> dict[str, Any]:
+        """Re-read workdir/network from env and replace the shared microVM.
+
+        Raises ``RuntimeError`` if an exec currently holds the sandbox lock.
+        """
+        self._workdir = default_workdir()
+        self._network = default_network()
+        self._workdir.mkdir(parents=True, exist_ok=True)
+        (self._workdir / LOG_DIR_REL).mkdir(parents=True, exist_ok=True)
+
+        if use_stub_backend():
+            from microsandbox_sandbox import MicrosandboxSandbox
+
+            self._backend = MicrosandboxSandbox(manager=self, stub=True)
+            self._healthy = True
+            self._degraded_reason = None
+            self._fix_it = None
+            self._started = True
+            return self.status_dict()
+
+        if not self._started:
+            return self.status_dict()
+
+        if self._lock.locked():
+            raise RuntimeError(
+                "Cannot recreate sandbox while a command is running. "
+                "Wait for the current exec to finish, then Save again."
+            )
+
+        async with self._create_lock:
+            old = self._sb
+            self._sb = None
+            if old is not None:
+                try:
+                    await old.stop()
+                except Exception:
+                    pass
+            try:
+                from microsandbox import Sandbox
+
+                await Sandbox.remove(SANDBOX_NAME)
+            except Exception:
+                pass
+
+            try:
+                from microsandbox import is_installed, install
+
+                if not is_installed():
+                    await install()
+                await self._create_sandbox()
+                from microsandbox_sandbox import MicrosandboxSandbox
+
+                self._backend = MicrosandboxSandbox(manager=self)
+                self._healthy = True
+                self._degraded_reason = None
+                self._fix_it = None
+            except Exception as exc:
+                self._enter_degraded(f"sandbox recreate after settings failed: {exc}")
+        return self.status_dict()
+
     async def shutdown(self) -> None:
         if not self._started:
             return

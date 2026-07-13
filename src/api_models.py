@@ -20,6 +20,8 @@ class SettingsResponse(BaseModel):
     workdir: str
     env_path: str
     values: dict[str, str] = Field(default_factory=dict)
+    sandbox_recreated: bool = False
+    sandbox_status: dict[str, Any] | None = None
 
 
 class SettingsUpdateRequest(BaseModel):

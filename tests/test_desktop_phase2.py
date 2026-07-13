@@ -74,16 +74,35 @@ def test_write_and_read_settings_env(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         {
             "OPENROUTER_API_KEY": "sk-new-secret-key-9999",
             "OPENROUTER_MODEL": "openai/gpt-5",
+            "DEEPAGENT_NETWORK_ACCESS": "true",
+            "DEEPAGENT_SANDBOX_MEMORY": "2048",
+            "DEEPAGENT_DNS_NAMESERVERS": "1.1.1.1,8.8.8.8",
         }
     )
     env_text = (data / ".env").read_text(encoding="utf-8")
     assert "OPENROUTER_MODEL=openai/gpt-5" in env_text
     assert "sk-new-secret-key-9999" in env_text
+    assert "DEEPAGENT_NETWORK_ACCESS=true" in env_text
+    assert "DEEPAGENT_SANDBOX_MEMORY=2048" in env_text
     values = read_settings_env()
     assert values["OPENROUTER_MODEL"] == "openai/gpt-5"
     assert values["OPENROUTER_API_KEY_set"] == "true"
     assert "9999" in values["OPENROUTER_API_KEY"]
     assert "sk-new-secret" not in values["OPENROUTER_API_KEY"]
+    assert values["DEEPAGENT_NETWORK_ACCESS"] == "true"
+    assert values["DEEPAGENT_SANDBOX_MEMORY"] == "2048"
+
+
+def test_write_settings_network_false_persists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    monkeypatch.setenv("DEEPAGENT_DATA_DIR", str(data))
+    write_settings_env({"DEEPAGENT_NETWORK_ACCESS": "false"})
+    env_text = (data / ".env").read_text(encoding="utf-8")
+    assert "DEEPAGENT_NETWORK_ACCESS=false" in env_text
+    assert __import__("os").environ.get("DEEPAGENT_NETWORK_ACCESS") == "false"
 
 
 def test_agents_first_run_copy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -220,6 +239,58 @@ async def test_settings_api_roundtrip(
     )
     assert put.status_code == 200
     assert put.json()["values"]["OPENROUTER_MODEL"] == "test/model-phase2"
+    assert put.json()["sandbox_recreated"] is False
     env_file = data_dir / ".env"
     assert env_file.is_file()
     assert "OPENROUTER_MODEL=test/model-phase2" in env_file.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_settings_api_persists_network_and_recreates_stub(
+    client: AsyncClient,
+    data_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEEPAGENT_DATA_DIR", str(data_dir))
+    monkeypatch.delenv("DEEPAGENT_NETWORK_ACCESS", raising=False)
+
+    mgr = get_manager()
+    assert mgr.started
+    assert mgr.network is False
+
+    put = await client.put(
+        "/api/settings",
+        json={
+            "values": {
+                "DEEPAGENT_NETWORK_ACCESS": "true",
+                "DEEPAGENT_SANDBOX_MEMORY": "1536",
+                "DEEPAGENT_EXEC_TIMEOUT": "90",
+            }
+        },
+    )
+    assert put.status_code == 200
+    body = put.json()
+    assert body["sandbox_recreated"] is True
+    assert body["values"]["DEEPAGENT_NETWORK_ACCESS"] == "true"
+    assert body["values"]["DEEPAGENT_SANDBOX_MEMORY"] == "1536"
+    assert body["values"]["DEEPAGENT_EXEC_TIMEOUT"] == "90"
+    assert body["sandbox_status"]["network"] is True
+
+    env_text = (data_dir / ".env").read_text(encoding="utf-8")
+    assert "DEEPAGENT_NETWORK_ACCESS=true" in env_text
+    assert "DEEPAGENT_SANDBOX_MEMORY=1536" in env_text
+
+    cfg = await client.get("/api/config")
+    assert cfg.status_code == 200
+    assert cfg.json()["default_network"] is True
+    assert cfg.json()["sandbox_status"]["network"] is True
+    assert get_manager().network is True
+
+    # Same fingerprint → no recreate; exec timeout alone does not recreate.
+    put2 = await client.put(
+        "/api/settings",
+        json={"values": {"DEEPAGENT_NETWORK_ACCESS": "true", "DEEPAGENT_EXEC_TIMEOUT": "60"}},
+    )
+    assert put2.status_code == 200
+    assert put2.json()["sandbox_recreated"] is False
+    assert put2.json()["values"]["DEEPAGENT_EXEC_TIMEOUT"] == "60"

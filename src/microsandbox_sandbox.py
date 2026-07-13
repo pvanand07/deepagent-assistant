@@ -42,14 +42,24 @@ class MicrosandboxSandbox(BaseSandbox):
         self._manager = manager
         self._stub = stub
         self._id = "msb-deepagent" if not stub else "msb-stub"
-        self._workdir = manager.workdir
         self.sandbox_root = SANDBOX_ROOT
-        self.network = manager.network if not stub else default_network()
-        self.default_timeout = exec_timeout()
 
     @property
     def id(self) -> str:
         return self._id
+
+    @property
+    def _workdir(self) -> Path:
+        """Always follow the manager so settings recreate stays consistent."""
+        return self._manager.workdir
+
+    @property
+    def network(self) -> bool:
+        return self._manager.network if not self._stub else default_network()
+
+    @property
+    def default_timeout(self) -> int:
+        return exec_timeout()
 
     def cleanup(self) -> None:
         """Shared VM is owned by SandboxManager — session cleanup is a no-op."""
