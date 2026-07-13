@@ -117,23 +117,28 @@ jobs:
           APP_VERSION: ${{ steps.ver.outputs.version }}
         run: |
           New-Item -ItemType Directory -Force -Path dist-assets | Out-Null
-          $nsis = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*setup.exe" -ErrorAction SilentlyContinue |
+          $nsisDir = "src-tauri/target/release/bundle/nsis"
+          Write-Host "==> Contents of $nsisDir"
+          Get-ChildItem -Path $nsisDir -ErrorAction SilentlyContinue | Format-Table Name, Length
+
+          # Tauri v2 createUpdaterArtifacts:true signs the NSIS installer directly
+          # (*-setup.exe + *-setup.exe.sig). There is no separate *.nsis.zip.
+          $nsis = Get-ChildItem -Path $nsisDir -Filter "*setup.exe" -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notlike "*.sig" } |
             Select-Object -First 1
-          if (-not $nsis) { throw "NSIS setup.exe not found" }
+          if (-not $nsis) { throw "NSIS setup.exe not found under $nsisDir" }
           Copy-Item $nsis.FullName "dist-assets/Deep-Agent-$env:APP_VERSION-windows-x64-setup.exe"
 
           $zip = "src-tauri/target/release/bundle/portable/Deep-Agent-$env:APP_VERSION-windows-x64-portable.zip"
           if (-not (Test-Path $zip)) { throw "Portable zip not found: $zip" }
           Copy-Item $zip "dist-assets/Deep-Agent-$env:APP_VERSION-windows-x64-portable.zip"
 
-          $updater = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*.nsis.zip" -ErrorAction SilentlyContinue |
+          $sig = Get-ChildItem -Path $nsisDir -Filter "*setup.exe.sig" -File -ErrorAction SilentlyContinue |
             Select-Object -First 1
-          if (-not $updater) { throw "NSIS updater zip (*.nsis.zip) not found — is createUpdaterArtifacts enabled and TAURI_SIGNING_PRIVATE_KEY set?" }
-          Copy-Item $updater.FullName "dist-assets/Deep-Agent-$env:APP_VERSION-windows-x64-setup.nsis.zip"
-          $sig = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*.nsis.zip.sig" -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-          if (-not $sig) { throw "NSIS updater signature (*.nsis.zip.sig) not found" }
-          Copy-Item $sig.FullName "dist-assets/Deep-Agent-$env:APP_VERSION-windows-x64-setup.nsis.zip.sig"
+          if (-not $sig) {
+            throw "NSIS updater signature (*setup.exe.sig) not found — is createUpdaterArtifacts true and TAURI_SIGNING_PRIVATE_KEY set?"
+          }
+          Copy-Item $sig.FullName "dist-assets/Deep-Agent-$env:APP_VERSION-windows-x64-setup.exe.sig"
           Get-ChildItem dist-assets
 
       - name: Stage release assets (macOS)
@@ -202,10 +207,9 @@ jobs:
           ls -la release-assets
 
           test -f "release-assets/Deep-Agent-${APP_VERSION}-windows-x64-setup.exe"
+          test -f "release-assets/Deep-Agent-${APP_VERSION}-windows-x64-setup.exe.sig"
           test -f "release-assets/Deep-Agent-${APP_VERSION}-windows-x64-portable.zip"
           test -f "release-assets/Deep-Agent-${APP_VERSION}-macos-arm64.dmg"
-          test -f "release-assets/Deep-Agent-${APP_VERSION}-windows-x64-setup.nsis.zip"
-          test -f "release-assets/Deep-Agent-${APP_VERSION}-windows-x64-setup.nsis.zip.sig"
           test -f "release-assets/Deep-Agent-${APP_VERSION}-macos-arm64.app.tar.gz"
           test -f "release-assets/Deep-Agent-${APP_VERSION}-macos-arm64.app.tar.gz.sig"
 
@@ -217,8 +221,9 @@ jobs:
           version = os.environ["APP_VERSION"]
           base = os.environ["BASE"]
           pub_date = os.environ["PUB_DATE"]
+          # Tauri v2: Windows updater downloads the NSIS installer itself (+ .exe.sig).
           win_sig = open(
-              f"release-assets/Deep-Agent-{version}-windows-x64-setup.nsis.zip.sig",
+              f"release-assets/Deep-Agent-{version}-windows-x64-setup.exe.sig",
               encoding="utf-8",
           ).read().strip()
           mac_sig = open(
@@ -232,7 +237,7 @@ jobs:
               "platforms": {
                   "windows-x86_64": {
                       "signature": win_sig,
-                      "url": f"{base}/Deep-Agent-{version}-windows-x64-setup.nsis.zip",
+                      "url": f"{base}/Deep-Agent-{version}-windows-x64-setup.exe",
                   },
                   "darwin-aarch64": {
                       "signature": mac_sig,
@@ -258,7 +263,7 @@ jobs:
 
             - Windows: NSIS installer + portable zip (portable is download-only; no in-app update)
             - macOS: Apple Silicon DMG (Gatekeeper will warn; not notarized)
-            - Auto-update: `latest.json` + signed updater artifacts for NSIS / macOS app
+            - Auto-update: `latest.json` + Tauri-signed NSIS installer / macOS app archive
 
             **First updater-capable floor:** install `v0.2.0` (or newer) manually once; later versions update in-app.
           files: release-assets/*

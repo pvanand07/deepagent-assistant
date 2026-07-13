@@ -38,10 +38,9 @@ dual-OS GitHub Actions producing Windows + Mac artifacts. Complements
 
 | Asset | Platform / role |
 |-------|-----------------|
-| `Deep-Agent-X.Y.Z-windows-x64-setup.exe` | Windows NSIS (update-eligible) |
+| `Deep-Agent-X.Y.Z-windows-x64-setup.exe` (+ `.sig`) | Windows NSIS install + updater artifact (Tauri v2) |
 | `Deep-Agent-X.Y.Z-windows-x64-portable.zip` | Windows portable (download-only) |
-| `Deep-Agent-X.Y.Z-macos-arm64.dmg` | macOS arm64 |
-| `Deep-Agent-X.Y.Z-windows-x64-setup.nsis.zip` (+ `.sig`) | Windows updater artifact |
+| `Deep-Agent-X.Y.Z-macos-arm64.dmg` | macOS arm64 install |
 | `Deep-Agent-X.Y.Z-macos-arm64.app.tar.gz` (+ `.sig`) | macOS updater artifact |
 | `latest.json` | Updater manifest (`…/releases/latest/download/latest.json`) |
 
