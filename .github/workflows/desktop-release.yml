@@ -22,7 +22,8 @@ jobs:
             bundles: nsis
           - os: macos-14
             platform: macos
-            bundles: dmg
+            # `app` is required for createUpdaterArtifacts (*.app.tar.gz); `dmg` is the installable.
+            bundles: app,dmg
 
     runs-on: ${{ matrix.os }}
 

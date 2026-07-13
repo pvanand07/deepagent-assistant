@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Platform-aware packaging entrypoints for package.json scripts.
- * Windows → PowerShell; macOS → bash package-sidecar.sh + tauri --bundles dmg.
+ * Windows → PowerShell; macOS → bash package-sidecar.sh + tauri --bundles app,dmg.
  */
 import { accessSync, constants } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
@@ -72,7 +72,8 @@ function buildRelease() {
     return;
   }
   if (platform() === "darwin") {
-    run("pnpm", ["exec", "tauri", "build", "--bundles", "dmg"], { shell: true });
+    // `app` is required for createUpdaterArtifacts (*.app.tar.gz); `dmg` is the installable.
+    run("pnpm", ["exec", "tauri", "build", "--bundles", "app,dmg"], { shell: true });
     return;
   }
   console.error(`build:release is only defined for Windows and macOS (got ${platform()}).`);

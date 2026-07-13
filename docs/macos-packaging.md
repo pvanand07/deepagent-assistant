@@ -19,7 +19,7 @@ dual-OS GitHub Actions producing Windows + Mac artifacts. Complements
 | 5 | Sidecar Python | Relocatable CPython (`uv` / python-build-standalone) under `sidecar/` |
 | 6 | Build | Dual-OS GitHub Actions (`windows-latest` + `macos-14`) |
 | 7 | Scripts | Parallel `package-sidecar.ps1` + `package-sidecar.sh` |
-| 8 | Bundle targets | CLI `--bundles nsis` (Win) / `--bundles dmg` (Mac) |
+| 8 | Bundle targets | CLI `--bundles nsis` (Win) / `--bundles app,dmg` (Mac; `app` required for updater `.app.tar.gz`) |
 | 9 | CI trigger | Smoke: `workflow_dispatch`. Ship: push tag `vX.Y.Z` |
 | 10 | Entitlements | Research + wire Hypervisor-related entitlements before Mac package is “done” |
 | 11 | Licenses | Parallel track (not blocking green CI); gate before public share — see [LICENSES.md](./LICENSES.md) |
@@ -63,7 +63,7 @@ flowchart LR
   end
   subgraph mac [macos-14]
     sh[package-sidecar.sh]
-    dmg["tauri build --bundles dmg"]
+    dmg["tauri build --bundles app,dmg"]
     smokeM[import plus health]
   end
   release[GitHub prerelease unsigned-timestamp]
@@ -89,7 +89,7 @@ flowchart LR
 ```bash
 # macOS (Apple Silicon)
 pnpm package:sidecar          # scripts/package-sidecar.sh
-pnpm build:release            # sidecar + tauri build --bundles dmg
+pnpm build:release            # sidecar + tauri build --bundles app,dmg
 
 # Windows
 pnpm package:sidecar          # scripts/package-sidecar.ps1
