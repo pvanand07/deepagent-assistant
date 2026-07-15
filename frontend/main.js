@@ -1195,6 +1195,10 @@ createApp({
 
     async function previewWorkspaceFile(path) {
       if (!sessionId.value) return;
+      if (/\.(docx?|xlsx?|pptx?)$/i.test(path)) {
+        await openNativeOfficeFile(path);
+        return;
+      }
       sidebarOpen.value = false;
       previewCollapsed.value = false;
       clearPreviewBlob();
@@ -1273,6 +1277,17 @@ createApp({
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    async function openNativeOfficeFile(path) {
+      if (!sessionId.value || !path) return;
+      try {
+        await api(`/api/sessions/${sessionId.value}/files/open?path=${encodeURIComponent(path)}`, {
+          method: "POST",
+        });
       } catch (e) {
         showError(e.message);
       }

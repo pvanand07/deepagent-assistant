@@ -23,6 +23,8 @@ import getpass
 import json
 import mimetypes
 import os
+import subprocess
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -734,6 +736,31 @@ async def read_file_raw(
             "X-File-Path": rel,
         },
     )
+
+
+@app.post("/api/sessions/{session_id}/files/open")
+async def open_file_native(
+    session_id: str,
+    path: str = Query(..., description="Office file path relative to workspace root"),
+) -> dict[str, str]:
+    """Open a workspace Office file with the host OS default application."""
+    meta = await _require_meta(session_id)
+    workdir = _meta_workdir(meta).resolve()
+    target = _resolve_workspace_path(workdir, path)
+    if not target.exists() or target.is_dir():
+        raise HTTPException(status_code=404, detail="File not found")
+    if target.suffix.lower() not in {".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"}:
+        raise HTTPException(status_code=400, detail="Only Office files can be opened natively")
+    try:
+        if os.name == "nt":
+            os.startfile(str(target))  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(target)])
+        else:
+            subprocess.Popen(["xdg-open", str(target)])
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not open file: {exc}") from exc
+    return {"path": str(target.relative_to(workdir)).replace("\\", "/"), "status": "opened"}
 
 
 @app.get("/api/sessions/{session_id}/folders", response_model=FolderListResponse)
