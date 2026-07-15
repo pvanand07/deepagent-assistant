@@ -6,7 +6,7 @@
 .DESCRIPTION
   Downloads the official Windows embeddable CPython (x64), enables site-packages,
   installs project dependencies from uv.lock via `uv export` + `uv pip install`,
-  and copies src/, frontend/, and agents/ into sidecar/ so packaged Deep Agent
+  and copies src/, frontend/, agents/, and skills/ into sidecar/ so packaged Deep Agent
   can run:
 
     .\sidecar\python.exe -m uvicorn deep_agent.api.app:app --host 127.0.0.1 --port 8010
@@ -82,7 +82,7 @@ if (-not (Test-Path $ReadmePath)) {
         "# Sidecar runtime (generated)"
         ""
         "This directory holds the Windows embeddable CPython runtime plus installed"
-        "dependencies and a copy of src/, frontend/, and agents/ for packaged"
+        "dependencies and a copy of src/, frontend/, agents/, skills/ for packaged"
         "Deep Agent builds."
         ""
         "Regenerate with:"
@@ -174,10 +174,11 @@ try {
     Pop-Location
 }
 
-Write-Step "Copying src/, frontend/, agents/ into sidecar/"
+Write-Step "Copying src/, frontend/, agents/, skills/ into sidecar/"
 Copy-Tree (Join-Path $RepoRoot "src") (Join-Path $OutDir "src")
 Copy-Tree (Join-Path $RepoRoot "frontend") (Join-Path $OutDir "frontend")
 Copy-Tree (Join-Path $RepoRoot "agents") (Join-Path $OutDir "agents")
+Copy-Tree (Join-Path $RepoRoot "skills") (Join-Path $OutDir "skills")
 
 Get-ChildItem -Path $OutDir -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue

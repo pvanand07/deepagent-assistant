@@ -25,6 +25,8 @@ from deep_agent.sandbox.config import default_network, default_workdir, is_deskt
 logger = logging.getLogger(__name__)
 
 _REPO_AGENTS_DIR = Path(__file__).resolve().parents[2] / "agents"
+_REPO_SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
+SANDBOX_SKILLS_SOURCE = "/workspace/skills/"
 
 
 @dataclass
@@ -68,6 +70,31 @@ def ensure_agents_copied(dest: Path | None = None) -> Path:
     for path in _REPO_AGENTS_DIR.glob("*.toml"):
         shutil.copy2(path, target / path.name)
         logger.info("Copied default agent TOML to %s", target / path.name)
+    return target
+
+
+def ensure_skills_in_workdir(workdir: Path | None = None) -> Path:
+    """Copy bundled ``skills/*/SKILL.md`` into the host workdir when missing.
+
+    Skills must live under the bind-mounted workdir so
+    ``MicrosandboxSandbox`` can read them at ``/workspace/skills/...``.
+    Existing skill directories are left alone (user edits win).
+    """
+    target = (workdir or default_workdir()) / "skills"
+    target.mkdir(parents=True, exist_ok=True)
+    if not _REPO_SKILLS_DIR.is_dir():
+        return target
+    for skill_dir in sorted(_REPO_SKILLS_DIR.iterdir()):
+        if not skill_dir.is_dir():
+            continue
+        skill_md = skill_dir / "SKILL.md"
+        if not skill_md.is_file():
+            continue
+        dest = target / skill_dir.name
+        if dest.is_dir() and (dest / "SKILL.md").is_file():
+            continue
+        shutil.copytree(skill_dir, dest, dirs_exist_ok=True)
+        logger.info("Copied bundled skill to %s", dest)
     return target
 
 
@@ -282,6 +309,7 @@ def build_agent(
 
     subagents = load_subagents_from_toml() if with_subagents else []
     extra_tools = list(mcp_tools or []) + build_sandbox_tools()
+    ensure_skills_in_workdir()
 
     agent = create_deep_agent(
         model=model,
@@ -289,6 +317,7 @@ def build_agent(
         system_prompt=MAIN_SYSTEM_PROMPT,
         subagents=subagents or None,
         tools=extra_tools or None,
+        skills=[SANDBOX_SKILLS_SOURCE],
         middleware=[PwdContextMiddleware()],
         context_schema=AgentContext,
         checkpointer=checkpointer,

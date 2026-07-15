@@ -58,7 +58,7 @@ if [[ ! -f "$README_PATH" ]]; then
 # Sidecar runtime (generated)
 
 This directory holds a relocatable CPython runtime plus installed dependencies
-and a copy of `src/`, `frontend/`, and `agents/` for packaged Deep Agent builds.
+and a copy of `src/`, `frontend/`, `agents/`, and `skills/` for packaged Deep Agent builds.
 
 Regenerate with:
 
@@ -153,11 +153,12 @@ step "Installing dependencies into sidecar (uv pip)"
   uv pip install --python "$PYTHON_BIN" --break-system-packages -r "$REQ_PATH"
 )
 
-step "Copying src/, frontend/, agents/ into sidecar/"
-rm -rf "$OUT_DIR/src" "$OUT_DIR/frontend" "$OUT_DIR/agents"
+step "Copying src/, frontend/, agents/, skills/ into sidecar/"
+rm -rf "$OUT_DIR/src" "$OUT_DIR/frontend" "$OUT_DIR/agents" "$OUT_DIR/skills"
 cp -R "$REPO_ROOT/src" "$OUT_DIR/src"
 cp -R "$REPO_ROOT/frontend" "$OUT_DIR/frontend"
 cp -R "$REPO_ROOT/agents" "$OUT_DIR/agents"
+cp -R "$REPO_ROOT/skills" "$OUT_DIR/skills"
 find "$OUT_DIR" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 
 step "Smoke: import deep_agent.api.app:app"
