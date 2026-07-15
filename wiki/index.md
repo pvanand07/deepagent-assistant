@@ -18,7 +18,7 @@ Canonical reference docs for this project. One topic per file. The code is the s
 | rank | topic | priority | tokens | status |
 |---|---|---|---|---|
 | 1 | [runtime-topology](runtime-topology.md) | core | ~280 | verified |
-| 2 | [sandbox-microsandbox](sandbox-microsandbox.md) | core | ~340 | verified |
+| 2 | [sandbox-microsandbox](sandbox-microsandbox.md) | core | ~380 | verified |
 | 3 | [chat-runs-sse](chat-runs-sse.md) | core | ~300 | verified |
 | 4 | [persistence-sqlite](persistence-sqlite.md) | core | ~260 | verified |
 | 5 | [settings-and-secrets](settings-and-secrets.md) | core | ~280 | verified |

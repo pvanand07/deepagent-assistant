@@ -12,6 +12,8 @@
 
 FROM python:3.12-slim
 
+# Chromium (~350–450 MiB installed) powers officecli `view screenshot` / Gate 3
+# visual QA. fonts-liberation keeps slide text readable in PNGs.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
@@ -20,7 +22,30 @@ RUN apt-get update \
         git \
         ripgrep \
         build-essential \
-    && rm -rf /var/lib/apt/lists/*
+        libicu-dev \
+        chromium \
+        fonts-liberation \
+    && rm -rf /var/lib/apt/lists/* \
+    && chromium --version
+
+# officecli is a self-contained .NET binary (needs libicu). Install to
+# /usr/local/bin — do not use ~/.local/bin (HOME=/workspace is bind-mounted).
+ARG TARGETARCH
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      amd64) ASSET=officecli-linux-x64 ;; \
+      arm64) ASSET=officecli-linux-arm64 ;; \
+      *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    VERSION="$(curl -fsSL --max-time 30 -o /dev/null -w '%{url_effective}' \
+      https://github.com/iOfficeAI/OfficeCLI/releases/latest \
+      | sed 's|.*/tag/||')"; \
+    test -n "${VERSION}" && test "${VERSION}" != "latest"; \
+    curl -fsSL --max-time 300 \
+      "https://github.com/iOfficeAI/OfficeCLI/releases/download/${VERSION}/${ASSET}" \
+      -o /usr/local/bin/officecli; \
+    chmod +x /usr/local/bin/officecli; \
+    officecli --version
 
 WORKDIR /workspace
 ENV HOME=/workspace \
