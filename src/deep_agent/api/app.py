@@ -76,6 +76,7 @@ from deep_agent.api.models import (
     SessionSummary,
     SettingsResponse,
     SettingsUpdateRequest,
+    UpdateSessionRequest,
 )
 from deep_agent.integrations.mcp import load_mcp_connections
 from deep_agent.chat.messages import serialize_messages
@@ -490,6 +491,25 @@ async def create_session(body: CreateSessionRequest) -> SessionResponse:
 @app.get("/api/sessions/{session_id}", response_model=SessionResponse)
 async def get_session(session_id: str) -> SessionResponse:
     meta = await _require_meta(session_id)
+    return await _session_response_from_meta(meta)
+
+
+@app.patch("/api/sessions/{session_id}", response_model=SessionResponse)
+async def update_session(session_id: str, body: UpdateSessionRequest) -> SessionResponse:
+    """Change the model used for subsequent turns in this session."""
+    from deep_agent.chat.runs import RunConflictError
+
+    try:
+        meta = await store.set_model(session_id, body.model)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Session not found") from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RunConflictError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": "A run is already in flight", "active_run_id": e.active_run_id},
+        ) from e
     return await _session_response_from_meta(meta)
 
 

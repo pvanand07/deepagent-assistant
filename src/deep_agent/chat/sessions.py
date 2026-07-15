@@ -204,6 +204,52 @@ class SessionStore:
     async def get_meta(self, session_id: str) -> SessionMeta | None:
         return await self._db.get_session(session_id)
 
+    async def set_model(
+        self, session_id: str, model: str, *, as_default: bool = True
+    ) -> SessionMeta:
+        """Switch the session model; rebuilds the agent on the next chat turn.
+
+        Also updates the app default model so new sessions inherit the pick.
+        Refuses while a run is in flight for this session.
+        """
+        from deep_agent.chat.runs import RunConflictError
+        from deep_agent.settings.store import (
+            apply_runtime_env,
+            find_platform_for_model,
+            load_settings,
+            save_settings,
+        )
+
+        mid = (model or "").strip()
+        if not mid:
+            raise ValueError("model is required")
+        meta = await self._db.get_session(session_id)
+        if meta is None:
+            raise KeyError(session_id)
+        if self.runs is not None:
+            active = self.runs.active_run_id(session_id)
+            if active:
+                raise RunConflictError(active)
+
+        meta.model = mid
+        meta.updated_at = time.time()
+        await self._db.upsert_session(meta)
+
+        cached = self._sessions.pop(session_id, None)
+        if cached is not None:
+            cached.cleanup()
+
+        if as_default:
+            cfg = load_settings()
+            cfg["default_model"] = mid
+            owner = find_platform_for_model(mid, cfg)
+            if owner:
+                cfg["active_platform_id"] = owner["id"]
+            save_settings(cfg)
+            apply_runtime_env(cfg)
+
+        return meta
+
     async def get_run(self, run_id: str) -> RunRecord | None:
         return await self._db.get_run(run_id)
 

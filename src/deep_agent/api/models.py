@@ -63,6 +63,12 @@ class CreateSessionRequest(BaseModel):
     workdir: str | None = None
 
 
+class UpdateSessionRequest(BaseModel):
+    """Update mutable session fields (currently: model for the next turn)."""
+
+    model: str = Field(..., min_length=1)
+
+
 class SessionResponse(BaseModel):
     id: str
     sandbox_id: str

@@ -472,7 +472,7 @@ const ModelPicker = {
   },
   template: `
     <div class="relative min-w-0 max-w-40 shrink sm:min-w-[9rem] sm:max-w-56">
-      <button type="button" data-model-picker-trigger :disabled="streaming"
+      <button type="button" data-model-picker-trigger :disabled="streaming" @click.stop="toggle"
         class="inline-flex h-8 w-full items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         aria-haspopup="listbox" :aria-expanded="String(menuOpen)" :title="'Model: ' + label">
         <p-icon name="cpu" :size="14" class="shrink-0 text-muted-foreground/70" />

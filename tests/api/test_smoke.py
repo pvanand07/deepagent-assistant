@@ -49,6 +49,24 @@ async def test_create_and_get_session(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_patch_session_model(client: AsyncClient) -> None:
+    create = await client.post("/api/sessions", json={"with_subagents": False})
+    assert create.status_code == 201
+    session_id = create.json()["id"]
+
+    patched = await client.patch(
+        f"/api/sessions/{session_id}",
+        json={"model": "openai/gpt-test-picker"},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["model"] == "openai/gpt-test-picker"
+    assert patched.json()["agent_ready"] is False
+
+    got = await client.get(f"/api/sessions/{session_id}")
+    assert got.json()["model"] == "openai/gpt-test-picker"
+
+
+@pytest.mark.asyncio
 async def test_delete_session(client: AsyncClient, session_id: str) -> None:
     delete = await client.delete(f"/api/sessions/{session_id}")
     assert delete.status_code == 204
