@@ -1,6 +1,6 @@
 ---
 title: wiki operation log
-last-updated: 2026-07-15
+last-updated: 2026-07-16
 ---
 
 # wiki operation log
@@ -9,6 +9,7 @@ Append-only. Actions: created, updated, re-verified, archived, discovered, lint.
 
 ## log
 
+2026-07-16 | updated | agent-factory-subagents | seed agents/AGENT.md into workdir + AppData
 2026-07-15 | updated | sandbox-microsandbox | Chromium + fonts-liberation for officecli screenshots
 2026-07-15 | updated | sandbox-microsandbox | officecli baked into guest image + skills/officecli
 2026-07-15 | created | wiki-infrastructure | initial scaffold via /wiki-init

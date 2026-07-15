@@ -27,10 +27,21 @@ PWD_SYSTEM_PROMPT = """Working directory for this turn:
 - Treat this as the active project folder; create and edit files here unless the user directs otherwise.
 - Read AGENT.md or AGENTS.md in this folder if present and follow its guidance for work in this pwd."""
 
+PWD_ROOT_SYSTEM_PROMPT = """Working directory for this turn:
+- Selected pwd: {path}
+- You are at the workspace root. List the directory first, then create a clearly named new folder for this task and save all work there (do not write loose files at /workspace).
+- Read /workspace/AGENT.md or AGENTS.md if present and follow its guidance."""
 
-def format_pwd_path(pwd: str) -> str:
-    clean = pwd.strip().strip("/")
-    return f"/workspace/{clean}" if clean else "/workspace"
+
+def format_pwd_path(pwd: str | None) -> str:
+    clean = (pwd or "").strip().strip("/")
+    if not clean or clean == "workspace":
+        return "/workspace"
+    return f"/workspace/{clean}"
+
+
+def is_workspace_root(pwd: str | None) -> bool:
+    return format_pwd_path(pwd) == "/workspace"
 
 
 def _pwd_from_context(context: object) -> str | None:
@@ -47,9 +58,9 @@ class PwdContextMiddleware(AgentMiddleware):
 
     def modify_request(self, request: ModelRequest[ContextT]) -> ModelRequest[ContextT]:
         pwd = _pwd_from_context(request.runtime.context)
-        if not pwd:
-            return request
-        section = PWD_SYSTEM_PROMPT.format(path=format_pwd_path(pwd))
+        path = format_pwd_path(pwd)
+        template = PWD_ROOT_SYSTEM_PROMPT if is_workspace_root(pwd) else PWD_SYSTEM_PROMPT
+        section = template.format(path=path)
         new_system_message = append_to_system_message(request.system_message, section)
         if new_system_message is request.system_message:
             return request

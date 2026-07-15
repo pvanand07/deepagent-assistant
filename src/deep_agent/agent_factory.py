@@ -60,17 +60,40 @@ def resolve_agents_dir() -> Path:
 
 
 def ensure_agents_copied(dest: Path | None = None) -> Path:
-    """Copy bundled ``agents/*.toml`` into AppData when the destination is empty."""
+    """Copy bundled ``agents/*.toml`` (+ ``AGENT.md``) into AppData when missing."""
     target = dest or (resolve_data_dir() / "agents")
     target.mkdir(parents=True, exist_ok=True)
-    if any(target.glob("*.toml")):
-        return target
     if not _REPO_AGENTS_DIR.is_dir():
         return target
-    for path in _REPO_AGENTS_DIR.glob("*.toml"):
-        shutil.copy2(path, target / path.name)
-        logger.info("Copied default agent TOML to %s", target / path.name)
+    if not any(target.glob("*.toml")):
+        for path in _REPO_AGENTS_DIR.glob("*.toml"):
+            shutil.copy2(path, target / path.name)
+            logger.info("Copied default agent TOML to %s", target / path.name)
+    src_md = _REPO_AGENTS_DIR / "AGENT.md"
+    dest_md = target / "AGENT.md"
+    if src_md.is_file() and not dest_md.is_file():
+        shutil.copy2(src_md, dest_md)
+        logger.info("Copied default AGENT.md to %s", dest_md)
     return target
+
+
+def ensure_agent_md_in_workdir(workdir: Path | None = None) -> Path | None:
+    """Copy bundled ``agents/AGENT.md`` into the host workdir when missing.
+
+    The agent is instructed to obey ``/workspace/AGENT.md``. Existing files are
+    left alone (user edits win).
+    """
+    root = workdir or default_workdir()
+    root.mkdir(parents=True, exist_ok=True)
+    dest = root / "AGENT.md"
+    if dest.is_file():
+        return dest
+    src = _REPO_AGENTS_DIR / "AGENT.md"
+    if not src.is_file():
+        return None
+    shutil.copy2(src, dest)
+    logger.info("Copied bundled AGENT.md to %s", dest)
+    return dest
 
 
 def ensure_skills_in_workdir(workdir: Path | None = None) -> Path:
@@ -309,6 +332,7 @@ def build_agent(
 
     subagents = load_subagents_from_toml() if with_subagents else []
     extra_tools = list(mcp_tools or []) + build_sandbox_tools()
+    ensure_agent_md_in_workdir()
     ensure_skills_in_workdir()
 
     agent = create_deep_agent(

@@ -1,7 +1,7 @@
 ---
 topic: agent-factory-subagents
 status: verified
-last-verified: 2026-07-15
+last-verified: 2026-07-16
 confidence_score: 1.0
 priority: core
 rank: 6
@@ -24,7 +24,9 @@ related-topics: [sandbox-microsandbox, llm-providers, chat-runs-sse]
 - Filesystem/shell tools from deepagents `FilesystemMiddleware` backed by `MicrosandboxSandbox`.
 - Degraded: `backend=None`, `HostWorkspace` placeholder, no FS/shell tools — chat + MCP only.
 - Bundled skills from repo `skills/*/SKILL.md` are copied into the workdir (`ensure_skills_in_workdir`) and passed as `skills=["/workspace/skills/"]`.
+- Workspace rules from `agents/AGENT.md` are seeded into the workdir root (`ensure_agent_md_in_workdir`) when missing.
 - Subagents loaded from `agents/*.toml` (research_agent → output_planner → builder; fetch_extract for web).
+- Desktop first-run also copies `agents/*.toml` + `AGENT.md` into AppData (`ensure_agents_copied`).
 - Main system prompt routes research/web away from the main agent.
 - MCP loaded in-process from `.mcp.json` (env → AppData → repo search); stdio + HTTP/SSE; `${ENV}` expansion.
 - Optional IResearcher URL + bearer for fetch pipeline.

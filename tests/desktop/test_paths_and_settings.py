@@ -8,7 +8,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
-from deep_agent.agent_factory import ensure_agents_copied, resolve_agents_dir
+from deep_agent.agent_factory import (
+    ensure_agent_md_in_workdir,
+    ensure_agents_copied,
+    resolve_agents_dir,
+)
 from deep_agent.sandbox.config import (
     default_workdir,
     env_dir,
@@ -144,9 +148,22 @@ def test_agents_first_run_copy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     assert dest == data / "agents"
     toml_files = list(dest.glob("*.toml"))
     assert toml_files, "expected default agent TOML files to be copied"
+    assert (dest / "AGENT.md").is_file(), "expected agents/AGENT.md to be copied"
     # Second call should not fail / wipe
     ensure_agents_copied()
     assert resolve_agents_dir() == dest
+
+
+def test_agent_md_seeded_into_workdir(tmp_path: Path) -> None:
+    work = tmp_path / "workspace"
+    dest = ensure_agent_md_in_workdir(work)
+    assert dest == work / "AGENT.md"
+    assert dest.is_file()
+    assert "Workspace Agent Instructions" in dest.read_text(encoding="utf-8")
+    # Existing file wins — do not overwrite
+    dest.write_text("# custom\n", encoding="utf-8")
+    ensure_agent_md_in_workdir(work)
+    assert dest.read_text(encoding="utf-8") == "# custom\n"
 
 
 def test_mcp_config_prefers_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -165,8 +165,8 @@ async def iter_agent_turn_events(
         "subgraphs": True,
         "version": "v2",
     }
-    if pwd:
-        stream_kwargs["context"] = {"pwd": pwd}
+    # Empty/missing pwd = workspace root; middleware chooses root vs folder guidance.
+    stream_kwargs["context"] = {"pwd": (pwd or "").strip()}
     config = {"configurable": {"thread_id": thread_id}}
 
     final_messages: list = list(input_messages)
