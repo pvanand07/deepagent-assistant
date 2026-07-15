@@ -33,7 +33,7 @@ SETTINGS_ENV_KEYS = (
 
 SANDBOX_NAME = "deepagent"
 SANDBOX_ROOT = "/workspace"
-DEFAULT_IMAGE = "python:3.12-slim"
+DEFAULT_IMAGE = "pvanand09/deepagent-workspace:latest"
 DEFAULT_MEMORY_MIB = 1024
 DEFAULT_CPUS = 2
 DEFAULT_IDLE_TIMEOUT = 300
@@ -220,6 +220,7 @@ def sandbox_recreate_fingerprint() -> tuple[Any, ...]:
         sandbox_cpus(),
         sandbox_dns_nameservers(),
         sandbox_idle_timeout(),
+        sandbox_image(),
     )
 
 
@@ -263,6 +264,9 @@ def read_settings_env() -> dict[str, str]:
         ),
         "DEEPAGENT_SANDBOX_IDLE_TIMEOUT": str(
             (cfg.get("sandbox") or {}).get("idle_timeout", DEFAULT_IDLE_TIMEOUT)
+        ),
+        "DEEPAGENT_SANDBOX_IMAGE": str(
+            (cfg.get("sandbox") or {}).get("image") or DEFAULT_IMAGE
         ),
     }
     if key:
@@ -311,6 +315,11 @@ def write_settings_env(updates: dict[str, str | None]) -> Path:
             payload["sandbox"][dst] = updates.get(src)
     if "DEEPAGENT_DNS_NAMESERVERS" in updates:
         payload["sandbox"]["dns_nameservers"] = updates.get("DEEPAGENT_DNS_NAMESERVERS") or ""
+    if "DEEPAGENT_SANDBOX_IMAGE" in updates and updates.get("DEEPAGENT_SANDBOX_IMAGE") not in (
+        None,
+        "",
+    ):
+        payload["sandbox"]["image"] = updates.get("DEEPAGENT_SANDBOX_IMAGE")
     if not payload["sandbox"]:
         del payload["sandbox"]
     # Saving from Settings implies setup is done when a model is present.

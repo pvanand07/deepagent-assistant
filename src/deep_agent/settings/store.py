@@ -23,6 +23,7 @@ from deep_agent.sandbox.config import (
     DEFAULT_DNS_NAMESERVERS,
     DEFAULT_EXEC_TIMEOUT,
     DEFAULT_IDLE_TIMEOUT,
+    DEFAULT_IMAGE,
     DEFAULT_MEMORY_MIB,
     resolve_data_dir,
 )
@@ -135,6 +136,7 @@ def default_settings() -> dict[str, Any]:
             "dns_nameservers": ",".join(DEFAULT_DNS_NAMESERVERS),
             "exec_timeout": DEFAULT_EXEC_TIMEOUT,
             "idle_timeout": DEFAULT_IDLE_TIMEOUT,
+            "image": DEFAULT_IMAGE,
         },
     }
 
@@ -228,6 +230,8 @@ def _normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
                     pass
         if "dns_nameservers" in sandbox_in:
             sb["dns_nameservers"] = str(sandbox_in["dns_nameservers"] or "")
+        if "image" in sandbox_in and sandbox_in["image"] is not None:
+            sb["image"] = str(sandbox_in["image"] or "").strip()
     # Ensure active platform exists.
     ids = {p["id"] for p in out["platforms"]}
     if out["active_platform_id"] not in ids:
@@ -427,6 +431,11 @@ def apply_runtime_env(settings: dict[str, Any], secrets: dict[str, Any] | None =
         os.environ.pop("DEEPAGENT_DNS_NAMESERVERS", None)
     else:
         os.environ["DEEPAGENT_DNS_NAMESERVERS"] = str(dns)
+    image = str(sandbox.get("image") or "").strip()
+    if image:
+        os.environ["DEEPAGENT_SANDBOX_IMAGE"] = image
+    else:
+        os.environ.pop("DEEPAGENT_SANDBOX_IMAGE", None)
 
 
 def public_settings_view() -> dict[str, Any]:
@@ -467,7 +476,7 @@ def update_from_ui(payload: dict[str, Any]) -> dict[str, Any]:
     Structured keys (preferred):
       platforms: [{ id, name, kind, base_url, enabled, site_url, site_name, models, api_key? }]
       active_platform_id, default_model, temperature, setup_complete,
-      sandbox: { network, memory_mib, cpus, dns_nameservers, exec_timeout, idle_timeout }
+      sandbox: { network, memory_mib, cpus, dns_nameservers, exec_timeout, idle_timeout, image }
 
     Legacy single-platform keys still accepted:
       platform: { id, name, kind, base_url, site_url, site_name, api_key }
@@ -618,6 +627,8 @@ def update_from_ui(payload: dict[str, Any]) -> dict[str, Any]:
                     pass
         if "dns_nameservers" in sandbox_in:
             sb["dns_nameservers"] = str(sandbox_in["dns_nameservers"] or "")
+        if "image" in sandbox_in and sandbox_in["image"] is not None:
+            sb["image"] = str(sandbox_in["image"] or "").strip()
 
     if payload.get("setup_complete") is True:
         cfg["setup_complete"] = True

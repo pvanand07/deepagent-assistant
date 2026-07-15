@@ -1,7 +1,11 @@
-# Optional custom guest image for the shared Deep Agent microsandbox.
-# Default runtime image is python:3.12-slim (no local build required).
+# Guest image for the shared Deep Agent microsandbox.
+# Default runtime tag: pvanand09/deepagent-workspace:latest (DEFAULT_IMAGE).
 #
-# Build + load into microsandbox cache:
+# Build + push:
+#   docker build -f Dockerfile.sandbox -t pvanand09/deepagent-workspace:latest .
+#   docker push pvanand09/deepagent-workspace:latest
+#
+# Local-only (no registry):
 #   docker build -f Dockerfile.sandbox -t deepagent-workspace:dev .
 #   docker save deepagent-workspace:dev | msb load --tag deepagent-workspace:dev
 #   set DEEPAGENT_SANDBOX_IMAGE=deepagent-workspace:dev

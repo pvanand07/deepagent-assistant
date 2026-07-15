@@ -68,8 +68,11 @@ Install/check the runtime:
 asyncio.run(install()) if not is_installed() else print('ok')"
   msb doctor
 
-Default guest image is python:3.12-slim (pulled from Docker Hub on first use).
-Optional custom image:
+Default guest image is pvanand09/deepagent-workspace:latest (pulled from Docker Hub on first use).
+Rebuild / push after Dockerfile.sandbox changes:
+  docker build -f Dockerfile.sandbox -t pvanand09/deepagent-workspace:latest .
+  docker push pvanand09/deepagent-workspace:latest
+Optional local-only tag:
   docker build -f Dockerfile.sandbox -t deepagent-workspace:dev .
   docker save deepagent-workspace:dev | msb load --tag deepagent-workspace:dev
   set DEEPAGENT_SANDBOX_IMAGE=deepagent-workspace:dev
