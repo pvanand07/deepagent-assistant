@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "code-wiki": {
+      "source": "tuandm/code-wiki",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "245d0845f2a4fc5cb2b7f03cf8f1b0d86ab468887e60236920e0dc26c55e9af9"
+    }
+  }
+}
