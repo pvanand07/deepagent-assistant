@@ -797,14 +797,14 @@
             </div>
 
             <!-- Meta toolbar -->
-            <div class="flex items-center gap-1.5 overflow-hidden px-3 pb-2.5 pt-0">
+            <div class="flex items-center gap-1.5 overflow-x-auto overflow-y-visible px-3 pb-2.5 pt-0">
               <model-picker ref="modelPickerEl" :streaming="streaming" :selected="selectedModelId"
                 :groups="modelPickerGroups" :close-signal="modelCloseSignal"
                 :loading="modelPickerLoading"
-                @select="selectModel" @add="openAddModelFromPicker" @open="ensurePickerModels" />
+                @select="selectModel" @add="openAddModelFromPicker" @open="ensurePickerModels"></model-picker>
 
               <pwd-picker ref="pwdPickerEl" :streaming="streaming" :folders="workspaceFolders"
-                :selected="selectedPwd" :close-signal="pwdCloseSignal" />
+                :selected="selectedPwd" :close-signal="pwdCloseSignal"></pwd-picker>
 
               <p v-if="!streaming" class="ml-auto hidden truncate text-[11px] text-muted-foreground/50 sm:block">
                 Enter to send · Shift+Enter for a new line

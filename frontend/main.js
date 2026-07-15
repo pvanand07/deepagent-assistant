@@ -73,6 +73,27 @@ const truncate = (t, max = 48) => {
   return s.length <= max ? (s || "New chat") : s.slice(0, max - 1) + "…";
 };
 
+/** Short label for pickers: `anthropic/claude-sonnet-4.5` → `Claude Sonnet 4.5`. */
+function modelDisplayName(id) {
+  const raw = (id || "").trim();
+  if (!raw) return "";
+  const slug = raw.includes("/") ? raw.split("/").pop() : raw;
+  return slug
+    .replace(/[-_]+/g, " ")
+    .replace(/\b([a-z])/g, (ch) => ch.toUpperCase());
+}
+
+/** Workspace root + top-level folders only (no nested paths). */
+function rootFoldersOnly(folders) {
+  const out = [""];
+  for (const f of folders || []) {
+    const path = (f || "").trim().replace(/^\/+|\/+$/g, "");
+    if (!path || path.includes("/")) continue;
+    if (!out.includes(path)) out.push(path);
+  }
+  return [out[0], ...out.slice(1).sort((a, b) => a.localeCompare(b))];
+}
+
 function codeLanguageFor(path) {
   const base = fileName(path).toLowerCase();
   if (base === "dockerfile") return "dockerfile";
@@ -334,7 +355,7 @@ const PwdPicker = {
     },
   },
   template: `
-    <div class="relative min-w-0 max-w-36 shrink sm:min-w-[8.5rem] sm:max-w-52">
+    <div class="relative min-w-[8.5rem] max-w-52 shrink-0">
       <button type="button" data-pwd-picker-trigger :disabled="streaming"
         class="inline-flex h-8 w-full items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         aria-haspopup="listbox" :aria-expanded="String(menuOpen)" title="Working directory for this message">
@@ -352,14 +373,13 @@ const PwdPicker = {
             <li v-for="folder in folders" :key="folder || '__root__'">
               <button type="button" role="option" data-pwd-option :data-folder="folder"
                 :aria-selected="String(folder === selected)"
-                class="flex w-full min-w-0 items-center gap-2 rounded-lg py-1.5 pr-2 text-left text-xs leading-5 transition-colors"
+                class="flex w-full min-w-0 items-center gap-2 rounded-lg py-1.5 pl-2.5 pr-2 text-left text-xs leading-5 transition-colors"
                 :class="folder === selected
                   ? 'bg-accent-soft font-medium text-accent'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
-                :style="{ paddingLeft: (folder ? folder.split('/').length - 1 : 0) * 0.75 + 0.625 + 'rem' }">
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'">
                 <p-icon name="folder" :size="14" class="shrink-0"
                   :class="folder === selected ? 'text-accent' : 'text-muted-foreground/70'" />
-                <span class="min-w-0 flex-1 truncate">{{ folder ? folder.split('/').pop() : 'Workspace root' }}</span>
+                <span class="min-w-0 flex-1 truncate">{{ folder || 'Workspace root' }}</span>
                 <p-icon v-if="folder === selected" name="check" :size="12" class="shrink-0 text-accent" />
               </button>
             </li>
@@ -388,7 +408,7 @@ const ModelPicker = {
     label() {
       const m = (this.selected || "").trim();
       if (!m) return "Select model";
-      return m;
+      return modelDisplayName(m);
     },
     filteredGroups() {
       const q = (this.search || "").toLowerCase().trim();
@@ -396,7 +416,9 @@ const ModelPicker = {
       for (const g of this.groups || []) {
         const models = (g.models || []).filter((m) => {
           if (!q) return true;
-          return (m.id || "").toLowerCase().includes(q);
+          const id = (m.id || "").toLowerCase();
+          const name = modelDisplayName(m.id).toLowerCase();
+          return id.includes(q) || name.includes(q);
         });
         if (models.length) out.push({ name: g.name, models });
       }
@@ -443,6 +465,9 @@ const ModelPicker = {
     window.removeEventListener("scroll", this._onLayout, true);
   },
   methods: {
+    displayName(id) {
+      return modelDisplayName(id);
+    },
     toggle() {
       this.menuOpen = !this.menuOpen;
     },
@@ -471,10 +496,10 @@ const ModelPicker = {
     },
   },
   template: `
-    <div class="relative min-w-0 max-w-40 shrink sm:min-w-[9rem] sm:max-w-56">
+    <div class="relative min-w-0 max-w-40 shrink-0 sm:min-w-[9rem] sm:max-w-56">
       <button type="button" data-model-picker-trigger :disabled="streaming" @click.stop="toggle"
         class="inline-flex h-8 w-full items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-        aria-haspopup="listbox" :aria-expanded="String(menuOpen)" :title="'Model: ' + label">
+        aria-haspopup="listbox" :aria-expanded="String(menuOpen)" :title="selected || label">
         <p-icon name="cpu" :size="14" class="shrink-0 text-muted-foreground/70" />
         <span class="min-w-0 truncate">{{ label }}</span>
         <p-icon name="caret-down" :size="11"
@@ -502,15 +527,13 @@ const ModelPicker = {
                   <li v-for="mod in group.models" :key="mod.id">
                     <button type="button" role="option"
                       :aria-selected="String(mod.id === selected)"
-                      class="flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs leading-5 transition-colors"
+                      class="flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors"
                       :class="mod.id === selected
-                        ? 'bg-muted font-medium text-foreground'
+                        ? 'bg-muted text-foreground'
                         : 'text-foreground hover:bg-muted'"
                       @click="pick(mod.id)">
-                      <span class="grid size-3.5 shrink-0 place-items-center">
-                        <p-icon v-if="mod.id === selected" name="check" :size="12" class="text-accent" />
-                      </span>
-                      <span class="min-w-0 flex-1 truncate font-mono">{{ mod.id }}</span>
+                      <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ displayName(mod.id) }}</span>
+                      <p-icon v-if="mod.id === selected" name="check" :size="14" class="shrink-0 text-accent" />
                     </button>
                   </li>
                 </ul>
@@ -537,7 +560,14 @@ const ModelPicker = {
 /* ---------------------------------------------------------------- */
 
 createApp({
-  components: { FileNode, PIcon, PwdPicker, ModelPicker },
+  components: {
+    FileNode,
+    PIcon,
+    PwdPicker,
+    ModelPicker,
+    "pwd-picker": PwdPicker,
+    "model-picker": ModelPicker,
+  },
   setup() {
     /* ---------- session / config ---------- */
     const config = ref(null);
@@ -709,7 +739,7 @@ createApp({
     const modelLabel = computed(() => {
       const m = (session.value?.model || config.value?.default_model || "").trim();
       if (!m) return "Select model";
-      return m;
+      return modelDisplayName(m);
     });
     const selectedModelId = computed(() =>
       (session.value?.model || config.value?.default_model || "").trim()
@@ -1009,7 +1039,7 @@ createApp({
       const previous = selectedPwd.value;
       try {
         const data = await api(`/api/sessions/${sessionId.value}/folders`);
-        workspaceFolders.value = data.folders?.length ? data.folders : [""];
+        workspaceFolders.value = rootFoldersOnly(data.folders?.length ? data.folders : [""]);
         workspaceFoldersLoaded.value = true;
       } catch {
         workspaceFolders.value = collectFoldersFromTree();
@@ -1060,15 +1090,12 @@ createApp({
 
     function collectFoldersFromTree() {
       const folders = new Set([""]);
-      const walk = (entries) => {
-        for (const entry of entries || []) {
-          if (!entry?.is_dir) continue;
-          folders.add(entry.path);
-          if (childrenMap[entry.path]) walk(childrenMap[entry.path]);
-        }
-      };
-      walk(fileTree.value);
-      return [...folders].sort((a, b) => a.localeCompare(b));
+      for (const entry of fileTree.value || []) {
+        if (!entry?.is_dir) continue;
+        const path = (entry.path || "").replace(/^\/+|\/+$/g, "");
+        if (path && !path.includes("/")) folders.add(path);
+      }
+      return rootFoldersOnly([...folders]);
     }
 
     function closePwdMenu() {
