@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "SKILL.md",
       "computedHash": "245d0845f2a4fc5cb2b7f03cf8f1b0d86ab468887e60236920e0dc26c55e9af9"
+    },
+    "officecli": {
+      "source": "iOfficeAI/OfficeCLI",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "note": "Focused Deep Agent variant under skills/officecli/; binary baked into Dockerfile.sandbox"
     }
   }
 }
