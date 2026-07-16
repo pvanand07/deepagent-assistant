@@ -1,6 +1,6 @@
 [project]
 name = "deepagent-microsandbox"
-version = "0.1.0"
+version = "0.2.1"
 description = "Desktop deep agent with microsandbox isolation and OpenRouter"
 readme = "README.md"
 requires-python = ">=3.12"
