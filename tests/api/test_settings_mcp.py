@@ -233,8 +233,10 @@ async def test_mcp_test_unknown_server(
 
 
 def test_invalidate_runtime_clears_caches() -> None:
+    from deep_agent.chat.sessions import _McpRegistry
+
     store._sessions["s1"] = MagicMock()
-    store._mcp_cache = ([], [])
+    store._mcp_cache = _McpRegistry(tools=[], servers=[], failed=[])
     store.invalidate_runtime()
     assert store._sessions == {}
     assert store._mcp_cache is None

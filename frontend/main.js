@@ -163,6 +163,16 @@ function normalizeWorkspacePath(path) {
     .replace(/^workspace\//, "");
 }
 
+/** Path-based preview URL so relative CSS/JS resolve beside the HTML entry. */
+function previewAssetUrl(sessionId, path) {
+  const parts = normalizeWorkspacePath(path)
+    .split("/")
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join("/");
+  return `${API}/api/sessions/${sessionId}/preview/${parts}`;
+}
+
 function previewTagToButton(attrStr, innerLabel) {
   const path = attrStr.match(/path\s*=\s*["']([^"']+)["']/i)?.[1];
   const labelAttr = attrStr.match(/label\s*=\s*["']([^"']+)["']/i)?.[1];
@@ -663,6 +673,8 @@ createApp({
     /* ---------- chat ---------- */
     const timeline = ref([]);
     const draft = ref("");
+    /** When true, the current draft is held and will auto-send once the active run ends. */
+    const pendingAutoSend = ref(false);
     const thinking = ref(false);
     const errorMessage = ref("");
     const sidebarSubtitle = ref("Starting session");
@@ -714,7 +726,7 @@ createApp({
     const preview = reactive({
       mode: "empty", message: "Select a workspace file to preview it here.",
       title: "Preview", subtitle: "No file selected",
-      path: null, content: "", rows: [], highlighted: "", blobUrl: null,
+      path: null, content: "", src: null, rows: [], highlighted: "", blobUrl: null,
       ready: false, blob: null, type: "",
     });
 
@@ -859,12 +871,28 @@ createApp({
       if (!el) return;
       el.style.height = "auto";
       el.style.height = Math.min(el.scrollHeight, 144) + "px";
+      if (!draft.value.trim()) pendingAutoSend.value = false;
     }
 
     function onComposerEnter(e) {
       if (isMobileLayout.value) return;
       e.preventDefault();
       submit();
+    }
+
+    function queuePendingDraft() {
+      if (!draft.value.trim() || !sessionId.value) return;
+      pendingAutoSend.value = true;
+    }
+
+    function flushPendingDraft() {
+      if (!pendingAutoSend.value) return;
+      if (!draft.value.trim() || !sessionId.value || streaming.value) {
+        if (!draft.value.trim()) pendingAutoSend.value = false;
+        return;
+      }
+      pendingAutoSend.value = false;
+      nextTick(() => submit());
     }
 
     async function api(path, options = {}) {
@@ -1205,7 +1233,7 @@ createApp({
       Object.assign(preview, {
         mode: "empty", message: "Loading preview…",
         title: fileName(path), subtitle: path,
-        path, content: "", rows: [], highlighted: "", ready: false, type: "",
+        path, content: "", src: null, rows: [], highlighted: "", ready: false, type: "",
       });
 
       try {
@@ -1216,14 +1244,21 @@ createApp({
           preview.mode = "image";
           preview.subtitle = `${path} · ${Number(blob.size || 0).toLocaleString()} bytes`;
         } else {
-          const data = await api(`/api/sessions/${sessionId.value}/files/content?path=${encodeURIComponent(path)}`);
-          const mode = previewModeFor(data.path);
-          preview.subtitle = `${data.path} · ${Number(data.size || 0).toLocaleString()} bytes`;
+          const mode = previewModeFor(path);
           if (mode === "html") {
-            preview.content = data.content;
+            // Serve via path-based preview route so sibling CSS/JS load.
+            preview.src = previewAssetUrl(sessionId.value, path);
             preview.mode = "html";
-          } else if (mode === "css") {
+            preview.type = "text/html";
+            preview.subtitle = path;
+            preview.ready = true;
+            return;
+          }
+          const data = await api(`/api/sessions/${sessionId.value}/files/content?path=${encodeURIComponent(path)}`);
+          preview.subtitle = `${data.path} · ${Number(data.size || 0).toLocaleString()} bytes`;
+          if (mode === "css") {
             preview.content = cssPreviewDocument(data.content);
+            preview.src = null;
             preview.mode = "html";
           } else if (mode === "markdown") {
             preview.content = data.content;
@@ -1243,8 +1278,8 @@ createApp({
             preview.content = data.content;
             preview.mode = "text";
           }
-          preview.type = mode === "html" ? "text/html" : "text/plain";
-          preview.blob = new Blob([data.content], { type: preview.type });
+          preview.type = mode === "css" ? "text/html" : "text/plain";
+          preview.blob = new Blob([mode === "css" ? preview.content : data.content], { type: preview.type });
           preview.blobUrl = URL.createObjectURL(preview.blob);
         }
         preview.ready = true;
@@ -1254,6 +1289,10 @@ createApp({
     }
 
     function openPreviewInTab() {
+      if (preview.src) {
+        window.open(preview.src, "_blank", "noopener,noreferrer");
+        return;
+      }
       if (preview.blobUrl) window.open(preview.blobUrl, "_blank", "noopener,noreferrer");
     }
 
@@ -1325,9 +1364,16 @@ createApp({
       };
     }
 
-    /* Undo everything this turn added to the timeline and hand the original
-       text back to the composer -- mirrors the server-side checkpoint
-       rollback that a cancelled run performs. */
+    /* On cancel: keep the user bubble and any partial assistant output;
+       MessageDB keeps the user message and workspace files stay on disk. */
+    function markTurnCancelled(ctx) {
+      void ctx;
+      const detail = "Cancelled — message kept; any files already written were preserved.";
+      pushItem({ kind: "activity", icon: "warning", name: "cancelled", detail });
+      sidebarSubtitle.value = "Cancelled — partial";
+    }
+
+    /* Undo a turn that never successfully started (HTTP failure before attach). */
     function rollBackTurn(ctx) {
       if (timeline.value.length > ctx.startIndex) {
         timeline.value.length = ctx.startIndex;
@@ -1435,7 +1481,7 @@ createApp({
           thinking.value = false;
           stopToolTimer();
           usageEstimate.value = null;
-          rollBackTurn(ctx);
+          markTurnCancelled(ctx);
           finishRun(ctx);
           break;
 
@@ -1443,8 +1489,24 @@ createApp({
           thinking.value = false;
           stopToolTimer();
           usageEstimate.value = null;
-          showError(data.error || data.message || "Agent error");
+          {
+            const parts = [
+              data.error || data.message || "Agent error",
+              data.cause ? `cause=${data.cause}` : "",
+              data.stage ? `stage=${data.stage}` : "",
+            ].filter(Boolean);
+            showError(parts.join(" · "));
+          }
           finishRun(ctx);
+          break;
+
+        case "warning":
+          pushItem({
+            kind: "activity",
+            icon: "warning",
+            name: data.code || "warning",
+            detail: data.message || "Warning",
+          });
           break;
       }
     }
@@ -1515,6 +1577,7 @@ createApp({
         if (sessionId.value === sid) {
           thinking.value = false;
           stopToolTimer();
+          flushPendingDraft();
         }
       });
     }
@@ -1531,7 +1594,7 @@ createApp({
         await api(`/api/sessions/${sid}/runs/${rid}/cancel`, { method: "POST" });
       } catch (e) {
         // Server unreachable or run unknown: tear down locally.
-        if (turnCtx && turnCtx.runId === rid) rollBackTurn(turnCtx);
+        if (turnCtx && turnCtx.runId === rid) markTurnCancelled(turnCtx);
         delete activeRuns[sid];
         abortRunReader();
         thinking.value = false;
@@ -1542,7 +1605,13 @@ createApp({
 
     async function submit() {
       const text = draft.value.trim();
-      if (!text || streaming.value || !sessionId.value) return;
+      if (!text || !sessionId.value) return;
+      // While a run is active: keep the draft, mark it for auto-send, show waiting.
+      if (streaming.value) {
+        queuePendingDraft();
+        return;
+      }
+      pendingAutoSend.value = false;
       const sid = sessionId.value;
       draft.value = "";
       await nextTick();
@@ -1628,6 +1697,7 @@ createApp({
           thinking.value = false;
           stopToolTimer();
           nextTick(() => inputEl.value?.focus());
+          flushPendingDraft();
         }
       }
     }
@@ -1640,6 +1710,7 @@ createApp({
       lastStepUsage.value = null;
       usageEstimate.value = null;
       thinking.value = false;
+      pendingAutoSend.value = false;
       stopToolTimer();
       clearPreviewBlob();
       previewCollapsed.value = true;
@@ -1650,6 +1721,7 @@ createApp({
         subtitle: "No file selected",
         path: null,
         content: "",
+        src: null,
         rows: [],
         highlighted: "",
         ready: false,
@@ -2636,7 +2708,7 @@ createApp({
       setupCatalog, setupCatalogLoading, setupCatalogError, onSetupProviderChange, loadSetupCatalog,
       sandboxDegraded, sandboxDegradedReason, sandboxStarting, sandboxRetrying, retrySandbox,
       // chat
-      timeline, draft, streaming, thinking, errorMessage, canSend,
+      timeline, draft, pendingAutoSend, streaming, thinking, errorMessage, canSend,
       submit, stopStream, newChat, renderMarkdown, autoGrow, onComposerEnter,
       // usage / running
       usageText, turnTotalsText, runningTool, runningSeconds,

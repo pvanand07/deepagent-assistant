@@ -122,3 +122,26 @@ async def slow_turn(
         AIMessage(content="should not finish", id="ai-slow-1"),
     ]
     yield {"type": "done", "messages": messages, "usage": None}
+
+
+async def empty_connect_error_turn(
+    agent: Any,
+    input_messages: list,
+    *,
+    thread_id: str,
+    pwd: str | None = None,
+    tool_preview_len: int = 500,
+) -> AsyncIterator[dict[str, Any]]:
+    """Simulate MCP transport failure with empty ConnectError message."""
+    del agent, input_messages, thread_id, pwd, tool_preview_len
+    import httpx
+
+    yield {"type": "source_start", "source": "main", "is_subagent": False}
+    yield {
+        "type": "tool_running",
+        "source": "main",
+        "tool": "iresearcher_web_search",
+        "is_subagent": False,
+    }
+    raise httpx.ConnectError("")
+

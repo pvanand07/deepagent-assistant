@@ -53,8 +53,13 @@ def bundle_html_file(
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(html, encoding="utf-8")
+    missing_warnings = [
+        warning
+        for warning in state.warnings
+        if "not found" in warning.lower() or "escapes workspace" in warning.lower()
+    ]
     return {
-        "ok": True,
+        "ok": not missing_warnings,
         "input_path": _guest_path(workdir, source),
         "output_path": _guest_path(workdir, destination),
         "bytes": destination.stat().st_size,

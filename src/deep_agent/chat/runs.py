@@ -10,8 +10,9 @@ clients merely *observe* runs through the event log:
   replay from any cursor. High-volume ``token`` / ``tool_call_args`` events
   are coalesced before persisting (one row per contiguous burst, carrying the
   burst's last ``seq``), and ``usage_estimate`` events are live-only.
-- Cancellation is native ``task.cancel()``; the executor rolls the LangGraph
-  checkpoint back to its pre-turn baseline and emits a ``cancelled`` event.
+- Cancellation is native ``task.cancel()``; the executor emits a ``cancelled``
+  event with ``cause=user_cancel``. User message and workspace files are kept
+  (partial turn); no automatic file or MessageDB rollback.
 - Every run terminates the log with exactly one of ``done | cancelled | error``.
 """
 
@@ -35,7 +36,6 @@ from deep_agent.persistence.database import AppDB, MessageDB, RunRecord, thread_
 from deep_agent.chat.streaming import (
     capture_baseline_ids,
     iter_agent_turn_events,
-    rollback_uncommitted_turn,
 )
 from deep_agent.sandbox.manager import current_run_id, current_session_id
 
@@ -43,6 +43,80 @@ from deep_agent.sandbox.manager import current_run_id, current_session_id
 _EPHEMERAL_TYPES = {"usage_estimate"}
 
 TERMINAL_TYPES = {"done", "cancelled", "error"}
+
+# Structured terminal causes (issue 004).
+CAUSE_USER_CANCEL = "user_cancel"
+CAUSE_MCP_CONNECT = "mcp_connect_failed"
+CAUSE_MODEL = "model_failed"
+CAUSE_SANDBOX = "sandbox_failed"
+CAUSE_VALIDATION = "validation_failed"
+CAUSE_INTERRUPTED = "interrupted"
+CAUSE_ERROR = "error"
+
+
+def _persistable_error(
+    exc: BaseException | None,
+    *,
+    run_id: str,
+    stage: str,
+    fallback: str | None = None,
+) -> str:
+    """Never-empty error string with type, stage, and run id."""
+    if exc is not None:
+        msg = str(exc).strip() or repr(exc).strip() or type(exc).__name__
+        detail = f"{type(exc).__name__}: {msg}"
+    else:
+        detail = (fallback or "").strip() or "unknown error"
+    rid = (run_id or "")[:8] or "?"
+    return f"[{stage}] {detail} (run={rid})"
+
+
+def classify_run_cause(exc: BaseException) -> str:
+    """Map an exception to a structured terminal cause."""
+    name = type(exc).__name__
+    module = (type(exc).__module__ or "").lower()
+    text = f"{module}.{name}".lower()
+    msg = (str(exc) or repr(exc) or "").lower()
+    combined = f"{text} {msg}"
+
+    if "connect" in name.lower() or "mcp" in combined or "streamable_http" in combined:
+        return CAUSE_MCP_CONNECT
+    if "sandbox" in combined or "microsandbox" in combined:
+        return CAUSE_SANDBOX
+    if "validation" in combined or "validation_blocked" in combined:
+        return CAUSE_VALIDATION
+    if (
+        "openai" in module
+        or "anthropic" in module
+        or "litellm" in module
+        or "openrouter" in combined
+        or "chatopen" in combined
+        or "ratelimit" in combined
+        or "apikey" in combined.replace("_", "")
+    ):
+        return CAUSE_MODEL
+    return CAUSE_ERROR
+
+
+def _terminal_event(
+    *,
+    type_: str,
+    run_id: str,
+    cause: str,
+    stage: str,
+    error: str | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
+    event: dict[str, Any] = {
+        "type": type_,
+        "run_id": run_id,
+        "cause": cause,
+        "stage": stage,
+    }
+    if error is not None:
+        event["error"] = error
+    event.update(extra)
+    return event
 
 
 def _max_concurrent_runs() -> int:
@@ -98,6 +172,7 @@ class RunManager:
         pwd: str | None,
         user_message_id: str,
         on_terminal: TerminalCallback,
+        mcp_failed: list[dict[str, str]] | None = None,
     ) -> RunRecord:
         existing = self._active_by_session.get(session_id)
         if existing is not None:
@@ -122,6 +197,7 @@ class RunManager:
                 pwd,
                 user_message_id,
                 on_terminal,
+                mcp_failed=mcp_failed or [],
             ),
             name=f"run-{run_id}",
         )
@@ -242,11 +318,15 @@ class RunManager:
         pwd: str | None,
         user_message_id: str,
         on_terminal: TerminalCallback,
+        *,
+        mcp_failed: list[dict[str, str]],
     ) -> None:
         config = thread_config(handle.session_id)
         baseline_ids: set[str] = set()
         status = "error"
         error: str | None = None
+        cause: str | None = None
+        stage = "setup"
         final_messages: list | None = None
         turn_usage: dict[str, Any] | None = None
         step_usage: dict[str, Any] | None = None
@@ -256,9 +336,26 @@ class RunManager:
         try:
             async with self._sem:
                 await self._db.set_run_status(handle.run_id, "running")
+                if mcp_failed:
+                    names = ", ".join(f.get("name") or "?" for f in mcp_failed)
+                    await self._emit(
+                        handle,
+                        {
+                            "type": "warning",
+                            "code": "mcp_partial",
+                            "message": (
+                                f"MCP server(s) unavailable: {names}. "
+                                "Continuing with remaining tools."
+                            ),
+                            "mcp_failed": mcp_failed,
+                            "run_id": handle.run_id,
+                        },
+                    )
+                stage = "baseline"
                 baseline_ids = await capture_baseline_ids(agent, config)
                 await self._db.set_run_baseline(handle.run_id, baseline_ids)
 
+                stage = "agent_stream"
                 user_turn = [
                     {"role": "user", "content": message, "id": user_message_id}
                 ]
@@ -268,6 +365,10 @@ class RunManager:
                     thread_id=handle.session_id,
                     pwd=pwd,
                 ):
+                    if event["type"] == "tool_running":
+                        stage = "tool_execute"
+                    elif event["type"] in {"token", "source_start", "tool_call_start"}:
+                        stage = "agent_stream"
                     if event["type"] == "done":
                         final_messages = event["messages"]
                         turn_usage = event.get("usage")
@@ -280,6 +381,7 @@ class RunManager:
                         )
                         event = {
                             "type": "done",
+                            "run_id": handle.run_id,
                             "messages": serialize_messages(final_messages),
                             "reply": last_assistant_text(final_messages),
                             "usage": turn_usage,
@@ -287,22 +389,46 @@ class RunManager:
                         }
                     await self._emit(handle, event)
                 status = "done"
+                cause = None
+                error = None
         except asyncio.CancelledError:
-            # Swallow the cancellation: rollback + bookkeeping must complete.
+            # Keep user message + any files already written (partial turn).
             status = "cancelled"
+            cause = CAUSE_USER_CANCEL
+            error = _persistable_error(
+                None,
+                run_id=handle.run_id,
+                stage=stage,
+                fallback="cancelled by user",
+            )
             try:
-                await asyncio.shield(rollback_uncommitted_turn(agent, config, baseline_ids))
-            except Exception:
-                pass
-            try:
-                await self._emit(handle, {"type": "cancelled"})
+                await self._emit(
+                    handle,
+                    _terminal_event(
+                        type_="cancelled",
+                        run_id=handle.run_id,
+                        cause=cause,
+                        stage=stage,
+                        error=error,
+                    ),
+                )
             except Exception:
                 pass
         except Exception as exc:  # noqa: BLE001 -- terminal event must always be emitted
             status = "error"
-            error = str(exc)
+            cause = classify_run_cause(exc)
+            error = _persistable_error(exc, run_id=handle.run_id, stage=stage)
             try:
-                await self._emit(handle, {"type": "error", "error": error})
+                await self._emit(
+                    handle,
+                    _terminal_event(
+                        type_="error",
+                        run_id=handle.run_id,
+                        cause=cause,
+                        stage=stage,
+                        error=error,
+                    ),
+                )
             except Exception:
                 pass
         finally:
@@ -313,7 +439,9 @@ class RunManager:
             except Exception:
                 pass
             try:
-                await self._db.set_run_status(handle.run_id, status, error=error)
+                await self._db.set_run_status(
+                    handle.run_id, status, error=error, cause=cause, stage=stage
+                )
             except Exception:
                 pass
             handle.closed = True

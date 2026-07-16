@@ -23,6 +23,20 @@ _ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
+# failed entry: {"name": str, "url": str, "error": str}
+McpFailedServer = dict[str, str]
+
+
+def format_mcp_exception(exc: BaseException) -> str:
+    """Human-readable error; never empty (ConnectError often has blank str())."""
+    msg = str(exc).strip()
+    if msg:
+        return f"{type(exc).__name__}: {msg}"
+    rep = repr(exc).strip()
+    if rep:
+        return f"{type(exc).__name__}: {rep}"
+    return type(exc).__name__
+
 
 def _expand_env(value: str) -> str:
     return _ENV_VAR_RE.sub(lambda m: os.environ.get(m.group(1), m.group(0)), value)
@@ -184,13 +198,21 @@ async def test_mcp_server(name: str) -> dict[str, Any]:
     if conn is None:
         raise ValueError(f"MCP server {name!r} is disabled or invalid.")
     try:
-        tools, _ = await asyncio.wait_for(
+        tools, ok, failed = await asyncio.wait_for(
             aload_mcp_tools({name: conn}),
             timeout=60.0,
         )
+        if failed:
+            return {
+                "ok": False,
+                "tool_count": None,
+                "error": failed[0].get("error") or "MCP connect failed",
+            }
+        if name not in ok:
+            return {"ok": False, "tool_count": None, "error": "MCP connect failed"}
         return {"ok": True, "tool_count": len(tools), "error": None}
     except Exception as exc:
-        return {"ok": False, "tool_count": None, "error": str(exc)}
+        return {"ok": False, "tool_count": None, "error": format_mcp_exception(exc)}
 
 
 def _load_mcp_servers_from_file() -> dict[str, dict[str, Any]]:
@@ -229,25 +251,104 @@ def load_mcp_connections() -> dict[str, dict[str, Any]]:
     return connections
 
 
-async def aload_mcp_tools(
-    connections: dict[str, dict[str, Any]] | None = None,
-) -> tuple[list[Any], list[str]]:
-    """Connect to configured MCP servers and return (tools, server_names)."""
+def _server_endpoint(conn: dict[str, Any]) -> str:
+    if url := conn.get("url"):
+        return str(url)
+    command = conn.get("command")
+    args = conn.get("args") or []
+    if command:
+        parts = [str(command), *[str(a) for a in args]]
+        return " ".join(parts)
+    return ""
+
+
+async def _aload_one_server(
+    name: str, conn: dict[str, Any]
+) -> tuple[str, list[Any], McpFailedServer | None]:
+    """Load tools for a single MCP server. Never raises."""
     from langchain_mcp_adapters.client import MultiServerMCPClient
 
+    endpoint = _server_endpoint(conn)
+    try:
+        client = MultiServerMCPClient({name: conn}, tool_name_prefix=True)
+        tools = await client.get_tools(server_name=name)
+        return name, list(tools), None
+    except Exception as exc:
+        error = format_mcp_exception(exc)
+        logger.warning(
+            "MCP server connect failed name=%s url=%s exc_type=%s error=%r",
+            name,
+            endpoint,
+            type(exc).__name__,
+            error,
+            exc_info=True,
+        )
+        return name, [], {"name": name, "url": endpoint, "error": error}
+
+
+async def aload_mcp_tools(
+    connections: dict[str, dict[str, Any]] | None = None,
+) -> tuple[list[Any], list[str], list[McpFailedServer]]:
+    """Connect to configured MCP servers independently.
+
+    Returns:
+        ``(tools, ok_servers, failed)`` where ``failed`` is a list of
+        ``{name, url, error}`` for servers that did not load. One bad server
+        does not block the others.
+    """
     resolved = connections if connections is not None else load_mcp_connections()
     if not resolved:
-        return [], []
+        return [], [], []
 
-    client = MultiServerMCPClient(resolved, tool_name_prefix=True)
-    tools = await client.get_tools()
-    return tools, list(resolved.keys())
+    results = await asyncio.gather(
+        *(_aload_one_server(name, conn) for name, conn in resolved.items()),
+        return_exceptions=True,
+    )
+
+    tools: list[Any] = []
+    ok_servers: list[str] = []
+    failed: list[McpFailedServer] = []
+
+    for (name, conn), result in zip(resolved.items(), results, strict=True):
+        if isinstance(result, BaseException):
+            endpoint = _server_endpoint(conn)
+            error = format_mcp_exception(result)
+            logger.warning(
+                "MCP server connect failed name=%s url=%s exc_type=%s error=%r",
+                name,
+                endpoint,
+                type(result).__name__,
+                error,
+                exc_info=result,
+            )
+            failed.append({"name": name, "url": endpoint, "error": error})
+            continue
+        server_name, server_tools, fail = result
+        if fail is not None:
+            failed.append(fail)
+            continue
+        ok_servers.append(server_name)
+        tools.extend(server_tools)
+
+    if failed:
+        logger.info(
+            "MCP partial load: %d ok (%s), %d failed (%s)",
+            len(ok_servers),
+            ", ".join(ok_servers) or "-",
+            len(failed),
+            ", ".join(f["name"] for f in failed),
+        )
+    return tools, ok_servers, failed
 
 
 def load_mcp_tools(
     connections: dict[str, dict[str, Any]] | None = None,
-) -> tuple[list[Any], list[str]]:
-    """Synchronous wrapper around :func:`aload_mcp_tools`."""
+) -> tuple[list[Any], list[str], list[McpFailedServer]]:
+    """Synchronous wrapper around :func:`aload_mcp_tools`.
+
+    Prefer ``await aload_mcp_tools()`` on the app event loop. This sync path is
+    for CLI / offline use only (spawns a nested loop when called from a thread).
+    """
     try:
         asyncio.get_running_loop()
     except RuntimeError:

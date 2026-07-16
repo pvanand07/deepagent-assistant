@@ -775,8 +775,8 @@
           <div class="rounded-2xl border border-border bg-background shadow-sm transition-[border-color,box-shadow] focus-within:border-ring/40 focus-within:shadow-md">
             <!-- Input row: textarea + send -->
             <div class="flex items-end gap-2 px-3 pt-3 pb-1">
-              <textarea ref="inputEl" v-model="draft" rows="1" :disabled="streaming || !session"
-                placeholder="What do you want to build?"
+              <textarea ref="inputEl" v-model="draft" rows="1" :disabled="!session"
+                :placeholder="pendingAutoSend ? 'Queued — will send when this run finishes…' : (streaming ? 'Type a follow-up (Enter to queue)…' : 'What do you want to build?')"
                 @keydown.enter.exact="onComposerEnter"
                 @input="autoGrow"
                 class="max-h-36 min-h-6 flex-1 resize-none border-0 bg-transparent py-0 text-base text-black outline-none placeholder:text-muted-foreground disabled:opacity-60"
@@ -806,7 +806,10 @@
               <pwd-picker ref="pwdPickerEl" :streaming="streaming" :folders="workspaceFolders"
                 :selected="selectedPwd" :close-signal="pwdCloseSignal"></pwd-picker>
 
-              <p v-if="!streaming" class="ml-auto hidden truncate text-[11px] text-muted-foreground/50 sm:block">
+              <p v-if="pendingAutoSend" class="ml-auto truncate text-[11px] text-accent sm:block">
+                Waiting for current run…
+              </p>
+              <p v-else-if="!streaming" class="ml-auto hidden truncate text-[11px] text-muted-foreground/50 sm:block">
                 Enter to send · Shift+Enter for a new line
               </p>
             </div>
@@ -862,6 +865,8 @@
           <p-icon name="file" :size="20" class="text-muted-foreground/40" />
           {{ preview.message }}
         </div>
+        <iframe v-else-if="preview.mode === 'html' && preview.src" :src="preview.src"
+          class="h-full w-full border-0 bg-background" sandbox="allow-scripts" title="Workspace file preview"></iframe>
         <iframe v-else-if="preview.mode === 'html'" :srcdoc="preview.content"
           class="h-full w-full border-0 bg-background" sandbox="allow-scripts" title="Workspace file preview"></iframe>
         <div v-else-if="preview.mode === 'markdown'" class="markdown-body h-full overflow-auto bg-background p-4" v-html="renderMarkdown(preview.content)"></div>

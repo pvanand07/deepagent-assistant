@@ -118,9 +118,12 @@ class RunRecord:
     created_at: float
     updated_at: float
     error: str | None = None
+    cause: str | None = None
+    stage: str | None = None
 
     @classmethod
     def from_row(cls, row: aiosqlite.Row) -> RunRecord:
+        keys = set(row.keys())
         return cls(
             id=row["id"],
             session_id=row["session_id"],
@@ -128,6 +131,8 @@ class RunRecord:
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             error=row["error"],
+            cause=row["cause"] if "cause" in keys else None,
+            stage=row["stage"] if "stage" in keys else None,
         )
 
 
@@ -192,6 +197,8 @@ CREATE TABLE IF NOT EXISTS runs (
     created_at   REAL NOT NULL,
     updated_at   REAL NOT NULL,
     error        TEXT,
+    cause        TEXT,
+    stage        TEXT,
     baseline_ids TEXT,
     rolled_back  INTEGER NOT NULL DEFAULT 0
 );
@@ -224,7 +231,19 @@ class AppDB:
         await self._conn.execute("PRAGMA journal_mode=WAL")
         await self._conn.execute("PRAGMA busy_timeout=5000")
         await self._conn.executescript(_SCHEMA)
+        await self._migrate_runs_columns()
         await self._conn.commit()
+
+    async def _migrate_runs_columns(self) -> None:
+        """Add cause/stage on existing DBs created before structured terminals."""
+        assert self._conn is not None
+        async with self._conn.execute("PRAGMA table_info(runs)") as cur:
+            rows = await cur.fetchall()
+        existing = {row[1] for row in rows}  # name column
+        if "cause" not in existing:
+            await self._conn.execute("ALTER TABLE runs ADD COLUMN cause TEXT")
+        if "stage" not in existing:
+            await self._conn.execute("ALTER TABLE runs ADD COLUMN stage TEXT")
 
     @classmethod
     async def get(cls) -> AppDB:
@@ -332,10 +351,19 @@ class AppDB:
         await self._conn.commit()
         return RunRecord(run_id, session_id, "queued", now, now)
 
-    async def set_run_status(self, run_id: str, status: str, *, error: str | None = None) -> None:
+    async def set_run_status(
+        self,
+        run_id: str,
+        status: str,
+        *,
+        error: str | None = None,
+        cause: str | None = None,
+        stage: str | None = None,
+    ) -> None:
         await self._conn.execute(
-            "UPDATE runs SET status = ?, error = ?, updated_at = ? WHERE id = ?",
-            (status, error, time.time(), run_id),
+            "UPDATE runs SET status = ?, error = ?, cause = ?, stage = ?, "
+            "updated_at = ? WHERE id = ?",
+            (status, error, cause, stage, time.time(), run_id),
         )
         await self._conn.commit()
 
@@ -370,10 +398,15 @@ class AppDB:
 
     async def mark_interrupted_runs(self) -> None:
         """On startup: any run still queued/running belonged to a dead process."""
+        now = time.time()
         await self._conn.execute(
-            "UPDATE runs SET status = 'interrupted', updated_at = ? "
+            "UPDATE runs SET status = 'interrupted', cause = 'interrupted', "
+            "stage = 'startup', "
+            "error = COALESCE(NULLIF(error, ''), "
+            "'[startup] process restarted while run was in flight'), "
+            "updated_at = ? "
             "WHERE status IN ('queued', 'running')",
-            (time.time(),),
+            (now,),
         )
         await self._conn.commit()
 

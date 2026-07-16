@@ -116,6 +116,12 @@ class RunResponse(BaseModel):
     run_id: str
     session_id: str
     status: str
+    error: str | None = None
+    cause: str | None = None
+    stage: str | None = None
+    error: str | None = None
+    cause: str | None = None
+    stage: str | None = None
 
 
 class ActiveRunResponse(BaseModel):

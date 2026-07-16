@@ -9,7 +9,7 @@ from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from deep_agent.sandbox.html_bundle import resolve_workspace_path
 
@@ -87,17 +87,23 @@ async def inspect_html_file(
     parser.feed(dom)
     parser.close()
     report = parser.report(text_limit)
+    browser_errors = [
+        line.strip()
+        for line in stderr.splitlines()
+        if _ERROR_RE.search(line)
+    ][:50]
+    missing_assets = _missing_local_assets(
+        manager.workdir, source, report.get("resource_urls") or []
+    )
+    chromium_ok = execution.response.exit_code in (0, None)
     report.update(
         {
-            "ok": execution.response.exit_code in (0, None),
+            "ok": chromium_ok and not browser_errors and not missing_assets,
             "input_path": _guest_path(manager.workdir, source),
             "viewport": {"width": width, "height": height},
             "rendered_dom_bytes": len(dom.encode("utf-8")),
-            "browser_errors": [
-                line.strip()
-                for line in stderr.splitlines()
-                if _ERROR_RE.search(line)
-            ][:50],
+            "browser_errors": browser_errors,
+            "missing_assets": missing_assets,
             "chromium_exit_code": execution.response.exit_code,
         }
     )
@@ -311,6 +317,44 @@ def _validated_html(workdir: Path, input_path: str) -> Path:
     if not source.is_file():
         raise FileNotFoundError(f"HTML input not found: {input_path}")
     return source
+
+
+def _missing_local_assets(
+    workdir: Path, html_path: Path, resource_urls: object
+) -> list[str]:
+    """Return local assets referenced by HTML that are missing on disk."""
+    if not isinstance(resource_urls, list):
+        return []
+    missing: list[str] = []
+    html_dir = html_path.parent
+    root = workdir.resolve()
+    for raw in resource_urls:
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        parsed = urlsplit(raw)
+        scheme = parsed.scheme.lower()
+        if scheme in {"http", "https", "data", "blob", "mailto", "tel", "javascript"}:
+            continue
+        if parsed.netloc or raw.startswith("#"):
+            continue
+        path_part = unquote(parsed.path) if parsed.path else unquote(raw.split("?", 1)[0])
+        if not path_part or path_part.startswith("#"):
+            continue
+        if path_part.startswith("/workspace/") or path_part == "/workspace":
+            candidate = resolve_workspace_path(workdir, path_part)
+        elif path_part.startswith("/"):
+            # Absolute non-workspace paths are not local workspace assets.
+            continue
+        else:
+            candidate = (html_dir / path_part).resolve()
+            try:
+                candidate.relative_to(root)
+            except ValueError:
+                missing.append(raw)
+                continue
+        if candidate is None or not candidate.is_file():
+            missing.append(raw)
+    return missing[:50]
 
 
 def _viewport(width: int, height: int) -> tuple[int, int]:

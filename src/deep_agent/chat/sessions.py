@@ -33,6 +33,7 @@ class AgentSession:
     model: str
     mcp_servers: list[str] = field(default_factory=list)
     mcp_tool_names: list[str] = field(default_factory=list)
+    mcp_failed: list[dict[str, str]] = field(default_factory=list)
     subagent_names: list[str] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -47,6 +48,15 @@ class AgentSession:
         cleanup = getattr(self.sandbox, "cleanup", None)
         if callable(cleanup):
             cleanup()
+
+
+@dataclass
+class _McpRegistry:
+    """Process-wide MCP tool cache (partial-degrade aware)."""
+
+    tools: list = field(default_factory=list)
+    servers: list[str] = field(default_factory=list)
+    failed: list[dict[str, str]] = field(default_factory=list)
 
 
 class SessionStore:
@@ -68,7 +78,7 @@ class SessionStore:
         self._messages: MessageDB | None = None
         self._checkpoints: CheckpointManager | None = None
         self.runs: RunManager | None = None
-        self._mcp_cache: tuple[list, list[str]] | None = None
+        self._mcp_cache: _McpRegistry | None = None
         self._mcp_lock = asyncio.Lock()
 
     async def startup(self) -> None:
@@ -84,6 +94,7 @@ class SessionStore:
         for session in list(self._sessions.values()):
             session.cleanup()
         self._sessions.clear()
+        await self._close_mcp()
         if self._checkpoints is not None:
             await self._checkpoints.close()
         if self._messages is not None:
@@ -100,6 +111,11 @@ class SessionStore:
     def get_cached(self, session_id: str) -> AgentSession | None:
         return self._sessions.get(session_id)
 
+    async def _close_mcp(self) -> None:
+        """Drop cached MCP tools/registry (best-effort teardown)."""
+        async with self._mcp_lock:
+            self._mcp_cache = None
+
     def invalidate_runtime(self) -> None:
         """Drop cached agents and MCP tools so the next chat rebuilds them.
 
@@ -110,28 +126,31 @@ class SessionStore:
         self._sessions.clear()
         self._mcp_cache = None
 
-    async def _get_mcp(self) -> tuple[list, list[str]]:
-        from deep_agent.integrations.mcp import load_mcp_tools
+    async def _get_mcp(self) -> _McpRegistry:
+        from deep_agent.integrations.mcp import aload_mcp_tools
 
         async with self._mcp_lock:
             if self._mcp_cache is None:
-                tools, servers = await asyncio.to_thread(load_mcp_tools)
-                self._mcp_cache = (tools, servers)
+                tools, servers, failed = await aload_mcp_tools()
+                self._mcp_cache = _McpRegistry(
+                    tools=tools, servers=servers, failed=failed
+                )
             return self._mcp_cache
 
     async def _build_session(self, meta: SessionMeta) -> AgentSession:
         from deep_agent.agent_factory import build_agent
         from deep_agent.sandbox.manager import get_manager
 
-        mcp_tools, mcp_servers = await self._get_mcp()
+        mcp = await self._get_mcp()
         manager = get_manager()
         sandbox = manager.backend if manager.healthy else None
         agent, sandbox, mcp_meta = await asyncio.to_thread(
             build_agent,
             model_name=meta.model,
             with_subagents=meta.with_subagents,
-            mcp_tools=mcp_tools,
-            mcp_servers=mcp_servers,
+            mcp_tools=mcp.tools,
+            mcp_servers=mcp.servers,
+            mcp_failed=mcp.failed,
             checkpointer=self._checkpoints.checkpointer,
             sandbox=sandbox,
             sandbox_available=manager.healthy,
@@ -143,6 +162,7 @@ class SessionStore:
             model=meta.model,
             mcp_servers=mcp_meta["servers"],
             mcp_tool_names=mcp_meta["tool_names"],
+            mcp_failed=list(mcp_meta.get("failed") or mcp.failed),
             subagent_names=mcp_meta.get("subagent_names", []),
             created_at=meta.created_at,
             updated_at=meta.updated_at,
@@ -322,6 +342,7 @@ class SessionStore:
             pwd=pwd,
             user_message_id=user_message_id,
             on_terminal=on_terminal,
+            mcp_failed=session.mcp_failed,
         )
 
     async def reset_thread(self, session_id: str) -> None:

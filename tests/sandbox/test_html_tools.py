@@ -53,18 +53,50 @@ class _FakeManager:
 @pytest.mark.asyncio
 async def test_inspect_html_reports_rendered_structure(tmp_path: Path) -> None:
     (tmp_path / "page.html").write_text("<p>Initial</p>", encoding="utf-8")
+    (tmp_path / "hero.png").write_bytes(b"\x89PNG\r\n")
     manager = _FakeManager(tmp_path)
 
     report = await inspect_html_file(manager, "/workspace/page.html")
 
-    assert report["ok"] is True
+    assert report["ok"] is False
     assert report["title"] == "Rendered title"
     assert report["headings"] == [{"level": "h1", "text": "Primary heading"}]
     assert report["links"] == [{"href": "/details", "text": "Read more"}]
     assert report["missing_image_alt"] == ["hero.png"]
     assert report["forms"] == [{"action": "/send", "method": "post", "inputs": 2}]
     assert "ReferenceError" in report["browser_errors"][0]
+    assert report["missing_assets"] == []
     assert "file:///workspace/page.html" in manager.commands[0]
+
+
+@pytest.mark.asyncio
+async def test_inspect_html_fails_on_missing_local_assets(tmp_path: Path) -> None:
+    (tmp_path / "page.html").write_text(
+        '<link rel="stylesheet" href="missing.css"><script src="gone.js"></script>',
+        encoding="utf-8",
+    )
+    manager = _FakeManager(tmp_path)
+
+    class _CleanManager(_FakeManager):
+        async def exec_command(self, command: str, timeout: int) -> SimpleNamespace:
+            del timeout
+            self.commands.append(command)
+            tokens = shlex.split(command)
+            dom_path = self._host_path(tokens[tokens.index(">") + 1])
+            stderr_path = self._host_path(tokens[tokens.index("2>") + 1])
+            dom_path.write_text(
+                '<html><head><link rel="stylesheet" href="missing.css">'
+                '<script src="gone.js"></script></head><body></body></html>',
+                encoding="utf-8",
+            )
+            stderr_path.write_text("", encoding="utf-8")
+            return SimpleNamespace(response=SimpleNamespace(exit_code=0, output=""))
+
+    manager = _CleanManager(tmp_path)
+    report = await inspect_html_file(manager, "page.html")
+    assert report["ok"] is False
+    assert "missing.css" in report["missing_assets"]
+    assert "gone.js" in report["missing_assets"]
 
 
 @pytest.mark.asyncio

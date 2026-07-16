@@ -233,6 +233,13 @@ _PREVIEWABLE_IMAGE_SUFFIXES = {
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".avif",
 }
 
+# Web assets served under the path-based HTML preview route so relative
+# <link>/<script>/<img> URLs resolve from the entry file's directory.
+_PREVIEW_ASSET_SUFFIXES = _PREVIEWABLE_IMAGE_SUFFIXES | {
+    ".html", ".htm", ".css", ".js", ".mjs", ".cjs", ".json", ".svg",
+    ".map", ".txt", ".woff", ".woff2", ".ttf", ".otf", ".eot",
+}
+
 _SKIP_FOLDER_NAMES = frozenset({
     "__pycache__",
     "node_modules",
@@ -291,6 +298,10 @@ def _media_type_for(path: Path) -> str:
 
 def _is_previewable_image(path: Path) -> bool:
     return path.suffix.lower() in _PREVIEWABLE_IMAGE_SUFFIXES
+
+
+def _is_preview_asset(path: Path) -> bool:
+    return path.suffix.lower() in _PREVIEW_ASSET_SUFFIXES
 
 
 def _validate_pwd(workdir: Path, pwd: str | None) -> str | None:
@@ -558,7 +569,14 @@ async def chat(session_id: str, body: ChatRequest) -> RunResponse:
             status_code=409,
             detail={"message": "A run is already in flight", "active_run_id": e.active_run_id},
         ) from e
-    return RunResponse(run_id=record.id, session_id=session_id, status=record.status)
+    return RunResponse(
+        run_id=record.id,
+        session_id=session_id,
+        status=record.status,
+        error=record.error,
+        cause=record.cause,
+        stage=record.stage,
+    )
 
 
 @app.get("/api/sessions/{session_id}/runs/active", response_model=ActiveRunResponse)
@@ -571,13 +589,23 @@ async def get_active_run(session_id: str) -> ActiveRunResponse:
 @app.get("/api/sessions/{session_id}/runs/{run_id}", response_model=RunResponse)
 async def get_run_status(session_id: str, run_id: str) -> RunResponse:
     run = await _require_run(session_id, run_id)
-    return RunResponse(run_id=run.id, session_id=run.session_id, status=run.status)
+    return RunResponse(
+        run_id=run.id,
+        session_id=run.session_id,
+        status=run.status,
+        error=run.error,
+        cause=run.cause,
+        stage=run.stage,
+    )
 
 
 @app.post("/api/sessions/{session_id}/runs/{run_id}/cancel", response_model=CancelResponse)
 async def cancel_run(session_id: str, run_id: str) -> CancelResponse:
-    """Cancel an in-flight run. The executor rolls the checkpoint back to its
-    pre-turn state and appends a ``cancelled`` event to the run log."""
+    """Cancel an in-flight run.
+
+    Emits a ``cancelled`` terminal event with ``cause=user_cancel``. The user
+    message and any workspace files already written are kept (partial turn).
+    """
     await _require_run(session_id, run_id)
     return CancelResponse(cancelled=await store.runs.cancel(run_id))
 
@@ -733,6 +761,38 @@ async def read_file_raw(
         media_type=_media_type_for(target),
         headers={
             "Content-Disposition": f'inline; filename="{target.name}"',
+            "X-File-Path": rel,
+        },
+    )
+
+
+@app.get("/api/sessions/{session_id}/preview/{file_path:path}")
+async def preview_workspace_asset(session_id: str, file_path: str) -> Response:
+    """Serve an HTML entry (or sibling CSS/JS/image) for iframe preview.
+
+    Path-based URL so relative ``href``/``src`` on ``output/index.html`` resolve
+    to sibling files under the same directory (e.g. ``styles.css``, ``script.js``).
+    """
+    meta = await _require_meta(session_id)
+    workdir = _meta_workdir(meta).resolve()
+    target = _resolve_workspace_path(workdir, file_path)
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    if target.is_dir():
+        raise HTTPException(status_code=400, detail="Path is a directory")
+    if not _is_preview_asset(target):
+        raise HTTPException(status_code=415, detail="File type does not support preview")
+    rel = str(target.relative_to(workdir)).replace("\\", "/")
+    media_type = _media_type_for(target)
+    # Browsers often omit a type for .js; prefer an executable MIME for scripts.
+    if target.suffix.lower() in {".js", ".mjs", ".cjs"} and media_type == "application/octet-stream":
+        media_type = "text/javascript"
+    return Response(
+        content=target.read_bytes(),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{target.name}"',
+            "Cache-Control": "no-cache",
             "X-File-Path": rel,
         },
     )

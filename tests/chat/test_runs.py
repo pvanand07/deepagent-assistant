@@ -8,7 +8,7 @@ import pytest
 from httpx import AsyncClient
 
 from helpers.sse import collect_run_events, parse_sse_block, wait_for_run_status
-from helpers.stubs import slow_turn, success_turn, token_burst_turn
+from helpers.stubs import empty_connect_error_turn, slow_turn, success_turn, token_burst_turn
 
 
 @pytest.mark.asyncio
@@ -181,10 +181,77 @@ async def test_cancel_run_emits_cancelled_and_clears_active(
 
     events = await collect_run_events(client, session_id, run_id, after=0, timeout=10.0)
     assert events[-1]["type"] == "cancelled"
+    assert events[-1]["cause"] == "user_cancel"
+    assert events[-1]["error"]
+    assert events[-1]["stage"]
     await wait_for_run_status(client, session_id, run_id, "cancelled")
+
+    status = await client.get(f"/api/sessions/{session_id}/runs/{run_id}")
+    body = status.json()
+    assert body["status"] == "cancelled"
+    assert body["cause"] == "user_cancel"
+    assert body["error"]
+    assert body["stage"]
+
+    messages = await client.get(f"/api/sessions/{session_id}/messages")
+    assert messages.status_code == 200
+    payloads = messages.json()["messages"]
+    assert any(
+        (m.get("type") == "human" or m.get("role") == "user")
+        and "cancel me" in str(m.get("data", m).get("content", ""))
+        for m in payloads
+    )
 
     session = await client.get(f"/api/sessions/{session_id}")
     assert session.json()["active_run_id"] is None
+
+
+@pytest.mark.asyncio
+@patch("deep_agent.chat.runs.iter_agent_turn_events", new=empty_connect_error_turn)
+async def test_empty_connect_error_persists_structured_terminal(
+    client: AsyncClient,
+    session_id: str,
+) -> None:
+    start = await client.post(
+        f"/api/sessions/{session_id}/chat",
+        json={"message": "search something"},
+    )
+    assert start.status_code == 202
+    run_id = start.json()["run_id"]
+
+    events = await collect_run_events(client, session_id, run_id, timeout=10.0)
+    terminal = events[-1]
+    assert terminal["type"] == "error"
+    assert terminal["error"]
+    assert terminal["error"].strip() != ""
+    assert "ConnectError" in terminal["error"]
+    assert terminal["cause"] == "mcp_connect_failed"
+    assert terminal["stage"] == "tool_execute"
+    assert terminal["run_id"] == run_id
+
+    await wait_for_run_status(client, session_id, run_id, "error")
+    status = await client.get(f"/api/sessions/{session_id}/runs/{run_id}")
+    body = status.json()
+    assert body["status"] == "error"
+    assert body["error"]
+    assert body["error"].strip() != ""
+    assert body["cause"] == "mcp_connect_failed"
+    assert body["stage"] == "tool_execute"
+
+
+def test_persistable_error_never_empty_for_blank_connect_error() -> None:
+    import httpx
+
+    from deep_agent.chat.runs import _persistable_error, classify_run_cause
+
+    exc = httpx.ConnectError("")
+    assert str(exc) == ""
+    msg = _persistable_error(exc, run_id="abcdef12deadbeef", stage="tool_execute")
+    assert msg
+    assert "ConnectError" in msg
+    assert "tool_execute" in msg
+    assert "abcdef12" in msg
+    assert classify_run_cause(exc) == "mcp_connect_failed"
 
 
 @pytest.mark.asyncio

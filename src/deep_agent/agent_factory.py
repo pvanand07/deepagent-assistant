@@ -69,11 +69,12 @@ def ensure_agents_copied(dest: Path | None = None) -> Path:
         for path in _REPO_AGENTS_DIR.glob("*.toml"):
             shutil.copy2(path, target / path.name)
             logger.info("Copied default agent TOML to %s", target / path.name)
-    src_md = _REPO_AGENTS_DIR / "AGENT.md"
-    dest_md = target / "AGENT.md"
-    if src_md.is_file() and not dest_md.is_file():
-        shutil.copy2(src_md, dest_md)
-        logger.info("Copied default AGENT.md to %s", dest_md)
+    for name in ("AGENT.md", "protocol.md"):
+        src_md = _REPO_AGENTS_DIR / name
+        dest_md = target / name
+        if src_md.is_file() and not dest_md.is_file():
+            shutil.copy2(src_md, dest_md)
+            logger.info("Copied default %s to %s", name, dest_md)
     return target
 
 
@@ -157,40 +158,49 @@ Routing:
   knowledge: handle yourself.
 - Research tasks: ALWAYS delegate. A task is research when the user asks for
   research, or when answering requires web information not in the workspace
-  and not in your knowledge. 
+  and not in your knowledge.
 - Every web research task runs the full pipeline in one `task_dir`:
-  `research_agent` -> `output_planner` -> `builder`, ending in an HTML report
-  under `<task_dir>/build/`. Do not stop to ask between stages; only pause if
-  a subagent reports a blocker or the user interrupts.
+  `research_agent` -> `output_planner` -> `builder`, ending under
+  `<task_dir>/output/`. Do not stop to ask between stages; only pause if a
+  subagent reports a blocker (`BUILD_BLOCKED` / `VALIDATION_BLOCKED`) or the
+  user interrupts.
 - Deliverable-only tasks (no research needed): `output_planner` -> `builder`.
 
 Task folders (whenever delegating or producing a multi-file deliverable):
 - Create folder `<short-slug>-<ddmmyy>` before the first handoff or artifact
   write. Slug: lowercase, hyphenated, ~3-6 words from the topic; date DDMMYY.
   Example: `lizmotors-research-060726/`. If taken, append `-2`, `-3`, ...
-- Layout: `brief.md` (research_agent),
-  `spec.md` (output_planner), `output/` (builder).
-- Pass `task_dir` (relative to /workspace, no leading slash) in every handoff;
-  subagents write only under it. Reuse the same `task_dir` for follow-ups on
-  the same task; new folder for a clearly new topic.
+- Layout: `source.md` (research_agent), `spec.md` (output_planner; includes
+  format), `output/` (builder only). No `brief.md`, `output.format`, or `build/`.
+- Pass structured handoff fields per `agents/protocol.md`: `task_dir`,
+  `inputs`, `outputs`, `blocked`. Subagents write only under `task_dir`.
+  Reuse the same `task_dir` for follow-ups on the same task; new folder for a
+  clearly new topic.
 
 Subagent handoffs:
 - `research_agent` — pass the user's request verbatim plus `task_dir`. Do not
-  add assumptions, scope, or deliverable choices.
-- `output_planner` — pass `task_dir`, the user's goals, the output format
-  (`html-report` unless the user specified another format), and
-  `<task_dir>/research/brief.md` when it exists.
-- `builder` — pass `task_dir`; it implements `<task_dir>/output/spec.md`.
-  Do not re-plan or re-research unless it reports a blocker.
+  add assumptions, scope, or deliverable choices. Expect `<task_dir>/source.md`.
+- `output_planner` — pass `task_dir`, the user's goals, preferred format hint
+  (`html-report` unless the user specified another), and
+  `<task_dir>/source.md` when it exists. Expect `<task_dir>/spec.md` with
+  format declared inside the spec.
+- `builder` — pass `task_dir`; it implements `<task_dir>/spec.md` into
+  `<task_dir>/output/`. Do not re-plan or re-research unless it reports a
+  blocker.
 
 After the pipeline completes:
 - Give a concise research summary in your reply.
-- Offer preview buttons for the HTML/Office report (`<task_dir>/output/...`) first,
-  then `<task_dir>/brief.md`.
+- Offer preview buttons for the HTML/Office report under
+  `<task_dir>/output/...` first, then `<task_dir>/source.md`.
+- If a subagent returned `VALIDATION_BLOCKED` or `BUILD_BLOCKED`, say so
+  clearly and do not claim the deliverable is complete.
 
 Validation:
 - When the project has relevant tests, builds, linters, or format checks, run
   the narrowest useful validation first; broaden only when it adds confidence.
+- For HTML deliverables, require builder `inspect_html` (and `bundle_html` when
+  multi-file) with `ok: true`. Treat failed or skipped required checks as
+  incomplete.
 - Report unrelated failures that block validation; do not fix them.
 
 Final response:
@@ -269,6 +279,7 @@ def build_agent(
     with_subagents: bool = True,
     mcp_tools: list | None = None,
     mcp_servers: list[str] | None = None,
+    mcp_failed: list[dict[str, str]] | None = None,
     checkpointer: Any | None = None,
     sandbox: Any | None = None,
     sandbox_available: bool | None = None,
@@ -301,13 +312,19 @@ def build_agent(
 
         sandbox = get_manager().backend
 
+    failed = list(mcp_failed or [])
     if mcp_tools is None:
         try:
-            mcp_tools, resolved_servers = load_mcp_tools()
+            mcp_tools, resolved_servers, failed = load_mcp_tools()
         except Exception as exc:
             raise RuntimeError(f"Failed to load MCP tools: {exc}") from exc
     else:
         resolved_servers = list(mcp_servers or [])
+
+    system_prompt = _system_prompt_with_mcp_notes(
+        DEGRADED_SYSTEM_PROMPT if not sandbox_available else MAIN_SYSTEM_PROMPT,
+        failed,
+    )
 
     if not sandbox_available:
         workdir = default_workdir()
@@ -316,7 +333,7 @@ def build_agent(
         agent = create_deep_agent(
             model=model,
             backend=None,
-            system_prompt=DEGRADED_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             subagents=None,
             tools=list(mcp_tools or []) or None,
             checkpointer=checkpointer,
@@ -324,6 +341,7 @@ def build_agent(
         mcp_meta = {
             "servers": resolved_servers,
             "tool_names": [getattr(t, "name", str(t)) for t in (mcp_tools or [])],
+            "failed": failed,
             "subagent_names": [],
             "sandbox_available": False,
         }
@@ -337,7 +355,7 @@ def build_agent(
     agent = create_deep_agent(
         model=model,
         backend=sandbox,
-        system_prompt=MAIN_SYSTEM_PROMPT,
+        system_prompt=system_prompt,
         subagents=subagents or None,
         tools=extra_tools or None,
         skills=[SANDBOX_SKILLS_SOURCE],
@@ -348,10 +366,32 @@ def build_agent(
     mcp_meta = {
         "servers": resolved_servers,
         "tool_names": [getattr(t, "name", str(t)) for t in (mcp_tools or [])],
+        "failed": failed,
         "subagent_names": [s["name"] for s in subagents],
         "sandbox_available": True,
     }
     return agent, sandbox, mcp_meta
+
+
+def _system_prompt_with_mcp_notes(
+    base: str, failed: list[dict[str, str]] | None
+) -> str:
+    if not failed:
+        return base
+    lines = [
+        "",
+        "MCP availability notes:",
+        "- Some configured MCP servers failed to connect at session start.",
+        "- Do not call tools from unavailable servers; tell the user if research",
+        "  needs those tools and they are missing.",
+    ]
+    for item in failed:
+        name = item.get("name") or "?"
+        url = item.get("url") or ""
+        err = item.get("error") or "unknown error"
+        endpoint = f" ({url})" if url else ""
+        lines.append(f"- Unavailable: `{name}`{endpoint} — {err}")
+    return base.rstrip() + "\n" + "\n".join(lines) + "\n"
 
 
 if __name__ == "__main__":

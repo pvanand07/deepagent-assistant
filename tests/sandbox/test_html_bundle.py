@@ -35,12 +35,26 @@ def test_bundle_inlines_local_css_script_and_assets(tmp_path: Path) -> None:
     bundled = output.read_text(encoding="utf-8")
     encoded = base64.b64encode(b"\x89PNG\r\n").decode("ascii")
     assert result["output_path"] == "/workspace/site/index.single.html"
+    assert result["ok"] is True
     assert result["inlined"] == {"stylesheets": 1, "scripts": 1, "assets": 2}
     assert result["external_dependencies"] == ["https://example.com/remote.css"]
     assert f"data:image/png;base64,{encoded}" in bundled
     assert "window.ready = true;" in bundled
     assert 'href="styles.css"' not in bundled
     assert 'src="app.js"' not in bundled
+
+
+def test_bundle_ok_false_when_local_asset_missing(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text(
+        '<link rel="stylesheet" href="missing.css"><script src="gone.js"></script>',
+        encoding="utf-8",
+    )
+
+    result = bundle_html_file(tmp_path, "index.html")
+
+    assert result["ok"] is False
+    assert any("missing.css" in warning for warning in result["warnings"])
+    assert any("gone.js" in warning for warning in result["warnings"])
 
 
 def test_bundle_refuses_workspace_escape_and_existing_output(tmp_path: Path) -> None:
