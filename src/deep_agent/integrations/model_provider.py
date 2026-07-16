@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1"
-DEFAULT_MODEL = "anthropic/claude-sonnet-4.5"
+DEFAULT_MODEL = "openai/gpt-5.6-luna"
 DEFAULT_OLLAMA_MODEL = "gemma4"
 DEFAULT_PROVIDER = "openrouter"
 

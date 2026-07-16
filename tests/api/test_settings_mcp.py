@@ -10,11 +10,22 @@ from httpx import AsyncClient
 
 from deep_agent.chat.sessions import store
 from deep_agent.settings.store import (
+    DEFAULT_OPENROUTER_MODELS,
+    default_settings,
     load_settings,
     reset_settings_cache,
     temperature_for_model,
     update_from_ui,
 )
+
+
+def test_default_settings_seed_openrouter_models_with_luna_default() -> None:
+    cfg = default_settings()
+    assert cfg["default_model"] == "openai/gpt-5.6-luna"
+    assert cfg["active_platform_id"] == "openrouter"
+    models = cfg["platforms"][0]["models"]
+    assert [m["id"] for m in models] == list(DEFAULT_OPENROUTER_MODELS)
+    assert all(m["enabled"] for m in models)
 
 
 @pytest.mark.asyncio

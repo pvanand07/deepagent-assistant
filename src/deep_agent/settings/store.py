@@ -56,6 +56,15 @@ def secrets_path() -> Path:
 
 DEFAULT_MODEL_TEMPERATURE = 0.3
 
+# Seeded into fresh settings.json (OpenRouter). First entry is the default.
+DEFAULT_OPENROUTER_MODELS: tuple[str, ...] = (
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-sol",
+    "meta/muse-spark-1.1",
+    "deepseek/deepseek-v4-flash",
+    "anthropic/claude-sonnet-5",
+)
+
 
 def _normalize_model_entry(m: Any, *, default_temp: float = DEFAULT_MODEL_TEMPERATURE) -> dict[str, Any] | None:
     if isinstance(m, str) and m.strip():
@@ -112,10 +121,11 @@ def _default_platform(kind: str) -> dict[str, Any]:
         "site_name": "deep-agent",
         "models": [
             {
-                "id": "anthropic/claude-sonnet-4.5",
+                "id": mid,
                 "enabled": True,
                 "temperature": DEFAULT_MODEL_TEMPERATURE,
             }
+            for mid in DEFAULT_OPENROUTER_MODELS
         ],
     }
 
