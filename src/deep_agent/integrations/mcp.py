@@ -3,6 +3,9 @@
 Reads server definitions from ``.mcp.json`` (or ``DEEPAGENT_MCP_CONFIG``),
 with optional env-var substitution in headers/tokens. See Context7 / deepagents
 docs: https://docs.langchain.com/oss/python/deepagents/mcp
+
+Mid-run transport/session failures are caught by a tool interceptor so one
+failed parallel MCP call cannot kill the LangGraph TaskGroup / whole run.
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -26,16 +30,107 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 # failed entry: {"name": str, "url": str, "error": str}
 McpFailedServer = dict[str, str]
 
+# Cap parallel streamable-HTTP sessions per server (session-per-call default).
+_DEFAULT_MCP_MAX_CONCURRENT = 2
+_server_semaphores: dict[str, asyncio.Semaphore] = {}
+
+
+def _max_concurrent_mcp_calls() -> int:
+    raw = os.environ.get("DEEPAGENT_MCP_MAX_CONCURRENT", str(_DEFAULT_MCP_MAX_CONCURRENT))
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return _DEFAULT_MCP_MAX_CONCURRENT
+
+
+def _semaphore_for_server(server_name: str) -> asyncio.Semaphore:
+    sem = _server_semaphores.get(server_name)
+    if sem is None:
+        sem = asyncio.Semaphore(_max_concurrent_mcp_calls())
+        _server_semaphores[server_name] = sem
+    return sem
+
+
+def iter_exception_tree(exc: BaseException, *, max_depth: int = 4):
+    """Yield ``exc`` then nested ``ExceptionGroup`` children (depth-limited)."""
+    yield exc
+    if max_depth <= 0:
+        return
+    nested = getattr(exc, "exceptions", None)
+    if not nested:
+        return
+    for child in nested:
+        if isinstance(child, BaseException):
+            yield from iter_exception_tree(child, max_depth=max_depth - 1)
+
 
 def format_mcp_exception(exc: BaseException) -> str:
-    """Human-readable error; never empty (ConnectError often has blank str())."""
-    msg = str(exc).strip()
-    if msg:
-        return f"{type(exc).__name__}: {msg}"
-    rep = repr(exc).strip()
-    if rep:
-        return f"{type(exc).__name__}: {rep}"
-    return type(exc).__name__
+    """Human-readable error; never empty (ConnectError often has blank str()).
+
+    Unwraps ``ExceptionGroup`` / ``BaseExceptionGroup`` so nested transport
+    failures are visible instead of only ``TaskGroup (1 sub-exception)``.
+    """
+    parts: list[str] = []
+    for node in iter_exception_tree(exc):
+        msg = str(node).strip()
+        if not msg:
+            msg = repr(node).strip()
+        if msg:
+            parts.append(f"{type(node).__name__}: {msg}")
+        else:
+            parts.append(type(node).__name__)
+    # Dedupe while preserving order (group message often repeats in children).
+    seen: set[str] = set()
+    unique: list[str] = []
+    for part in parts:
+        if part in seen:
+            continue
+        seen.add(part)
+        unique.append(part)
+    return " | ".join(unique) if unique else type(exc).__name__
+
+
+def _resilient_mcp_interceptor():
+    """Catch transport/session failures; limit concurrent sessions per server.
+
+    ``handle_tool_errors=True`` only converts MCP ``isError`` results. Session
+    churn (ExceptionGroup / ConnectError / HTTP 404) still raises and kills
+    parallel tool TaskGroups unless intercepted here.
+    """
+    from mcp.types import CallToolResult, TextContent
+
+    async def interceptor(
+        request: Any,
+        handler: Callable[[Any], Awaitable[Any]],
+    ) -> Any:
+        server = getattr(request, "server_name", None) or "unknown"
+        tool = getattr(request, "name", None) or "tool"
+        try:
+            async with _semaphore_for_server(server):
+                return await handler(request)
+        except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException as exc:
+            detail = format_mcp_exception(exc)
+            logger.warning(
+                "MCP tool call failed name=%s server=%s exc_type=%s error=%r",
+                tool,
+                server,
+                type(exc).__name__,
+                detail,
+                exc_info=True,
+            )
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=f"MCP tool failed ({server}/{tool}): {detail}",
+                    )
+                ],
+                isError=True,
+            )
+
+    return interceptor
 
 
 def _expand_env(value: str) -> str:
@@ -270,7 +365,11 @@ async def _aload_one_server(
 
     endpoint = _server_endpoint(conn)
     try:
-        client = MultiServerMCPClient({name: conn}, tool_name_prefix=True)
+        client = MultiServerMCPClient(
+            {name: conn},
+            tool_name_prefix=True,
+            tool_interceptors=[_resilient_mcp_interceptor()],
+        )
         tools = await client.get_tools(server_name=name)
         return name, list(tools), None
     except Exception as exc:

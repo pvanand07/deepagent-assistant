@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -38,6 +39,8 @@ from deep_agent.chat.streaming import (
     iter_agent_turn_events,
 )
 from deep_agent.sandbox.manager import current_run_id, current_session_id
+
+logger = logging.getLogger(__name__)
 
 # Live-only events: fanned out to connected subscribers, never persisted.
 _EPHEMERAL_TYPES = {"usage_estimate"}
@@ -63,23 +66,30 @@ def _persistable_error(
 ) -> str:
     """Never-empty error string with type, stage, and run id."""
     if exc is not None:
-        msg = str(exc).strip() or repr(exc).strip() or type(exc).__name__
-        detail = f"{type(exc).__name__}: {msg}"
+        from deep_agent.integrations.mcp import format_mcp_exception
+
+        detail = format_mcp_exception(exc)
     else:
         detail = (fallback or "").strip() or "unknown error"
     rid = (run_id or "")[:8] or "?"
     return f"[{stage}] {detail} (run={rid})"
 
 
-def classify_run_cause(exc: BaseException) -> str:
-    """Map an exception to a structured terminal cause."""
+def _classify_one_exception(exc: BaseException) -> str | None:
+    """Return a structured cause for a single exception node, or None."""
     name = type(exc).__name__
     module = (type(exc).__module__ or "").lower()
     text = f"{module}.{name}".lower()
     msg = (str(exc) or repr(exc) or "").lower()
     combined = f"{text} {msg}"
 
-    if "connect" in name.lower() or "mcp" in combined or "streamable_http" in combined:
+    if (
+        "connect" in name.lower()
+        or "mcp" in combined
+        or "streamable_http" in combined
+        or "httpx" in module
+        or "httpcore" in module
+    ):
         return CAUSE_MCP_CONNECT
     if "sandbox" in combined or "microsandbox" in combined:
         return CAUSE_SANDBOX
@@ -95,6 +105,21 @@ def classify_run_cause(exc: BaseException) -> str:
         or "apikey" in combined.replace("_", "")
     ):
         return CAUSE_MODEL
+    return None
+
+
+def classify_run_cause(exc: BaseException) -> str:
+    """Map an exception to a structured terminal cause.
+
+    Walks ``ExceptionGroup`` children so a nested MCP/httpx failure is not
+    classified as a generic ``error``.
+    """
+    from deep_agent.integrations.mcp import iter_exception_tree
+
+    for node in iter_exception_tree(exc):
+        cause = _classify_one_exception(node)
+        if cause is not None:
+            return cause
     return CAUSE_ERROR
 
 
@@ -414,10 +439,22 @@ class RunManager:
                 )
             except Exception:
                 pass
-        except Exception as exc:  # noqa: BLE001 -- terminal event must always be emitted
+        except BaseException as exc:
+            # ExceptionGroup (parallel tool TaskGroup failures) is BaseException,
+            # not Exception — must catch it here so the run gets a terminal event.
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
             status = "error"
             cause = classify_run_cause(exc)
             error = _persistable_error(exc, run_id=handle.run_id, stage=stage)
+            logger.error(
+                "Run failed run_id=%s stage=%s cause=%s error=%s",
+                handle.run_id,
+                stage,
+                cause,
+                error,
+                exc_info=exc,
+            )
             try:
                 await self._emit(
                     handle,

@@ -254,6 +254,19 @@ def test_persistable_error_never_empty_for_blank_connect_error() -> None:
     assert classify_run_cause(exc) == "mcp_connect_failed"
 
 
+def test_persistable_error_and_cause_unwrap_exception_group() -> None:
+    import httpx
+
+    from deep_agent.chat.runs import _persistable_error, classify_run_cause
+
+    nested = httpx.ConnectError("")
+    group = ExceptionGroup("unhandled errors in a TaskGroup", [nested])
+    msg = _persistable_error(group, run_id="f5294f7dd5b045c8", stage="tool_execute")
+    assert "ExceptionGroup" in msg
+    assert "ConnectError" in msg
+    assert classify_run_cause(group) == "mcp_connect_failed"
+
+
 @pytest.mark.asyncio
 @patch("deep_agent.chat.runs.iter_agent_turn_events", new=slow_turn)
 async def test_chat_stop_cancels_active_run(
