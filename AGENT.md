@@ -12,7 +12,7 @@ Agent-facing notes. Prefer `wiki/` and code for depth.
 
 - Shared microsandbox microVM (`deepagent`), not Docker Compose/bubblewrap.
 - Default guest image: `pvanand09/deepagent-workspace:latest` (`DEFAULT_IMAGE`). Override with `sandbox.image` in settings.
-- Guest image includes `officecli` (+ libicu) and Chromium (+ fonts-liberation) for `.docx` / `.xlsx` / `.pptx` and `view screenshot`. Skill: `skills/officecli/`.
+- Guest image includes `officecli` (+ libicu), Chromium (+ fonts-liberation), Node.js/npm, and the globally installed `chrome-devtools-axi` / `chrome-devtools-mcp` tools. Skills: `skills/officecli/` and `skills/chrome-devtools-axi/`.
 - Host workdir at `/workspace` (host file I/O; guest shell). Exec is serialized across runs.
 - Sandbox setting changes (image, memory, CPUs, network, DNS, idle) recreate the VM — restart API or save Settings; verify `GET /api/config` → `sandbox_status.image`.
 - Degraded virt: chat/MCP only; `POST /api/sandbox/retry`. Stub (`DEEPAGENT_SANDBOX_BACKEND=stub`) is for tests only.

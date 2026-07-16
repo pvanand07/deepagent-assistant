@@ -12,6 +12,12 @@
       "sourceType": "github",
       "skillPath": "SKILL.md",
       "note": "Focused Deep Agent variant under skills/officecli/; binary baked into Dockerfile.sandbox"
+    },
+    "chrome-devtools-axi": {
+      "source": "kunchenguid/chrome-devtools-axi",
+      "sourceType": "github",
+      "skillPath": "skills/chrome-devtools-axi/SKILL.md",
+      "computedHash": "8e5652c70d0fd4c68d7216a4dcee9542b2f8932bc831330c1a613070839cf3e0"
     }
   }
 }

@@ -12,6 +12,9 @@
 
 FROM python:3.12-slim
 
+ARG NODE_VERSION=22.14.0
+ARG TARGETARCH
+
 # Chromium (~350–450 MiB installed) powers officecli `view screenshot` / Gate 3
 # visual QA. fonts-liberation keeps slide text readable in PNGs.
 RUN apt-get update \
@@ -25,12 +28,37 @@ RUN apt-get update \
         libicu-dev \
         chromium \
         fonts-liberation \
+        procps \
+        xz-utils \
     && rm -rf /var/lib/apt/lists/* \
     && chromium --version
 
+# chrome-devtools-axi and chrome-devtools-mcp require Node.js 20+.
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      amd64) NODE_ARCH=x64 ;; \
+      arm64) NODE_ARCH=arm64 ;; \
+      *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL --max-time 300 \
+      "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
+      -o /tmp/node.tar.xz; \
+    tar -xJf /tmp/node.tar.xz --strip-components=1 -C /usr/local; \
+    rm /tmp/node.tar.xz; \
+    node --version; \
+    npm --version; \
+    npx --version
+
+# Install globally so the skill can use the CLI directly and the bridge can
+# resolve chrome-devtools-mcp without a runtime npm download.
+RUN npm install --global --no-fund --no-audit \
+      chrome-devtools-axi@0.1.26 \
+      chrome-devtools-mcp@latest \
+    && npm cache clean --force \
+    && chrome-devtools-axi --version
+
 # officecli is a self-contained .NET binary (needs libicu). Install to
 # /usr/local/bin — do not use ~/.local/bin (HOME=/workspace is bind-mounted).
-ARG TARGETARCH
 RUN set -eux; \
     case "${TARGETARCH}" in \
       amd64) ASSET=officecli-linux-x64 ;; \

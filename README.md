@@ -153,6 +153,13 @@ docker save deepagent-workspace:dev | msb load --tag deepagent-workspace:dev
 export DEEPAGENT_SANDBOX_IMAGE=deepagent-workspace:dev
 ```
 
+The custom guest image also includes Chromium, Node.js/npm, and the
+`chrome-devtools-axi` browser automation CLI with its `chrome-devtools-mcp`
+bridge dependency. The bundled Agent Skill is copied to
+`/workspace/skills/chrome-devtools-axi/` on sandbox startup. Browser access to
+external sites still requires enabling sandbox network access; the default
+remains network-disabled.
+
 ## Exec output
 
 - Tool results include the **last 100 lines** of stdout/stderr
