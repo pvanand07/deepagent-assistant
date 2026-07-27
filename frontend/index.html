@@ -2,20 +2,24 @@
 <html lang="en" class="h-full antialiased">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Deep Agent</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.prod.js"></script>
+  <script src="/vendor/vue.global.prod.js"></script>
+  <!-- Tailwind v4 browser build: full offline vendoring of the JIT CDN is not
+       practical (it compiles CSS in-browser from the stylesheet below). Kept
+       on jsDelivr; other chrome assets are local under /vendor/. -->
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/styles/github.min.css" />
-  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js"></script>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
-
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/purify.min.js"></script>
+  <link rel="stylesheet" href="/vendor/highlight-github.min.css" />
+  <script src="/vendor/highlight.min.js"></script>
+  <link rel="stylesheet" href="/vendor/fonts/geist.css" />
+  <!-- Plain CSS (tokens + components). The browser ignores @theme here, so keep
+       Tailwind theme mapping in the text/tailwindcss block below. -->
+  <link rel="stylesheet" href="/styles.css" />
+  <!-- Tailwind v4 browser: only this block is JIT-compiled. External
+       type="text/tailwindcss" links are not reliably applied in WebView. -->
   <style type="text/tailwindcss">
     @theme {
       --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
@@ -34,140 +38,474 @@
 
       --radius-lg: 0.625rem;
     }
-
-    :root {
-      --background: oklch(1 0 0);
-      --foreground: oklch(0.16 0.01 260);
-      --muted: oklch(0.965 0.003 260);
-      --muted-foreground: oklch(0.5 0.015 260);
-      --accent: oklch(0.5 0.11 258);          /* calm working-blue: links, active, progress */
-      --accent-soft: oklch(0.95 0.025 258);
-      --destructive: oklch(0.55 0.2 27);
-      --destructive-soft: oklch(0.96 0.02 27);
-      --border: oklch(0.92 0.004 260);
-      --ring: oklch(0.5 0.11 258);
-    }
-
-    [v-cloak] { display: none; }
-
-    /* Keyboard focus is always visible, never on click. */
-    :focus-visible {
-      outline: 2px solid var(--ring);
-      outline-offset: 2px;
-      border-radius: 4px;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-    }
-
-    @keyframes bounce {
-      0%, 100% { transform: translateY(-25%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
-      50% { transform: translateY(0); animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }
-    }
-    .animate-bounce { animation: bounce 1s infinite; }
-
-    .markdown-body {
-      max-width: none;
-      font-size: 0.875rem;
-      line-height: 1.625;
-      color: var(--foreground);
-      word-wrap: break-word;
-    }
-    .markdown-body > :first-child { margin-top: 0; }
-    .markdown-body > :last-child { margin-bottom: 0; }
-    .markdown-body h1, .markdown-body h2, .markdown-body h3,
-    .markdown-body h4, .markdown-body h5, .markdown-body h6 {
-      margin-top: 1.25em; margin-bottom: 0.5em; font-weight: 600; line-height: 1.3;
-    }
-    .markdown-body h1 { font-size: 1.5em; }
-    .markdown-body h2 { font-size: 1.25em; border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }
-    .markdown-body h3 { font-size: 1.125em; }
-    .markdown-body p, .markdown-body ul, .markdown-body ol,
-    .markdown-body blockquote, .markdown-body pre, .markdown-body table {
-      margin-top: 0.75em; margin-bottom: 0.75em;
-    }
-    .markdown-body ul, .markdown-body ol { padding-left: 1.5em; }
-    .markdown-body ul { list-style-type: disc; }
-    .markdown-body ol { list-style-type: decimal; }
-    .markdown-body li + li { margin-top: 0.25em; }
-    .markdown-body blockquote { border-left: 3px solid var(--border); padding-left: 1em; color: var(--muted-foreground); }
-    .markdown-body code {
-      font-family: var(--font-mono); font-size: 0.85em;
-      background: var(--muted); border-radius: 0.25rem; padding: 0.15em 0.35em;
-    }
-    .markdown-body pre {
-      overflow-x: auto; border-radius: 0.5rem; border: 1px solid var(--border);
-      background: var(--muted); padding: 0.75rem 1rem;
-    }
-    .markdown-body pre code { background: transparent; padding: 0; font-size: 0.8em; line-height: 1.5; }
-    .markdown-body table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
-    .markdown-body th, .markdown-body td { border: 1px solid var(--border); padding: 0.4em 0.65em; text-align: left; }
-    .markdown-body th { background: var(--muted); font-weight: 600; }
-    .markdown-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-    .markdown-body hr { border: 0; border-top: 1px solid var(--border); margin: 1.25em 0; }
-    .markdown-body img { max-width: 100%; height: auto; border-radius: 0.375rem; }
-    .markdown-body .preview-action-btn {
-      display: inline-flex; align-items: center; gap: 0.375rem;
-      margin: 0.5em 0.25em 0.5em 0; padding: 0.375rem 0.75rem;
-      font: inherit; font-size: 0.8125rem; font-weight: 500; line-height: 1.25;
-      color: var(--foreground); background: var(--muted);
-      border: 1px solid var(--border); border-radius: 0.5rem; cursor: pointer;
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
-    }
-    .markdown-body .preview-action-btn:hover {
-      background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
-    }
-
-    .preview-code pre { margin: 0; height: 100%; overflow: auto; padding: 1rem; font-size: 0.75rem; line-height: 1.25rem; }
-    .preview-code code { font-family: var(--font-mono); }
-
-    .scrollbar-hide {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
-    }
-    .scrollbar-hide::-webkit-scrollbar {
-      display: none;
-    }
-
-    .liquid-glass {
-      pointer-events: none;
-      background: rgba(255, 255, 255, 0.18);
-      backdrop-filter: blur(40px) saturate(2);
-      -webkit-backdrop-filter: blur(40px) saturate(2);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.45);
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.55),
-        0 12px 32px -18px rgba(15, 23, 42, 0.14);
-    }
-
-    .liquid-glass > * {
-      position: relative;
-      z-index: 1;
-      pointer-events: auto;
-    }
-
-    .liquid-glass::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      z-index: 0;
-      pointer-events: none;
-      background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.14) 0%,
-        transparent 70%
-      );
-    }
   </style>
+
 </head>
 <body class="h-full bg-background text-foreground font-sans">
 
 <div id="app" v-cloak class="h-full">
-  <main class="flex h-screen bg-background">
+  <main class="app-shell relative flex h-screen overflow-hidden bg-background">
+
+    <!-- First-time setup -->
+    <div v-if="setupRequired" class="absolute inset-0 z-[70] flex flex-col bg-background">
+      <div class="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-10">
+        <p class="text-2xl font-semibold tracking-tight text-foreground">Welcome to Deep Agent</p>
+        <p class="mt-2 text-sm leading-6 text-muted-foreground">
+          Choose a model provider to get started. You can change this anytime in Settings.
+        </p>
+        <div class="mt-8 flex flex-col gap-4">
+          <label class="flex flex-col gap-1.5 text-xs">
+            <span class="font-medium text-foreground">Provider</span>
+            <select v-model="setupForm.kind" @change="onSetupProviderChange"
+              class="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring">
+              <option value="openrouter">OpenRouter</option>
+              <option value="ollama">Ollama (local)</option>
+              <option value="custom">Custom (OpenAI-compatible)</option>
+            </select>
+          </label>
+          <label v-if="setupForm.kind !== 'openrouter'" class="flex flex-col gap-1.5 text-xs">
+            <span class="font-medium text-foreground">API base URL</span>
+            <input v-model="setupForm.baseUrl" type="text"
+              class="rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring"
+              :placeholder="setupForm.kind === 'ollama' ? 'http://127.0.0.1:11434/v1' : 'https://api.example.com/v1'" />
+          </label>
+          <label v-if="setupForm.kind !== 'ollama'" class="flex flex-col gap-1.5 text-xs">
+            <span class="font-medium text-foreground">API key</span>
+            <input v-model="setupForm.apiKey" type="password" autocomplete="off"
+              class="rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring"
+              :placeholder="setupForm.kind === 'openrouter' ? 'sk-or-…' : 'sk-…'" />
+          </label>
+          <div class="flex flex-col gap-1.5 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-medium text-foreground">Model</span>
+              <button type="button" @click="loadSetupCatalog" :disabled="setupCatalogLoading"
+                class="text-accent hover:underline disabled:opacity-50">
+                {{ setupCatalogLoading ? 'Loading…' : 'List models' }}
+              </button>
+            </div>
+            <input v-model="setupForm.model" type="text" list="setup-model-list"
+              class="rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring"
+              :placeholder="setupForm.kind === 'ollama' ? 'llama3.2' : 'anthropic/claude-sonnet-4.5'" />
+            <datalist id="setup-model-list">
+              <option v-for="m in setupCatalog" :key="m.id" :value="m.id">{{ m.name || m.id }}</option>
+            </datalist>
+            <p v-if="setupCatalogError" class="text-destructive">{{ setupCatalogError }}</p>
+          </div>
+        </div>
+        <p v-if="setupError" class="mt-4 text-xs text-destructive">{{ setupError }}</p>
+        <button type="button" @click="finishSetup" :disabled="setupSaving"
+          class="mt-8 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-background disabled:opacity-50">
+          {{ setupSaving ? 'Saving…' : 'Continue' }}
+        </button>
+        <p class="mt-4 text-[11px] leading-5 text-muted-foreground">
+          Stored in <span class="font-mono">settings.json</span> under your data directory — not <span class="font-mono">.env</span>.
+        </p>
+      </div>
+    </div>
+
+    <!-- Settings panel (#settings) -->
+    <div v-if="!setupRequired && route === 'settings'" class="absolute inset-0 z-[60] flex flex-col bg-background">
+      <div class="flex h-12 shrink-0 items-center justify-between border-b border-border px-4 bg-background">
+        <div class="flex items-center gap-2">
+          <button type="button" @click="closeSettings" :class="iconBtn" title="Back" aria-label="Back to chat">
+            <p-icon name="x" :size="14" />
+          </button>
+          <p class="text-sm font-semibold">Settings</p>
+        </div>
+      </div>
+      <div class="settings-shell relative flex-1 min-h-0">
+        <aside class="settings-nav">
+          <div class="settings-nav-label">AI Core</div>
+          <button type="button" class="settings-nav-item" :class="{ active: settingsPanel === 'models' }" @click="settingsPanel = 'models'">
+            <p-icon name="cpu" :size="14"></p-icon><span>Models</span>
+          </button>
+          <button type="button" class="settings-nav-item" :class="{ active: settingsPanel === 'tools' }" @click="settingsPanel = 'tools'; loadMcp().catch(() => {})">
+            <p-icon name="terminal" :size="14"></p-icon><span>Tools</span>
+          </button>
+          <div class="settings-nav-label">Runtime</div>
+          <button type="button" class="settings-nav-item" :class="{ active: settingsPanel === 'sandbox' }" @click="settingsPanel = 'sandbox'">
+            <p-icon name="cube" :size="14"></p-icon><span>Sandbox</span>
+          </button>
+          <div class="settings-nav-label" style="margin-top:auto">Other</div>
+          <button type="button" class="settings-nav-item" :class="{ active: settingsPanel === 'about' }" @click="settingsPanel = 'about'">
+            <p-icon name="info" :size="14"></p-icon><span>About</span>
+          </button>
+        </aside>
+        <main class="settings-main">
+          <!-- Models -->
+          <section v-show="settingsPanel === 'models'" class="settings-panel">
+            <h1 class="settings-panel-title">Models</h1>
+            <p class="settings-panel-desc">
+              Configure LLM providers and API keys. Platforms and models are stored in
+              <span class="font-mono text-xs">settings.json</span>; keys go in
+              <span class="font-mono text-xs">secrets.json</span>.
+            </p>
+            <div class="mb-3 flex flex-wrap gap-2">
+              <button type="button" class="settings-btn-secondary" @click="openAddPlatform('openrouter')"
+                :disabled="settingsConfig.platforms.some(p => p.kind === 'openrouter')">Add OpenRouter</button>
+              <button type="button" class="settings-btn-secondary" @click="openAddPlatform('ollama')"
+                :disabled="settingsConfig.platforms.some(p => p.kind === 'ollama')">Add Ollama</button>
+              <button type="button" class="settings-btn-secondary" @click="openAddPlatform('custom')">Add Custom</button>
+            </div>
+            <div v-for="plat in settingsConfig.platforms" :key="plat.id" class="settings-card">
+              <div class="settings-provider-head" @click="togglePlatformCollapsed(plat.id)">
+                <span class="text-muted-foreground text-xs w-3">{{ collapsedPlatforms[plat.id] ? '▸' : '▾' }}</span>
+                <span class="settings-provider-name">{{ plat.name || plat.id }}</span>
+                <div class="flex items-center gap-1" @click.stop>
+                  <label class="settings-toggle" title="Enable platform">
+                    <input type="checkbox" :checked="plat.enabled" @change="togglePlatformEnabled(plat, $event.target.checked)" />
+                    <span class="settings-toggle-track"></span>
+                  </label>
+                  <button type="button" class="settings-icon-btn" title="Add model" @click="openAddModel(plat)">+</button>
+                  <button type="button" class="settings-icon-btn" title="Edit platform" @click="openEditPlatform(plat)">✎</button>
+                  <button type="button" class="settings-icon-btn danger" title="Remove platform" @click="removePlatform(plat)">−</button>
+                </div>
+              </div>
+              <div v-show="!collapsedPlatforms[plat.id]">
+                <div v-for="mod in (plat.models || [])" :key="mod.id" class="settings-model-row">
+                  <span class="settings-model-id">{{ mod.id }}</span>
+                  <span v-if="settingsConfig.default_model === mod.id" class="settings-badge-default">Default</span>
+                  <button type="button" class="settings-icon-btn" :class="{ 'star-on': settingsConfig.default_model === mod.id }"
+                    title="Set as default" @click="setDefaultModel(plat, mod)">★</button>
+                  <label class="settings-toggle" title="Enable model">
+                    <input type="checkbox" :checked="mod.enabled !== false" @change="toggleModelEnabled(plat, mod, $event.target.checked)" />
+                    <span class="settings-toggle-track"></span>
+                  </label>
+                  <button type="button" class="settings-icon-btn" title="Test" @click="testModel(plat, mod)">⚡</button>
+                  <button type="button" class="settings-icon-btn" title="Model settings" @click="openModelSettings(plat, mod)">⚙</button>
+                  <button type="button" class="settings-icon-btn danger" title="Remove" @click="removeModel(plat, mod)">🗑</button>
+                </div>
+                <p v-if="!(plat.models || []).length" class="px-9 py-3 text-xs text-muted-foreground">No models yet — click + to add.</p>
+              </div>
+            </div>
+            <p v-if="settingsMessage" class="mt-3 text-xs" :class="settingsError ? 'text-destructive' : 'text-accent'">{{ settingsMessage }}</p>
+          </section>
+
+          <!-- Tools -->
+          <section v-show="settingsPanel === 'tools'" class="settings-panel">
+            <h1 class="settings-panel-title">Tools</h1>
+            <p class="settings-panel-desc">
+              Configure MCP servers. Stored in <span class="font-mono text-xs">{{ mcpMeta.path || '.mcp.json' }}</span>.
+            </p>
+            <div class="settings-card">
+              <div class="flex items-center justify-between gap-2 px-4 py-3 border-b border-border">
+                <span class="text-sm font-semibold">MCP Tools Configuration</span>
+                <div class="flex gap-2">
+                  <button type="button" class="settings-btn-secondary" @click="openImportMcp">Import JSON</button>
+                  <button type="button" class="settings-btn-primary" @click="openAddMcp">Add MCP</button>
+                </div>
+              </div>
+              <div v-if="!Object.keys(mcpServers).length" class="px-4 py-6 text-xs text-muted-foreground">No MCP servers configured.</div>
+              <div v-for="(entry, name) in mcpServers" :key="name" class="settings-list-row">
+                <div class="flex items-center min-w-0 flex-1">
+                  <span class="truncate">{{ name }}</span>
+                  <span class="settings-mcp-badge" :class="{ http: !!entry.url }">
+                    {{ entry.command ? 'stdio' : (entry.type || entry.transport || 'http') }}{{ mcpHasAuth(entry) ? ' · auth' : '' }}
+                  </span>
+                </div>
+                <span v-if="mcpStatus[name] === 'ok'" class="settings-status-ok" title="Connected">✓</span>
+                <span v-else-if="mcpStatus[name] === 'err'" class="settings-status-err" title="Failed">✗</span>
+                <span v-else class="settings-status-unk">—</span>
+                <button type="button" class="settings-icon-btn" title="Edit" @click="openEditMcp(name, entry)">✎</button>
+                <button type="button" class="settings-icon-btn" title="Refresh" @click="testMcp(name)">↻</button>
+                <button type="button" class="settings-icon-btn danger" title="Remove" @click="removeMcp(name)">🗑</button>
+              </div>
+            </div>
+            <div class="settings-card">
+              <div class="px-4 py-3 text-sm font-semibold">Built-in tools</div>
+              <div class="settings-switch-row">
+                <div>
+                  <div class="text-[13.5px] font-medium">Sandbox file tools</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">read / write / edit / glob / grep inside the VM</div>
+                </div>
+                <label class="settings-toggle"><input type="checkbox" checked disabled /><span class="settings-toggle-track"></span></label>
+              </div>
+              <div class="settings-switch-row" style="border-bottom:none">
+                <div>
+                  <div class="text-[13.5px] font-medium">Shell execution</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Run commands via <span class="font-mono text-[11px]">vm_exec</span></div>
+                </div>
+                <label class="settings-toggle"><input type="checkbox" checked disabled /><span class="settings-toggle-track"></span></label>
+              </div>
+            </div>
+          </section>
+
+          <!-- Sandbox -->
+          <section v-show="settingsPanel === 'sandbox'" class="settings-panel">
+            <div class="flex items-start justify-between gap-3 mb-2">
+              <h1 class="settings-panel-title" style="margin:0">Sandbox</h1>
+              <button type="button" class="settings-btn-primary" :disabled="settingsSaving" @click="saveSandbox">
+                {{ settingsSaving ? 'Saving…' : 'Save' }}
+              </button>
+            </div>
+            <p class="settings-panel-desc">Resource limits and network policy. Changing these recreates the sandbox on next use.</p>
+            <div class="settings-card">
+              <div class="settings-switch-row">
+                <div>
+                  <div class="text-[13.5px] font-medium">Network access</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Allow outbound HTTP/HTTPS from the sandbox</div>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" v-model="sandboxForm.network" />
+                  <span class="settings-toggle-track"></span>
+                </label>
+              </div>
+              <div class="settings-form-grid">
+                <div class="settings-field">
+                  <label>Memory (MiB)</label>
+                  <input type="number" min="256" step="128" v-model="sandboxForm.memory_mib" />
+                </div>
+                <div class="settings-field">
+                  <label>CPUs</label>
+                  <input type="number" min="1" step="1" v-model="sandboxForm.cpus" />
+                </div>
+                <div class="settings-field span-2">
+                  <label>DNS nameservers</label>
+                  <input type="text" v-model="sandboxForm.dns_nameservers" :disabled="!sandboxForm.network" />
+                </div>
+                <div class="settings-field">
+                  <label>Exec timeout (s)</label>
+                  <input type="number" min="0" v-model="sandboxForm.exec_timeout" />
+                </div>
+                <div class="settings-field">
+                  <label>Idle timeout (s)</label>
+                  <input type="number" min="0" v-model="sandboxForm.idle_timeout" />
+                </div>
+              </div>
+            </div>
+            <p v-if="settingsMessage && settingsPanel === 'sandbox'" class="mt-3 text-xs" :class="settingsError ? 'text-destructive' : 'text-accent'">{{ settingsMessage }}</p>
+          </section>
+
+          <!-- About -->
+          <section v-show="settingsPanel === 'about'" class="settings-panel">
+            <h1 class="settings-panel-title">About</h1>
+            <p class="settings-panel-desc">App identity, paths, and version info.</p>
+            <div class="mb-6">
+              <div class="text-lg font-semibold">Deep Agent</div>
+              <div class="text-sm text-muted-foreground mt-1">Version <strong class="text-foreground font-medium">{{ appVersion }}</strong> · Tauri desktop + Python sidecar</div>
+              <div class="flex flex-wrap gap-2 mt-3">
+                <button type="button" class="settings-btn-secondary" :disabled="updateChecking || updateInstalling" @click="checkForUpdates(true)">{{ updateChecking ? 'Checking…' : 'Check for updates' }}</button>
+              </div>
+            </div>
+            <div class="settings-card">
+              <div class="px-4 py-3 text-sm font-semibold border-b border-border">Paths</div>
+              <div class="px-4 py-3 border-b border-border">
+                <div class="text-sm font-medium">Data directory</div>
+                <div class="settings-path-box">{{ settingsMeta.data_dir || '—' }}</div>
+              </div>
+              <div class="px-4 py-3 border-b border-border">
+                <div class="text-sm font-medium">Workspace</div>
+                <div class="settings-path-box">{{ settingsMeta.workdir || '—' }}</div>
+              </div>
+              <div class="px-4 py-3">
+                <div class="text-sm font-medium">Settings file</div>
+                <div class="settings-path-box">{{ settingsMeta.settings_path || '—' }}</div>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <!-- Modals -->
+        <div class="settings-overlay" :class="{ open: modal === 'edit-platform' }" @click.self="closeModal">
+          <div class="settings-modal wide">
+            <div class="settings-modal-head">
+              <h2 class="text-base font-semibold">{{ platformDraft.isNew ? 'Add' : 'Edit' }} Model Platform</h2>
+              <button type="button" class="settings-icon-btn" @click="closeModal">×</button>
+            </div>
+            <div class="settings-modal-body">
+              <div class="settings-field">
+                <label>Name *</label>
+                <input type="text" v-model="platformDraft.name" />
+              </div>
+              <div class="settings-field">
+                <label>Kind</label>
+                <select v-model="platformDraft.kind" :disabled="!platformDraft.isNew">
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="ollama">Ollama</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              <div class="settings-field" v-if="platformDraft.kind !== 'openrouter'">
+                <label>API Endpoint *</label>
+                <input type="text" v-model="platformDraft.base_url" class="font-mono text-xs" />
+              </div>
+              <div class="settings-field" v-if="platformDraft.kind !== 'ollama'">
+                <label>API Key {{ platformDraft.kind === 'ollama' ? '' : '*' }}</label>
+                <input type="password" v-model="platformDraft.api_key" autocomplete="off"
+                  :placeholder="platformDraft.api_key_set ? '•••• (leave blank to keep)' : ''" />
+              </div>
+              <template v-if="platformDraft.kind === 'openrouter'">
+                <div class="settings-field">
+                  <label>Site URL</label>
+                  <input type="text" v-model="platformDraft.site_url" class="font-mono text-xs" />
+                </div>
+                <div class="settings-field">
+                  <label>Site name</label>
+                  <input type="text" v-model="platformDraft.site_name" />
+                </div>
+              </template>
+            </div>
+            <div class="settings-modal-foot">
+              <button type="button" class="settings-btn-secondary" @click="closeModal">Cancel</button>
+              <button type="button" class="settings-btn-primary" @click="savePlatformDraft">Save</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-overlay" :class="{ open: modal === 'add-model' }" @click.self="closeModal">
+          <div class="settings-modal">
+            <div class="settings-modal-head">
+              <h2 class="text-base font-semibold">Add Model</h2>
+              <button type="button" class="settings-icon-btn" @click="closeModal">×</button>
+            </div>
+            <div class="settings-modal-body">
+              <div class="settings-field">
+                <label>Select or enter model ID</label>
+                <input type="text" v-model="modelSearch" placeholder="Filter or type a model id" @focus="loadCatalogForAdd" />
+              </div>
+              <p v-if="catalogLoading" class="text-xs text-muted-foreground">Loading catalog…</p>
+              <p v-if="catalogError" class="text-xs text-destructive">{{ catalogError }}</p>
+              <div class="settings-pick-list">
+                <label v-for="m in filteredCatalog" :key="m.id" class="settings-pick-item">
+                  <input type="checkbox" :value="m.id" v-model="selectedCatalogIds" />
+                  {{ m.id }}
+                </label>
+                <p v-if="!catalogLoading && !filteredCatalog.length" class="px-3 py-4 text-xs text-muted-foreground">No matches — enter an ID above and click Add.</p>
+              </div>
+            </div>
+            <div class="settings-modal-foot">
+              <button type="button" class="settings-btn-secondary" @click="closeModal">Cancel</button>
+              <button type="button" class="settings-btn-primary" @click="confirmAddModels">Add</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-overlay" :class="{ open: modal === 'model-settings' }" @click.self="closeModal">
+          <div class="settings-modal">
+            <div class="settings-modal-head">
+              <h2 class="text-base font-semibold">Model settings</h2>
+              <button type="button" class="settings-icon-btn" @click="closeModal">×</button>
+            </div>
+            <div class="settings-modal-body">
+              <div class="settings-field">
+                <label>Model ID</label>
+                <input type="text" :value="modelDraft.id" disabled class="font-mono text-xs" />
+              </div>
+              <div class="settings-field">
+                <label>Temperature</label>
+                <input type="number" min="0" max="2" step="0.1" v-model.number="modelDraft.temperature" />
+              </div>
+              <button type="button" class="settings-btn-secondary self-start" @click="setDefaultModelFromDraft">Set as default</button>
+            </div>
+            <div class="settings-modal-foot">
+              <button type="button" class="settings-btn-secondary" @click="closeModal">Cancel</button>
+              <button type="button" class="settings-btn-primary" @click="saveModelDraft">Save</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-overlay" :class="{ open: modal === 'mcp' }" @click.self="closeModal">
+          <div class="settings-modal wide">
+            <div class="settings-modal-head">
+              <h2 class="text-base font-semibold">{{ mcpDraft.isNew ? 'Add' : 'Edit' }} MCP Server</h2>
+              <button type="button" class="settings-icon-btn" @click="closeModal">×</button>
+            </div>
+            <div class="settings-modal-body">
+              <div class="settings-field">
+                <label>Name *</label>
+                <input type="text" v-model="mcpDraft.name" :disabled="!mcpDraft.isNew" />
+              </div>
+              <div class="settings-field">
+                <label>Transport</label>
+                <select v-model="mcpDraft.transport">
+                  <option value="stdio">stdio (command)</option>
+                  <option value="http">HTTP</option>
+                  <option value="sse">SSE</option>
+                </select>
+              </div>
+              <template v-if="mcpDraft.transport === 'stdio'">
+                <div class="settings-field">
+                  <label>Command *</label>
+                  <input type="text" v-model="mcpDraft.command" class="font-mono text-xs" />
+                </div>
+                <div class="settings-field">
+                  <label>Args</label>
+                  <input type="text" v-model="mcpDraft.args" class="font-mono text-xs" placeholder="space-separated" />
+                </div>
+              </template>
+              <template v-else>
+                <div class="settings-field">
+                  <label>URL *</label>
+                  <input type="text" v-model="mcpDraft.url" class="font-mono text-xs" />
+                </div>
+                <div class="settings-field">
+                  <label>Bearer token</label>
+                  <input type="password" v-model="mcpDraft.bearer_token" autocomplete="off" class="font-mono text-xs" />
+                </div>
+              </template>
+            </div>
+            <div class="settings-modal-foot">
+              <button type="button" class="settings-btn-secondary" @click="closeModal">Cancel</button>
+              <button type="button" class="settings-btn-primary" @click="saveMcpDraft">{{ mcpDraft.isNew ? 'Add' : 'Save' }}</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-overlay" :class="{ open: modal === 'import-mcp' }" @click.self="closeModal">
+          <div class="settings-modal wide">
+            <div class="settings-modal-head">
+              <h2 class="text-base font-semibold">Import from JSON</h2>
+              <button type="button" class="settings-icon-btn" @click="closeModal">×</button>
+            </div>
+            <div class="settings-modal-body">
+              <p class="text-sm text-muted-foreground">Paste an object with a top-level <span class="font-mono text-xs">mcpServers</span> field.</p>
+              <textarea class="settings-code-editor" v-model="mcpImportJson" spellcheck="false"></textarea>
+              <p v-if="mcpImportError" class="text-xs text-destructive">{{ mcpImportError }}</p>
+            </div>
+            <div class="settings-modal-foot">
+              <button type="button" class="settings-btn-secondary" @click="closeModal">Cancel</button>
+              <button type="button" class="settings-btn-primary" @click="confirmImportMcp">Confirm</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-overlay" :class="{ open: modal === 'app-update' }" @click.self="closeUpdateModal">
+          <div class="settings-modal">
+            <div class="settings-modal-head">
+              <h2 class="text-base font-semibold">Update available</h2>
+              <button type="button" class="settings-icon-btn" @click="closeUpdateModal">×</button>
+            </div>
+            <div class="settings-modal-body">
+              <p class="text-sm">Version <strong>{{ pendingUpdateVersion }}</strong> is available.</p>
+              <p class="text-xs text-muted-foreground mt-2">Updating will stop any active agent runs and restart Deep Agent.</p>
+            </div>
+            <div class="settings-modal-foot">
+              <button type="button" class="settings-btn-secondary" :disabled="updateInstalling" @click="snoozeUpdate">Later</button>
+              <button type="button" class="settings-btn-primary" :disabled="updateInstalling" @click="installUpdate">{{ updateInstalling ? 'Installing…' : 'Update' }}</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-toast" :class="{ show: !!toastMsg }">{{ toastMsg }}</div>
+      </div>
+    </div>
+
+    <template v-if="!setupRequired && route !== 'settings'">
+
+    <!-- Mobile sidebar backdrop -->
+    <div v-if="sidebarOpen" @click="sidebarOpen = false"
+      class="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity lg:hidden"
+      aria-hidden="true"></div>
+
+    <!-- Mobile preview backdrop -->
+    <div v-if="previewBackdropVisible" @click="previewCollapsed = true"
+      class="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity lg:hidden"
+      aria-hidden="true"></div>
 
     <!-- ======================= Sidebar ======================= -->
-    <aside class="relative flex h-full w-64 shrink-0 flex-col overflow-hidden border-r border-border bg-gradient-to-b from-muted/70 via-muted/45 to-muted/25">
+    <aside class="fixed inset-y-0 left-0 z-50 flex h-full w-[min(85vw,16rem)] shrink-0 -translate-x-full flex-col overflow-hidden border-r border-border bg-muted transition-transform duration-200 ease-out lg:relative lg:z-auto lg:w-64 lg:translate-x-0"
+      :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+      aria-label="Chat sidebar">
 
       <div class="liquid-glass absolute inset-x-0 top-0 z-20 flex h-12 items-center gap-2 px-4">
         <span class="grid size-6 shrink-0 place-items-center rounded-md bg-foreground text-background">
@@ -175,13 +513,21 @@
         </span>
         <span class="truncate text-sm font-semibold tracking-tight">Deep Agent</span>
         <div class="ml-auto flex items-center gap-0.5">
-          <button type="button" @click="newChat" :disabled="streaming" :class="iconBtn"
+          <button type="button" @click="newChat" :class="iconBtn"
             title="New chat" aria-label="New chat">
             <p-icon name="plus" :size="13" />
+          </button>
+          <button type="button" @click="openSettings" :class="iconBtn"
+            title="Settings" aria-label="Settings">
+            <p-icon name="info" :size="13" />
           </button>
           <button type="button" @click="loadSessionList" :disabled="sessionListLoading" :class="iconBtn"
             title="Refresh chat list" aria-label="Refresh chat list">
             <p-icon name="refresh" :size="13" :class="sessionListLoading ? 'animate-spin' : ''" />
+          </button>
+          <button type="button" @click="sidebarOpen = false" :class="iconBtn"
+            class="lg:hidden" title="Close sidebar" aria-label="Close sidebar">
+            <p-icon name="x" :size="13" />
           </button>
         </div>
       </div>
@@ -196,17 +542,21 @@
             <li v-for="chat in sessionList" :key="chat.id">
               <div class="group flex items-center gap-0.5 rounded-lg transition-colors"
                 :class="chat.id === sessionId ? 'border border-border bg-background shadow-xs' : 'hover:bg-muted/80'">
-                <button type="button" @click="switchSession(chat.id)" :disabled="streaming"
-                  class="flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left disabled:pointer-events-none disabled:opacity-50"
+                <button type="button" @click="switchSession(chat.id)"
+                  class="flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left"
                   :title="chat.preview && chat.preview !== 'No session yet' ? chat.preview : chat.title">
-                  <span class="truncate"
-                    :class="chat.id === sessionId ? 'font-medium text-black' : 'text-black'">
-                    {{ chat.title }}
+                  <span class="flex min-w-0 items-center gap-1.5">
+                    <span v-if="isRunning(chat.id)" class="size-1.5 shrink-0 animate-pulse rounded-full bg-accent"
+                      title="Agent running" aria-label="Agent running"></span>
+                    <span class="truncate"
+                      :class="chat.id === sessionId ? 'font-medium text-black' : 'text-black'">
+                      {{ chat.title }}
+                    </span>
                   </span>
-                  <span class="truncate text-muted-foreground/60">{{ chat.preview || 'No session yet' }}</span>
+                  <span class="truncate text-muted-foreground/60">{{ isRunning(chat.id) ? 'Running…' : (chat.preview || 'No session yet') }}</span>
                 </button>
-                <button type="button" @click.stop="deleteSession(chat.id)" :disabled="streaming"
-                  class="mr-1 hidden size-6 shrink-0 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-destructive-soft hover:text-destructive group-hover:grid disabled:pointer-events-none disabled:opacity-50"
+                <button type="button" @click.stop="deleteSession(chat.id)"
+                  class="mr-1 hidden size-6 shrink-0 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-destructive-soft hover:text-destructive group-hover:grid"
                   :title="'Delete chat'" :aria-label="'Delete chat ' + chat.title">
                   <p-icon name="x" :size="11" />
                 </button>
@@ -281,14 +631,20 @@
     </aside>
 
     <!-- ======================= Chat panel ======================= -->
-    <div class="flex h-full min-w-0 flex-1 flex-col min-h-0">
-      <div class="relative mx-auto flex min-h-0 w-full flex-1 flex-col" style="max-width: 800px;">
+    <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+      <div class="relative mx-auto flex min-h-0 w-full flex-1 flex-col lg:max-w-[800px]">
 
         <!-- Header -->
-        <div class="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
-          <div class="min-w-0">
-            <p class="truncate text-sm font-semibold text-foreground">{{ chatTitle }}</p>
-            <p class="truncate text-xs text-muted-foreground">{{ chatSubtitle }}</p>
+        <div class="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3 sm:px-4">
+          <div class="flex min-w-0 items-center gap-2">
+            <button type="button" @click="sidebarOpen = true" :class="iconBtn"
+              class="lg:hidden" title="Open sidebar" aria-label="Open sidebar">
+              <p-icon name="sidebar" :size="16" />
+            </button>
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-foreground">{{ chatTitle }}</p>
+              <p class="truncate text-xs text-muted-foreground">{{ chatSubtitle }}</p>
+            </div>
           </div>
 
           <!-- Session info popover -->
@@ -298,7 +654,7 @@
               <p-icon name="info" :size="16" />
             </button>
             <div v-if="sessionInfoOpen && session"
-              class="absolute right-0 top-full z-40 mt-2 w-72 rounded-xl border border-border bg-background p-3 shadow-lg">
+              class="absolute right-0 top-full z-40 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-border bg-background p-3 shadow-lg">
               <p class="mb-2 text-xs font-semibold text-foreground">Session details</p>
               <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
                 <template v-for="row in sessionInfoRows" :key="row.label">
@@ -306,13 +662,42 @@
                   <dd class="min-w-0 truncate font-mono text-foreground" :title="row.value">{{ row.value }}</dd>
                 </template>
               </dl>
+              <div v-if="turnTotalsText" class="mt-3 border-t border-border pt-2">
+                <p class="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Last turn totals</p>
+                <p class="font-mono text-[11px] leading-4 text-foreground">{{ turnTotalsText }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sandbox starting banner -->
+        <div v-if="sandboxStarting && !sandboxDegraded" class="shrink-0 border-b border-border bg-muted px-3 py-2 sm:px-4">
+          <div class="min-w-0 text-xs leading-5 text-foreground">
+            <p class="font-semibold">Starting sandbox…</p>
+            <p class="text-muted-foreground">Chat is ready. Workspace tools will unlock when the microVM is up.</p>
+          </div>
+        </div>
+
+        <!-- Sandbox setup banner (degraded / virt failure) -->
+        <div v-if="sandboxDegraded" class="shrink-0 border-b border-border bg-destructive-soft px-3 py-2 sm:px-4">
+          <div class="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+            <div class="min-w-0 text-xs leading-5 text-foreground">
+              <p class="font-semibold">Sandbox unavailable — chat only</p>
+              <p class="text-muted-foreground">{{ sandboxDegradedReason || 'Enable host virtualization (Apple Silicon Hypervisor, Windows WHP, or Linux KVM), run msb doctor, then retry.' }}</p>
+            </div>
+            <div class="flex shrink-0 items-center gap-1.5">
+              <button type="button" @click="openSettings" class="rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium">Settings</button>
+              <button type="button" @click="retrySandbox" :disabled="sandboxRetrying"
+                class="rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background disabled:opacity-50">
+                {{ sandboxRetrying ? 'Retrying…' : 'Retry sandbox' }}
+              </button>
             </div>
           </div>
         </div>
 
         <!-- Messages -->
-        <div ref="scrollEl" class="min-h-0 flex-1 overflow-y-auto">
-          <div class="flex min-h-full flex-col justify-end gap-2.5 px-4 py-3 pb-48">
+        <div ref="scrollEl" class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div class="flex min-h-full flex-col justify-end gap-2.5 px-3 py-3 pb-36 sm:px-4 sm:pb-40">
 
             <!-- Empty state -->
             <div v-if="!timeline.length && !streaming" class="flex flex-col items-center gap-2 py-16 text-center">
@@ -328,7 +713,7 @@
             <template v-for="item in timeline" :key="item.id">
               <!-- user -->
               <div v-if="item.kind === 'user'"
-                class="w-fit max-w-[85%] self-end rounded-2xl rounded-br-md bg-muted px-3.5 py-2 text-sm leading-6 text-black">
+                class="w-fit max-w-[92%] self-end rounded-2xl rounded-br-md bg-muted px-3.5 py-2 text-sm leading-6 text-black sm:max-w-[85%]">
                 <p class="whitespace-pre-wrap break-words">{{ item.text }}</p>
               </div>
 
@@ -374,7 +759,7 @@
 
         <!-- Error banner -->
         <div v-if="errorMessage"
-          class="absolute inset-x-4 bottom-40 z-30 flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive-soft px-3 py-2 text-sm text-destructive shadow-sm">
+          class="absolute inset-x-3 bottom-32 z-30 flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive-soft px-3 py-2 text-sm text-destructive shadow-sm sm:inset-x-4 sm:bottom-36">
           <p-icon name="warning" :size="16" class="mt-0.5 shrink-0" />
           <p class="min-w-0 flex-1">{{ errorMessage }}</p>
           <button type="button" @click="errorMessage = ''"
@@ -386,48 +771,47 @@
 
         <!-- Composer -->
         <form @submit.prevent="submit"
-          class="pointer-events-auto absolute inset-x-0 bottom-0 z-40 bg-linear-to-t from-background via-background/95 to-transparent px-4 pb-4 pt-12">
-          <div class="rounded-xl border border-border bg-background p-3 shadow-sm transition-colors focus-within:border-ring/50">
-            <textarea ref="inputEl" v-model="draft" rows="1" :disabled="streaming || !session"
-              placeholder="What do you want to build?"
-              @keydown.enter.exact.prevent="submit"
-              @input="autoGrow"
-              class="max-h-40 min-h-16 w-full resize-none border-0 bg-transparent px-1 py-0 text-base text-black outline-none placeholder:text-muted-foreground disabled:opacity-60"
-              style="outline: none;"></textarea>
+          class="pointer-events-auto absolute inset-x-0 bottom-0 z-40 bg-linear-to-t from-background via-background/95 to-transparent px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-8 sm:px-4 sm:pb-4 sm:pt-10">
+          <div class="rounded-2xl border border-border bg-background shadow-sm transition-[border-color,box-shadow] focus-within:border-ring/40 focus-within:shadow-md">
+            <!-- Input row: textarea + send -->
+            <div class="flex items-end gap-2 px-3 pt-3 pb-1">
+              <textarea ref="inputEl" v-model="draft" rows="1" :disabled="!session"
+                :placeholder="pendingAutoSend ? 'Queued — will send when this run finishes…' : (streaming ? 'Type a follow-up (Enter to queue)…' : 'What do you want to build?')"
+                @keydown.enter.exact="onComposerEnter"
+                @input="autoGrow"
+                class="max-h-36 min-h-6 flex-1 resize-none border-0 bg-transparent py-0 text-base text-black outline-none placeholder:text-muted-foreground disabled:opacity-60"
+                style="outline: none;"></textarea>
 
-            <div class="flex items-center justify-between gap-2 pt-2">
-              <div class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                <!-- model chip -->
-                <span class="inline-flex h-8 min-w-0 shrink items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground max-w-40"
-                  :title="'Model: ' + modelLabel">
-                  <p-icon name="cpu" :size="14" class="shrink-0 text-muted-foreground/70" />
-                  <span class="min-w-0 truncate">{{ modelLabel }}</span>
-                </span>
+              <!-- stop -->
+              <button v-if="streaming" type="button" @click="stopStream"
+                class="mb-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:border-destructive/40 hover:bg-destructive-soft hover:text-destructive"
+                aria-label="Stop generating" title="Stop generating">
+                <p-icon name="stop" :size="11" />
+              </button>
+              <!-- send -->
+              <button v-else type="submit" :disabled="!canSend"
+                class="mb-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:bg-foreground/90 disabled:opacity-35"
+                aria-label="Send message" title="Send message">
+                <p-icon name="arrow-up" :size="16" />
+              </button>
+            </div>
 
-                <span class="h-4 w-px shrink-0 bg-border" aria-hidden="true"></span>
+            <!-- Meta toolbar -->
+            <div class="flex items-center gap-1.5 overflow-x-auto overflow-y-visible px-3 pb-2.5 pt-0">
+              <model-picker ref="modelPickerEl" :streaming="streaming" :selected="selectedModelId"
+                :groups="modelPickerGroups" :close-signal="modelCloseSignal"
+                :loading="modelPickerLoading"
+                @select="selectModel" @add="openAddModelFromPicker" @open="ensurePickerModels"></model-picker>
 
-                <!-- working directory picker -->
-                <pwd-picker ref="pwdPickerEl" :streaming="streaming" :folders="workspaceFolders"
-                  :selected="selectedPwd" :close-signal="pwdCloseSignal" />
-              </div>
+              <pwd-picker ref="pwdPickerEl" :streaming="streaming" :folders="workspaceFolders"
+                :selected="selectedPwd" :close-signal="pwdCloseSignal"></pwd-picker>
 
-              <div class="flex shrink-0 items-center gap-2">
-                <p v-if="!streaming" class="hidden text-[11px] text-muted-foreground/50 sm:block">
-                  Enter to send · Shift+Enter for a new line
-                </p>
-                <!-- stop -->
-                <button v-if="streaming" type="button" @click="stopStream"
-                  class="inline-flex size-8 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:border-destructive/40 hover:bg-destructive-soft hover:text-destructive"
-                  aria-label="Stop generating" title="Stop generating">
-                  <p-icon name="stop" :size="11" />
-                </button>
-                <!-- send -->
-                <button v-else type="submit" :disabled="!canSend"
-                  class="inline-flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:bg-foreground/90 disabled:opacity-35"
-                  aria-label="Send message" title="Send message">
-                  <p-icon name="arrow-up" :size="16" />
-                </button>
-              </div>
+              <p v-if="pendingAutoSend" class="ml-auto truncate text-[11px] text-accent sm:block">
+                Waiting for current run…
+              </p>
+              <p v-else-if="!streaming" class="ml-auto hidden truncate text-[11px] text-muted-foreground/50 sm:block">
+                Enter to send · Shift+Enter for a new line
+              </p>
             </div>
           </div>
         </form>
@@ -436,7 +820,8 @@
     </div>
 
     <!-- ======================= Workspace preview ======================= -->
-    <aside class="flex h-full shrink-0 flex-col overflow-hidden border-l border-border bg-background transition-all duration-200"
+    <aside class="fixed inset-y-0 right-0 z-50 flex h-full shrink-0 flex-col overflow-hidden border-l border-border bg-background shadow-2xl transition-all duration-200 lg:relative lg:z-auto lg:shadow-none"
+      :class="previewCollapsed ? 'hidden lg:flex' : 'flex'"
       :style="{ width: previewWidth }" aria-label="Workspace preview">
 
       <div class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-2"
@@ -480,6 +865,8 @@
           <p-icon name="file" :size="20" class="text-muted-foreground/40" />
           {{ preview.message }}
         </div>
+        <iframe v-else-if="preview.mode === 'html' && preview.src" :src="preview.src"
+          class="h-full w-full border-0 bg-background" sandbox="allow-scripts" title="Workspace file preview"></iframe>
         <iframe v-else-if="preview.mode === 'html'" :srcdoc="preview.content"
           class="h-full w-full border-0 bg-background" sandbox="allow-scripts" title="Workspace file preview"></iframe>
         <div v-else-if="preview.mode === 'markdown'" class="markdown-body h-full overflow-auto bg-background p-4" v-html="renderMarkdown(preview.content)"></div>
@@ -504,1322 +891,11 @@
       </div>
     </aside>
 
+    </template>
   </main>
 </div>
 
-<script>
-const { createApp, ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } = Vue;
-
-/* ---------------------------------------------------------------- */
-/* Constants and pure helpers                                        */
-/* ---------------------------------------------------------------- */
-
-const API = window.location.origin;
-const SESSION_KEY = "deepagent_session_id";
-
-/* One coherent icon set (Phosphor, 256 viewBox), rendered by <p-icon>. */
-const ICON_PATHS = {
-  plus: "M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z",
-  refresh: "M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16h28.69L182.06,65.37a79.56,79.56,0,0,0-56.13-23.43h-.45A79.52,79.52,0,0,0,69.59,64.72,8,8,0,0,1,58.41,53.28a96,96,0,0,1,135,.79L224,84.69V56a8,8,0,0,1,16,0Zm-27.59,134.72a80,80,0,0,1-112.47.66L69.25,161H98a8,8,0,0,0,0-16H50a8,8,0,0,0-8,8v48a8,8,0,0,0,16,0V172.69l30.63,30.28a96,96,0,0,0,135-.79,8,8,0,0,0-11.18-11.46Z",
-  folder: "M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72Zm0,128H40V56H92.69l27.32,27.32A15.86,15.86,0,0,0,131.31,88H216Z",
-  file: "M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z",
-  "caret-right": "M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z",
-  "caret-down": "M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z",
-  download: "M224,152v56a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V152a8,8,0,0,1,16,0v56H208V152a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,132.69V40a8,8,0,0,0-16,0v92.69L93.66,106.34a8,8,0,0,0-11.32,11.32Z",
-  cpu: "M112,96h32a8,8,0,0,1,8,8v48a8,8,0,0,1-8,8H112a8,8,0,0,1-8-8V104A8,8,0,0,1,112,96Zm120,40a8,8,0,0,1-8,8H208v16a32,32,0,0,1-32,32H160v16a8,8,0,0,1-16,0V192H112v16a8,8,0,0,1-16,0V192H80a32,32,0,0,1-32-32V144H32a8,8,0,0,1,0-16H48V96H32a8,8,0,0,1,0-16H48V64A32,32,0,0,1,80,32H96V16a8,8,0,0,1,16,0V32h32V16a8,8,0,0,1,16,0V32h16a32,32,0,0,1,32,32V80h16a8,8,0,0,1,0,16H208v32h16A8,8,0,0,1,232,136ZM192,64a16,16,0,0,0-16-16H80A16,16,0,0,0,64,64v96a16,16,0,0,0,16,16h96a16,16,0,0,0,16-16Z",
-  info: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z",
-  warning: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm-8,56a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm8,104a12,12,0,1,1,12-12A12,12,0,0,1,128,184Z",
-  x: "M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z",
-  check: "M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z",
-  "arrow-up": "M205.66,117.66a8,8,0,0,1-11.32,0L136,59.31V216a8,8,0,0,1-16,0V59.31L61.66,117.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0l72,72A8,8,0,0,1,205.66,117.66Z",
-  stop: "M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Z",
-  cube: "M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,32l80.34,44-29.77,16.3-80.35-44ZM128,120,47.66,76l33.9-18.56,80.34,44ZM40,90l80,43.78v85.79L40,175.82Zm176,85.78h0l-80,43.79V133.82l32-17.51V152a8,8,0,0,0,16,0V107.55L216,90v85.77Z",
-  terminal: "M117.31,134l-72,64a8,8,0,1,1-10.63-12L100,128,34.69,70A8,8,0,1,1,45.32,58l72,64a8,8,0,0,1,0,12ZM216,184H120a8,8,0,0,0,0,16h96a8,8,0,0,0,0-16Z",
-  subagent: "M248,124a59.92,59.92,0,0,0-29.85-51.85,44,44,0,0,0-86.3,0A59.92,59.92,0,0,0,8,124a60.07,60.07,0,0,0,40,56.44V192a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8v-11.56A60.07,60.07,0,0,0,248,124ZM172,200H84V181.56a8,8,0,0,0-2.67-6A44,44,0,0,1,52.17,140.17a8,8,0,0,0-6-2.67,44,44,0,0,1,0-19A8,8,0,0,0,52.17,115.83a44,44,0,0,1,29.16-35.39,8,8,0,0,0,6-2.67,44,44,0,0,1,19,0,8,8,0,0,0,6,2.67A44,44,0,0,1,141.83,115.83a8,8,0,0,0,6,2.67,44,44,0,0,1,0,19,8,8,0,0,0-2.67,6A44,44,0,0,1,116,175.56a8,8,0,0,0-2.67,6Z",
-  sidebar: "M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z",
-  external: "M224,104a8,8,0,0,1-16,0V59.31l-82.34,82.35a8,8,0,0,1-11.32-11.32L196.69,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z",
-  "corners-out": "M216,48V96a8,8,0,0,1-16,0V67.31l-42.34,42.35a8,8,0,0,1-11.32-11.32L188.69,56H160a8,8,0,0,1,0-16h48A8,8,0,0,1,216,48ZM98.34,146.34,56,188.69V160a8,8,0,0,0-16,0v48a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16H67.31l42.35-42.34a8,8,0,0,0-11.32-11.32ZM208,152a8,8,0,0,0-8,8v28.69l-42.34-42.35a8,8,0,0,0-11.32,11.32L188.69,200H160a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V160A8,8,0,0,0,208,152ZM67.31,56H96a8,8,0,0,0,0-16H48a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31l42.34,42.35a8,8,0,0,0,11.32-11.32Z",
-  "corners-in": "M144,104V56a8,8,0,0,1,16,0V84.69l42.34-42.35a8,8,0,0,1,11.32,11.32L171.31,96H200a8,8,0,0,1,0,16H152A8,8,0,0,1,144,104ZM104,144H56a8,8,0,0,0,0,16H84.69L42.34,202.34a8,8,0,0,0,11.32,11.32L96,171.31V200a8,8,0,0,0,16,0V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,16,0V171.31l42.34,42.35a8,8,0,0,0,11.32-11.32L171.31,160H200a8,8,0,0,0,0-16ZM104,40a8,8,0,0,0-8,8V84.69L53.66,42.34A8,8,0,0,0,42.34,53.66L84.69,96H56a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V56A8,8,0,0,0,104,40Z",
-};
-
-/* Tiny icon component so every icon is rendered the same way. */
-const PIcon = {
-  name: "PIcon",
-  props: { name: { type: String, required: true }, size: { type: [Number, String], default: 16 } },
-  computed: { path() { return ICON_PATHS[this.name] || ICON_PATHS.file; } },
-  template: `
-    <svg xmlns="http://www.w3.org/2000/svg" :width="size" :height="size" fill="currentColor"
-      viewBox="0 0 256 256" aria-hidden="true"><path :d="path"/></svg>
-  `,
-};
-
-/* Shared icon-button style: one size, one hover, one disabled treatment. */
-const ICON_BTN =
-  "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors " +
-  "hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
-
-const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"]);
-const CODE_LANG = {
-  js: "javascript", mjs: "javascript", cjs: "javascript", jsx: "javascript",
-  ts: "typescript", tsx: "typescript",
-  py: "python", rb: "ruby", rs: "rust", go: "go",
-  java: "java", kt: "kotlin", swift: "swift", php: "php",
-  sh: "bash", bash: "bash", zsh: "bash",
-  yaml: "yaml", yml: "yaml", toml: "ini", ini: "ini",
-  xml: "xml", sql: "sql", graphql: "graphql", gql: "graphql",
-  scss: "scss", less: "less",
-  c: "c", h: "c", cpp: "cpp", cc: "cpp", cxx: "cpp", hpp: "cpp",
-  cs: "csharp", lua: "lua", r: "r", vue: "xml", svelte: "xml",
-  json: "json", css: "css", html: "xml",
-};
-
-const fileName = (p) => (p || "").split("/").filter(Boolean).pop() || "file";
-const fileExt = (p) => fileName(p).toLowerCase().split(".").pop() || "";
-const isImagePath = (p) => IMAGE_EXT.has(fileExt(p));
-const truncate = (t, max = 48) => {
-  const s = (t || "").trim();
-  return s.length <= max ? (s || "New chat") : s.slice(0, max - 1) + "…";
-};
-
-function codeLanguageFor(path) {
-  const base = fileName(path).toLowerCase();
-  if (base === "dockerfile") return "dockerfile";
-  if (base === "makefile") return "makefile";
-  return CODE_LANG[fileExt(path)] || "plaintext";
-}
-
-function previewModeFor(path) {
-  const ext = fileExt(path);
-  const base = fileName(path).toLowerCase();
-  if (isImagePath(path)) return "image";
-  if (ext === "html" || ext === "htm" || ext === "svg") return "html";
-  if (ext === "md" || ext === "mdx") return "markdown";
-  if (ext === "csv" || ext === "tsv") return "csv";
-  if (ext === "css") return "css";
-  if (base === "dockerfile" || base === "makefile" || CODE_LANG[ext]) return "code";
-  return "text";
-}
-
-/* CSV parsing that handles quoted newlines. */
-function parseDelimited(text, delimiter) {
-  const rows = [];
-  let row = [], cell = "", inQuotes = false;
-  const src = text.replace(/\r\n/g, "\n");
-  for (let i = 0; i < src.length; i++) {
-    const ch = src[i];
-    if (ch === '"') {
-      if (inQuotes && src[i + 1] === '"') { cell += '"'; i++; }
-      else inQuotes = !inQuotes;
-    } else if (ch === delimiter && !inQuotes) {
-      row.push(cell); cell = "";
-    } else if (ch === "\n" && !inQuotes) {
-      row.push(cell); cell = "";
-      if (row.some((c) => c.trim() !== "")) rows.push(row);
-      row = [];
-    } else {
-      cell += ch;
-    }
-  }
-  row.push(cell);
-  if (row.some((c) => c.trim() !== "")) rows.push(row);
-  return rows;
-}
-
-function cssPreviewDocument(css) {
-  const safe = css.replace(/<\/style/gi, "<\\/style");
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><style>${safe}</style></head><body><main><h1>Preview heading</h1><p>Sample paragraph with <a href="#">a link</a>, <strong>bold</strong>, and <em>italic</em> text.</p><ul><li>First list item</li><li>Second list item</li></ul><button type="button">Button</button><input type="text" value="Input field" aria-label="Sample input"/></main></body></html>`;
-}
-
-function prettyJson(text) {
-  try { return JSON.stringify(JSON.parse(text), null, 2); }
-  catch { return text; }
-}
-
-function escapeHtml(text) {
-  return String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function normalizeWorkspacePath(path) {
-  return String(path || "")
-    .trim()
-    .replace(/^\/+/, "")
-    .replace(/^workspace\//, "");
-}
-
-function previewTagToButton(attrStr, innerLabel) {
-  const path = attrStr.match(/path\s*=\s*["']([^"']+)["']/i)?.[1];
-  const labelAttr = attrStr.match(/label\s*=\s*["']([^"']+)["']/i)?.[1];
-  const label = (innerLabel || labelAttr || "Open preview").trim();
-  const cleanPath = normalizeWorkspacePath(path);
-  if (!cleanPath) return "";
-  return `<button type="button" class="preview-action-btn" data-preview-path="${escapeHtml(cleanPath)}">${escapeHtml(label)}</button>`;
-}
-
-/** Expand <preview> XML tags from assistant messages into clickable UI buttons. */
-function expandPreviewTags(text) {
-  if (!text) return text;
-  return text
-    .replace(/<preview\s+([^>]*?)\/>/gi, (_, attrs) => previewTagToButton(attrs))
-    .replace(/<preview\s+([^>]*)>([\s\S]*?)<\/preview>/gi, (_, attrs, label) => previewTagToButton(attrs, label));
-}
-
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-  highlight(code, lang) {
-    try {
-      if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
-      return hljs.highlightAuto(code).value;
-    } catch { return code; }
-  },
-});
-DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-  if (node.tagName === "A") {
-    node.setAttribute("target", "_blank");
-    node.setAttribute("rel", "noopener noreferrer");
-  }
-});
-
-/* Incremental SSE parser: handles CRLF, multi-line data fields, comments. */
-function createSseParser() {
-  let buffer = "";
-  return function feed(chunk) {
-    buffer += chunk;
-    const events = [];
-    buffer = buffer.replace(/\r\n/g, "\n");
-    let sep;
-    while ((sep = buffer.indexOf("\n\n")) !== -1) {
-      const block = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      if (!block.trim()) continue;
-      let eventType = "message";
-      const dataLines = [];
-      for (const line of block.split("\n")) {
-        if (line.startsWith(":")) continue;
-        if (line.startsWith("event:")) eventType = line.slice(6).trim();
-        else if (line.startsWith("data:")) dataLines.push(line.slice(5).replace(/^ /, ""));
-      }
-      if (!dataLines.length) continue;
-      try { events.push({ event: eventType, data: JSON.parse(dataLines.join("\n")) }); }
-      catch { /* skip malformed frames */ }
-    }
-    return events;
-  };
-}
-
-/* ---------------------------------------------------------------- */
-/* Recursive file-tree node                                          */
-/* ---------------------------------------------------------------- */
-
-const FileNode = {
-  name: "FileNode",
-  components: { PIcon },
-  props: ["entry", "depth", "expanded", "childrenMap", "activePath"],
-  emits: ["toggle", "preview", "download"],
-  computed: {
-    isExpanded() { return this.expanded.has(this.entry.path); },
-    isActive() { return !this.entry.is_dir && this.activePath === this.entry.path; },
-    children() { return this.childrenMap[this.entry.path]; },
-    indent() { return { paddingLeft: `${this.depth * 0.875 + 0.375}rem` }; },
-    childIndent() { return { paddingLeft: `${(this.depth + 1) * 0.875 + 0.375}rem` }; },
-  },
-  template: `
-    <li class="flex flex-col gap-px" :title="entry.path">
-      <div class="group flex h-6 items-center gap-1 rounded-md pr-1 transition-colors"
-        :class="isActive ? 'bg-accent-soft text-accent' : 'hover:bg-muted'"
-        :style="indent">
-
-        <button v-if="entry.is_dir" type="button"
-          class="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
-          :aria-expanded="String(isExpanded)" @click="$emit('toggle', entry.path)">
-          <p-icon name="caret-right" :size="9"
-            class="shrink-0 text-muted-foreground/50 transition-transform duration-150"
-            :class="{ 'rotate-90': isExpanded }" />
-          <p-icon name="folder" :size="13" class="shrink-0 text-muted-foreground/70" />
-          <span class="min-w-0 truncate">{{ entry.name }}</span>
-        </button>
-
-        <button v-else type="button"
-          class="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
-          :class="isActive ? 'font-medium' : ''"
-          @click="$emit('preview', entry.path)">
-          <span class="w-[9px] shrink-0" aria-hidden="true"></span>
-          <p-icon name="file" :size="13" class="shrink-0"
-            :class="isActive ? 'text-accent' : 'text-muted-foreground/60'" />
-          <span class="min-w-0 truncate">{{ entry.name }}</span>
-        </button>
-
-        <button v-if="!entry.is_dir" type="button"
-          class="hidden size-5 shrink-0 place-items-center rounded text-muted-foreground/70 transition-colors hover:bg-background hover:text-foreground group-hover:grid"
-          :title="'Download ' + entry.name" :aria-label="'Download ' + entry.name"
-          @click.stop="$emit('download', entry.path)">
-          <p-icon name="download" :size="11" />
-        </button>
-      </div>
-
-      <ul v-if="entry.is_dir && isExpanded" class="flex flex-col gap-px">
-        <li v-if="children === undefined" class="h-6 leading-6 text-muted-foreground/60" :style="childIndent">Loading…</li>
-        <li v-else-if="!children.length" class="h-6 leading-6 text-muted-foreground/50" :style="childIndent">Empty folder</li>
-        <file-node v-else v-for="child in children" :key="child.path" :entry="child" :depth="depth + 1"
-          :expanded="expanded" :children-map="childrenMap" :active-path="activePath"
-          @toggle="$emit('toggle', $event)" @preview="$emit('preview', $event)" @download="$emit('download', $event)" />
-      </ul>
-    </li>
-  `,
-};
-
-const PwdPicker = {
-  name: "PwdPicker",
-  components: { PIcon },
-  props: {
-    streaming: { type: Boolean, default: false },
-    folders: { type: Array, default: () => [""] },
-    selected: { type: String, default: "" },
-    closeSignal: { type: Number, default: 0 },
-  },
-  emits: ["select"],
-  data() {
-    return { menuOpen: false, menuStyle: {} };
-  },
-  computed: {
-    label() {
-      return this.selected ? this.selected.split("/").pop() : "Workspace root";
-    },
-  },
-  watch: {
-    closeSignal() {
-      this.menuOpen = false;
-    },
-    streaming(val) {
-      if (val) this.menuOpen = false;
-    },
-    menuOpen(val) {
-      if (val) this.$nextTick(() => this.positionMenu());
-    },
-    folders() {
-      if (this.menuOpen) this.$nextTick(() => this.positionMenu());
-    },
-  },
-  mounted() {
-    this._onDocClick = (e) => {
-      if (!this.menuOpen) return;
-      const target = e.target;
-      if (target.closest("[data-pwd-menu]") || this.$el.contains(target)) return;
-      this.menuOpen = false;
-    };
-    this._onLayout = () => { if (this.menuOpen) this.positionMenu(); };
-    document.addEventListener("click", this._onDocClick);
-    window.addEventListener("resize", this._onLayout);
-    window.addEventListener("scroll", this._onLayout, true);
-  },
-  beforeUnmount() {
-    document.removeEventListener("click", this._onDocClick);
-    window.removeEventListener("resize", this._onLayout);
-    window.removeEventListener("scroll", this._onLayout, true);
-  },
-  methods: {
-    toggle() {
-      this.menuOpen = !this.menuOpen;
-    },
-    close() {
-      this.menuOpen = false;
-    },
-    positionMenu() {
-      const r = this.$el.getBoundingClientRect();
-      this.menuStyle = {
-        position: "fixed",
-        left: `${r.left}px`,
-        bottom: `${window.innerHeight - r.top + 8}px`,
-        width: `${Math.max(r.width, 220)}px`,
-        zIndex: 200,
-      };
-    },
-  },
-  template: `
-    <div class="relative shrink-0 min-w-[8.5rem] max-w-52">
-      <button type="button" data-pwd-picker-trigger :disabled="streaming"
-        class="inline-flex h-8 w-full items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-        aria-haspopup="listbox" :aria-expanded="String(menuOpen)" title="Working directory for this message">
-        <p-icon name="folder" :size="14" class="shrink-0 text-muted-foreground/70" />
-        <span class="min-w-0 truncate">{{ label }}</span>
-        <p-icon name="caret-down" :size="11"
-          class="shrink-0 text-muted-foreground/50 transition-transform duration-150"
-          :class="{ 'rotate-180': menuOpen }" />
-      </button>
-      <teleport to="body">
-        <div v-if="menuOpen" :style="menuStyle"
-          class="overflow-hidden rounded-xl border border-border bg-background p-1 shadow-lg"
-          role="listbox" aria-label="Working directory" data-pwd-menu>
-          <ul class="scrollbar-hide flex max-h-56 flex-col gap-0.5 overflow-y-auto">
-            <li v-for="folder in folders" :key="folder || '__root__'">
-              <button type="button" role="option" data-pwd-option :data-folder="folder"
-                :aria-selected="String(folder === selected)"
-                class="flex w-full min-w-0 items-center gap-2 rounded-lg py-1.5 pr-2 text-left text-xs leading-5 transition-colors"
-                :class="folder === selected
-                  ? 'bg-accent-soft font-medium text-accent'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
-                :style="{ paddingLeft: (folder ? folder.split('/').length - 1 : 0) * 0.75 + 0.625 + 'rem' }">
-                <p-icon name="folder" :size="14" class="shrink-0"
-                  :class="folder === selected ? 'text-accent' : 'text-muted-foreground/70'" />
-                <span class="min-w-0 flex-1 truncate">{{ folder ? folder.split('/').pop() : 'Workspace root' }}</span>
-                <p-icon v-if="folder === selected" name="check" :size="12" class="shrink-0 text-accent" />
-              </button>
-            </li>
-          </ul>
-        </div>
-      </teleport>
-    </div>
-  `,
-};
-
-/* ---------------------------------------------------------------- */
-/* App                                                               */
-/* ---------------------------------------------------------------- */
-
-createApp({
-  components: { FileNode, PIcon, PwdPicker },
-  setup() {
-    /* ---------- session / config ---------- */
-    const config = ref(null);
-    const session = ref(null);
-    const sessionId = ref(null);
-    const sessionInfoOpen = ref(false);
-    const sessionInfoEl = ref(null);
-    const sessionList = ref([]);
-    const sessionListLoading = ref(false);
-
-    /* ---------- chat ---------- */
-    const timeline = ref([]);
-    const draft = ref("");
-    const streaming = ref(false);
-    const thinking = ref(false);
-    const errorMessage = ref("");
-    const sidebarSubtitle = ref("Starting session");
-    const chatTitleOverride = ref("");
-    let itemId = 0;
-    let errorTimer = null;
-    let abortController = null;
-
-    /* ---------- usage ---------- */
-    const lastTurnUsage = ref(null);
-    const usageEstimate = ref(null);
-
-    /* ---------- running tool ---------- */
-    const runningTool = ref(null);
-    const runningSeconds = ref("0.0");
-    let runningTimer = null;
-
-    /* ---------- files ---------- */
-    const fileTree = ref(null);
-    const childrenMap = reactive({});
-    const expandedFolders = reactive(new Set());
-    const filesLoading = ref(false);
-    const filesError = ref("");
-    const workspaceOpen = ref(true);
-    const workspaceCache = new Map();
-    const newFolderOpen = ref(false);
-    const newFolderName = ref("");
-    const creatingFolder = ref(false);
-    const newFolderInputEl = ref(null);
-
-    /* ---------- pwd picker ---------- */
-    const workspaceFolders = ref([""]);
-    const workspaceFoldersLoaded = ref(false);
-    const selectedPwd = ref("");
-    const pwdCloseSignal = ref(0);
-    const pwdPickerEl = ref(null);
-
-    /* ---------- preview ---------- */
-    const previewCollapsed = ref(true);
-    const previewExpanded = ref(false);
-    const preview = reactive({
-      mode: "empty", message: "Select a workspace file to preview it here.",
-      title: "Preview", subtitle: "No file selected",
-      path: null, content: "", rows: [], highlighted: "", blobUrl: null,
-      ready: false, blob: null, type: "",
-    });
-
-    /* ---------- DOM refs ---------- */
-    const scrollEl = ref(null);
-    const inputEl = ref(null);
-
-    /* ---------- computed ---------- */
-    const chatTitle = computed(() => chatTitleOverride.value || "Deep Agent");
-    const chatSubtitle = computed(() =>
-      session.value
-        ? `Sandbox ${session.value.sandbox_id} · network ${session.value.network ? "on" : "off"}`
-        : "Sandboxed workspace"
-    );
-    const modelLabel = computed(() => {
-      const m = session.value?.model || config.value?.default_model || "";
-      if (!m) return "Loading model…";
-      return m.split("/").pop().replace(/-/g, " ");
-    });
-    const username = computed(() => config.value?.username || "User");
-    const userInitial = computed(() => {
-      const name = username.value.trim();
-      return name ? name.charAt(0).toUpperCase() : "?";
-    });
-    const sessionInfoRows = computed(() => {
-      const s = session.value;
-      if (!s) return [];
-      return [
-        { label: "Session", value: s.id },
-        { label: "Sandbox", value: s.sandbox_id },
-        { label: "Workdir", value: s.workdir },
-        { label: "Model", value: s.model },
-        { label: "Network", value: s.network ? "on" : "off" },
-        { label: "Subagents", value: (s.subagent_names || []).join(", ") || "none" },
-        { label: "Messages", value: String(s.message_count ?? timeline.value.length) },
-      ];
-    });
-    const canSend = computed(() => !!draft.value.trim() && !streaming.value && !!sessionId.value);
-    const previewWidth = computed(() =>
-      previewCollapsed.value ? "3rem" : previewExpanded.value ? "min(52vw, 760px)" : "min(38vw, 520px)"
-    );
-    const usageText = computed(() => {
-      const turn = lastTurnUsage.value, est = usageEstimate.value;
-      const parts = [];
-      const total = Number(turn?.total_tokens || 0);
-      const out = Number(turn?.output_tokens || 0);
-      const estOut = Number(est?.estimated_output_tokens || 0);
-      if (est && estOut) {
-        parts.push(`~${(total + estOut).toLocaleString()} tokens`);
-        parts.push(`in ${Number(turn?.input_tokens || 0).toLocaleString()}`);
-        parts.push(`out ~${(out + estOut).toLocaleString()}`);
-        if (est.phase === "tool_args" && est.tool_name) {
-          parts.push(`${est.tool_name} args ${Number(est.chars || 0).toLocaleString()} chars`);
-        } else if (est.phase === "text") {
-          parts.push("text streaming");
-        }
-      } else if (turn?.model_calls) {
-        parts.push(`${total.toLocaleString()} tokens`);
-        parts.push(`in ${Number(turn.input_tokens || 0).toLocaleString()}`);
-        parts.push(`out ${out.toLocaleString()}`);
-        if (turn.cache_read) parts.push(`cache ${Number(turn.cache_read).toLocaleString()}`);
-        if (turn.model_calls > 1) parts.push(`${turn.model_calls} model calls`);
-      }
-      return parts.join(" · ");
-    });
-
-    /* ---------- small helpers ---------- */
-    function showError(message) {
-      errorMessage.value = message || "Something went wrong";
-      clearTimeout(errorTimer);
-      errorTimer = setTimeout(() => (errorMessage.value = ""), 8000);
-    }
-
-    function renderMarkdown(text) {
-      if (!text) return "";
-      const html = marked.parse(expandPreviewTags(text));
-      return DOMPurify.sanitize(html, { ADD_ATTR: ["target", "data-preview-path"] });
-    }
-
-    async function scrollToBottom() {
-      await nextTick();
-      const el = scrollEl.value;
-      if (el) el.scrollTop = el.scrollHeight;
-    }
-
-    function pushItem(item) {
-      timeline.value.push({ id: ++itemId, ...item });
-      scrollToBottom();
-      return timeline.value[timeline.value.length - 1];
-    }
-
-    function autoGrow() {
-      const el = inputEl.value;
-      if (!el) return;
-      el.style.height = "auto";
-      el.style.height = Math.min(el.scrollHeight, 160) + "px";
-    }
-
-    async function api(path, options = {}) {
-      const res = await fetch(`${API}${path}`, {
-        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-        ...options,
-      });
-      if (res.status === 204) return null;
-      if (!res.ok) {
-        let detail = res.statusText;
-        try {
-          const body = await res.json();
-          detail = body.detail || JSON.stringify(body);
-        } catch {}
-        throw new Error(detail);
-      }
-      return res.json();
-    }
-
-    /* ---------- history helpers ---------- */
-    function messageContent(msg) {
-      const content = msg?.data?.content ?? msg?.content ?? "";
-      if (typeof content === "string") return content;
-      if (Array.isArray(content)) {
-        return content
-          .map((b) => (typeof b === "string" ? b : b?.type === "text" ? b.text || "" : ""))
-          .join("");
-      }
-      return String(content ?? "");
-    }
-    const messageRole = (msg) => msg?.type || msg?.role || msg?.data?.type || "";
-
-    function renderHistory(messages) {
-      timeline.value = [];
-      for (const msg of messages) {
-        const role = messageRole(msg);
-        const text = messageContent(msg);
-        if (!text) continue;
-        if (role === "human" || role === "user") pushItem({ kind: "user", text });
-        else if (role === "ai" || role === "assistant") pushItem({ kind: "assistant", text });
-      }
-    }
-
-    /* ---------- running tool timer ---------- */
-    function startToolTimer(name) {
-      stopToolTimer();
-      runningTool.value = name;
-      const startedAt = Date.now();
-      runningSeconds.value = "0.0";
-      runningTimer = setInterval(() => {
-        runningSeconds.value = ((Date.now() - startedAt) / 1000).toFixed(1);
-      }, 100);
-    }
-    function stopToolTimer() {
-      clearInterval(runningTimer);
-      runningTimer = null;
-      runningTool.value = null;
-    }
-
-    /* ---------- files ---------- */
-    async function fetchEntries(path = "") {
-      const q = path ? `?path=${encodeURIComponent(path)}` : "";
-      const data = await api(`/api/sessions/${sessionId.value}/files${q}`);
-      return data.entries || [];
-    }
-
-    function snapshotWorkspace(id = sessionId.value) {
-      if (!id || fileTree.value === null) return;
-      workspaceCache.set(id, {
-        fileTree: fileTree.value,
-        childrenMap: { ...childrenMap },
-        expandedFolders: new Set(expandedFolders),
-        workspaceFolders: workspaceFolders.value,
-        workspaceFoldersLoaded: workspaceFoldersLoaded.value,
-        selectedPwd: selectedPwd.value,
-      });
-    }
-
-    function restoreWorkspace(id) {
-      const cached = workspaceCache.get(id);
-      if (!cached) {
-        fileTree.value = null;
-        for (const key of Object.keys(childrenMap)) delete childrenMap[key];
-        expandedFolders.clear();
-        workspaceFolders.value = [""];
-        workspaceFoldersLoaded.value = false;
-        selectedPwd.value = "";
-        filesError.value = "";
-        return false;
-      }
-      fileTree.value = cached.fileTree;
-      for (const key of Object.keys(childrenMap)) delete childrenMap[key];
-      Object.assign(childrenMap, cached.childrenMap);
-      expandedFolders.clear();
-      for (const p of cached.expandedFolders) expandedFolders.add(p);
-      workspaceFolders.value = cached.workspaceFolders;
-      workspaceFoldersLoaded.value = cached.workspaceFoldersLoaded && cached.workspaceFolders.length > 1;
-      selectedPwd.value = cached.selectedPwd;
-      filesError.value = "";
-      return true;
-    }
-
-    function clearWorkspaceView() {
-      fileTree.value = null;
-      for (const key of Object.keys(childrenMap)) delete childrenMap[key];
-      expandedFolders.clear();
-      workspaceFolders.value = [""];
-      workspaceFoldersLoaded.value = false;
-      selectedPwd.value = "";
-      filesError.value = "";
-    }
-
-    async function loadFiles({ silent = false, force = false } = {}) {
-      if (!sessionId.value || filesLoading.value) return;
-      if (!force && !silent && fileTree.value !== null) {
-        snapshotWorkspace(sessionId.value);
-        return;
-      }
-      const showSpinner = !silent;
-      if (showSpinner) {
-        filesLoading.value = true;
-        if (fileTree.value === null) filesError.value = "";
-      }
-      try {
-        fileTree.value = await fetchEntries("");
-        const stillExpanded = [...expandedFolders].filter((p) => folderExists(p, fileTree.value));
-        expandedFolders.clear();
-        for (const p of stillExpanded) expandedFolders.add(p);
-        const missingExpanded = stillExpanded.filter((p) => childrenMap[p] === undefined);
-        if (missingExpanded.length) {
-          await Promise.allSettled(
-            missingExpanded.map(async (p) => { childrenMap[p] = await fetchEntries(p); })
-          );
-        }
-        snapshotWorkspace(sessionId.value);
-      } catch {
-        if (!silent) {
-          filesError.value = "Files unavailable";
-          fileTree.value = [];
-        }
-      } finally {
-        if (showSpinner) filesLoading.value = false;
-      }
-    }
-
-    function folderExists(path, rootEntries) {
-      const top = path.split("/")[0];
-      return (rootEntries || []).some((e) => e.is_dir && (e.path === path || e.path === top));
-    }
-
-    async function toggleFolder(path) {
-      if (expandedFolders.has(path)) {
-        expandedFolders.delete(path);
-        return;
-      }
-      expandedFolders.add(path);
-      if (childrenMap[path] === undefined) {
-        try {
-          childrenMap[path] = await fetchEntries(path);
-          snapshotWorkspace();
-        } catch (e) {
-          expandedFolders.delete(path);
-          showError(e.message || "Folder unavailable");
-        }
-      }
-    }
-
-    async function loadWorkspaceFolders() {
-      if (!sessionId.value) return;
-      const previous = selectedPwd.value;
-      try {
-        const data = await api(`/api/sessions/${sessionId.value}/folders`);
-        workspaceFolders.value = data.folders?.length ? data.folders : [""];
-        workspaceFoldersLoaded.value = true;
-      } catch {
-        workspaceFolders.value = collectFoldersFromTree();
-        workspaceFoldersLoaded.value = workspaceFolders.value.length > 1;
-      }
-      if (!workspaceFolders.value.includes(previous)) selectedPwd.value = "";
-      snapshotWorkspace();
-    }
-
-    function openNewFolder() {
-      if (!sessionId.value) return;
-      workspaceOpen.value = true;
-      newFolderOpen.value = true;
-      newFolderName.value = "";
-      nextTick(() => newFolderInputEl.value?.focus());
-    }
-
-    function cancelNewFolder() {
-      newFolderOpen.value = false;
-      newFolderName.value = "";
-    }
-
-    async function createFolder() {
-      const name = newFolderName.value.trim();
-      if (!name || creatingFolder.value || !sessionId.value) return;
-      creatingFolder.value = true;
-      try {
-        const parent = selectedPwd.value || "";
-        const data = await api(`/api/sessions/${sessionId.value}/folders`, {
-          method: "POST",
-          body: JSON.stringify({ name, parent }),
-        });
-        cancelNewFolder();
-        if (parent) {
-          expandedFolders.add(parent);
-          childrenMap[parent] = await fetchEntries(parent);
-        }
-        await loadFiles({ force: true });
-        await loadWorkspaceFolders();
-        if (data.path) expandedFolders.add(data.path);
-        snapshotWorkspace();
-      } catch (e) {
-        showError(e.message || "Failed to create folder");
-      } finally {
-        creatingFolder.value = false;
-      }
-    }
-
-    function collectFoldersFromTree() {
-      const folders = new Set([""]);
-      const walk = (entries) => {
-        for (const entry of entries || []) {
-          if (!entry?.is_dir) continue;
-          folders.add(entry.path);
-          if (childrenMap[entry.path]) walk(childrenMap[entry.path]);
-        }
-      };
-      walk(fileTree.value);
-      return [...folders].sort((a, b) => a.localeCompare(b));
-    }
-
-    function closePwdMenu() {
-      pwdCloseSignal.value += 1;
-      pwdPickerEl.value?.close?.();
-    }
-
-    function onPwdPickerOpen() {
-      const fromTree = collectFoldersFromTree();
-      if (fromTree.length > 1) workspaceFolders.value = fromTree;
-      loadWorkspaceFolders();
-    }
-
-    function onSessionInfoClick(event) {
-      event.stopPropagation();
-      sessionInfoOpen.value = !sessionInfoOpen.value;
-    }
-
-    function selectPwd(folder) {
-      selectedPwd.value = folder || "";
-      closePwdMenu();
-      snapshotWorkspace();
-    }
-
-    /* ---------- preview ---------- */
-    function clearPreviewBlob() {
-      if (preview.blobUrl) {
-        URL.revokeObjectURL(preview.blobUrl);
-        preview.blobUrl = null;
-      }
-      preview.blob = null;
-    }
-
-    async function loadFileBlob(path) {
-      const res = await fetch(`${API}/api/sessions/${sessionId.value}/files/raw?path=${encodeURIComponent(path)}`);
-      if (!res.ok) {
-        let detail = res.statusText;
-        try { detail = (await res.json()).detail || detail; } catch {}
-        throw new Error(detail);
-      }
-      return res.blob();
-    }
-
-    async function previewWorkspaceFile(path) {
-      if (!sessionId.value) return;
-      previewCollapsed.value = false;
-      clearPreviewBlob();
-      Object.assign(preview, {
-        mode: "empty", message: "Loading preview…",
-        title: fileName(path), subtitle: path,
-        path, content: "", rows: [], highlighted: "", ready: false, type: "",
-      });
-
-      try {
-        if (isImagePath(path)) {
-          const blob = await loadFileBlob(path);
-          preview.blob = blob;
-          preview.blobUrl = URL.createObjectURL(blob);
-          preview.mode = "image";
-          preview.subtitle = `${path} · ${Number(blob.size || 0).toLocaleString()} bytes`;
-        } else {
-          const data = await api(`/api/sessions/${sessionId.value}/files/content?path=${encodeURIComponent(path)}`);
-          const mode = previewModeFor(data.path);
-          preview.subtitle = `${data.path} · ${Number(data.size || 0).toLocaleString()} bytes`;
-          if (mode === "html") {
-            preview.content = data.content;
-            preview.mode = "html";
-          } else if (mode === "css") {
-            preview.content = cssPreviewDocument(data.content);
-            preview.mode = "html";
-          } else if (mode === "markdown") {
-            preview.content = data.content;
-            preview.mode = "markdown";
-          } else if (mode === "csv") {
-            preview.rows = parseDelimited(data.content, fileExt(path) === "tsv" ? "\t" : ",");
-            preview.mode = "csv";
-          } else if (mode === "code") {
-            const lang = codeLanguageFor(path);
-            const source = lang === "json" ? prettyJson(data.content) : data.content;
-            let html;
-            try { html = hljs.highlight(source, { language: lang }).value; }
-            catch { html = hljs.highlightAuto(source).value; }
-            preview.highlighted = DOMPurify.sanitize(html);
-            preview.mode = "code";
-          } else {
-            preview.content = data.content;
-            preview.mode = "text";
-          }
-          preview.type = mode === "html" ? "text/html" : "text/plain";
-          preview.blob = new Blob([data.content], { type: preview.type });
-          preview.blobUrl = URL.createObjectURL(preview.blob);
-        }
-        preview.ready = true;
-      } catch (e) {
-        Object.assign(preview, { mode: "empty", message: e.message || "Preview unavailable", ready: false });
-      }
-    }
-
-    function openPreviewInTab() {
-      if (preview.blobUrl) window.open(preview.blobUrl, "_blank", "noopener,noreferrer");
-    }
-
-    async function downloadWorkspaceFile(path) {
-      if (!sessionId.value || !path) return;
-      try {
-        let blob;
-        if (preview.path === path && preview.blob) {
-          blob = preview.blob;
-        } else if (isImagePath(path)) {
-          blob = await loadFileBlob(path);
-        } else {
-          const data = await api(`/api/sessions/${sessionId.value}/files/content?path=${encodeURIComponent(path)}`);
-          blob = new Blob([data.content], { type: "text/plain" });
-        }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = fileName(path);
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      } catch (e) {
-        showError(e.message);
-      }
-    }
-
-    /* ---------- session lifecycle ---------- */
-    function resetChatUi() {
-      timeline.value = [];
-      itemId = 0;
-      lastTurnUsage.value = null;
-      usageEstimate.value = null;
-      stopToolTimer();
-      clearPreviewBlob();
-      previewCollapsed.value = true;
-      Object.assign(preview, {
-        mode: "empty",
-        message: "Select a workspace file to preview it here.",
-        title: "Preview",
-        subtitle: "No file selected",
-        path: null,
-        content: "",
-        rows: [],
-        highlighted: "",
-        ready: false,
-        type: "",
-      });
-    }
-
-    async function loadSessionList() {
-      sessionListLoading.value = true;
-      try {
-        const data = await api("/api/sessions");
-        sessionList.value = data.sessions || [];
-      } catch {
-        sessionList.value = [];
-      } finally {
-        sessionListLoading.value = false;
-      }
-    }
-
-    async function loadSessionState(id) {
-      if (sessionId.value && sessionId.value !== id) snapshotWorkspace(sessionId.value);
-      session.value = await api(`/api/sessions/${id}`);
-      sessionId.value = id;
-      sessionStorage.setItem(SESSION_KEY, id);
-      const { messages } = await api(`/api/sessions/${id}/messages`);
-      resetChatUi();
-      const hadCache = restoreWorkspace(id);
-      renderHistory(messages);
-      const firstUser = messages.find((m) => ["human", "user"].includes(messageRole(m)));
-      chatTitleOverride.value = firstUser ? truncate(messageContent(firstUser)) : "New chat";
-      sidebarSubtitle.value = messages.length ? `${messages.length} messages` : "Ready";
-      if (hadCache) {
-        loadFiles({ silent: true, force: true }).catch(() => {});
-      } else {
-        await loadFiles({ force: true });
-      }
-      loadWorkspaceFolders().catch(() => {});
-    }
-
-    async function switchSession(id) {
-      if (streaming.value || !id || id === sessionId.value) return;
-      sessionInfoOpen.value = false;
-      try {
-        await loadSessionState(id);
-      } catch (e) {
-        showError(e.message || "Chat unavailable");
-        await loadSessionList();
-      }
-    }
-
-    async function deleteSession(id) {
-      if (streaming.value || !id) return;
-      if (!confirm("Delete this chat and its sandbox workspace?")) return;
-      try {
-        await api(`/api/sessions/${id}`, { method: "DELETE" });
-      } catch (e) {
-        showError(e.message || "Failed to delete chat");
-        return;
-      }
-      workspaceCache.delete(id);
-      if (id === sessionId.value) {
-        sessionStorage.removeItem(SESSION_KEY);
-        sessionId.value = null;
-        session.value = null;
-        resetChatUi();
-        const remaining = sessionList.value.filter((s) => s.id !== id);
-        if (remaining.length) {
-          try {
-            await loadSessionState(remaining[0].id);
-          } catch {
-            await createSession();
-            chatTitleOverride.value = "New chat";
-            sidebarSubtitle.value = "Ready";
-          }
-        } else {
-          await createSession();
-          chatTitleOverride.value = "New chat";
-          sidebarSubtitle.value = "Ready";
-        }
-      }
-      await loadSessionList();
-    }
-
-    async function createSession() {
-      if (sessionId.value) snapshotWorkspace(sessionId.value);
-      session.value = await api("/api/sessions", { method: "POST", body: "{}" });
-      sessionId.value = session.value.id;
-      sessionStorage.setItem(SESSION_KEY, sessionId.value);
-      resetChatUi();
-      clearWorkspaceView();
-      fileTree.value = [];
-      snapshotWorkspace(sessionId.value);
-      await loadFiles({ force: true });
-      await loadSessionList();
-      loadWorkspaceFolders().catch(() => {});
-    }
-
-    async function ensureSession() {
-      config.value = await api("/api/config");
-      await loadSessionList();
-      const saved = sessionStorage.getItem(SESSION_KEY);
-      if (saved && sessionList.value.some((s) => s.id === saved)) {
-        try {
-          await loadSessionState(saved);
-          return;
-        } catch {
-          sessionStorage.removeItem(SESSION_KEY);
-        }
-      }
-      if (sessionList.value.length) {
-        try {
-          await loadSessionState(sessionList.value[0].id);
-          return;
-        } catch {
-          sessionList.value = [];
-        }
-      }
-      await createSession();
-      chatTitleOverride.value = "New chat";
-      sidebarSubtitle.value = "Ready";
-    }
-
-    async function newChat() {
-      if (streaming.value) return;
-      sessionInfoOpen.value = false;
-      try {
-        await createSession();
-        chatTitleOverride.value = "New chat";
-        sidebarSubtitle.value = "Ready";
-      } catch (e) {
-        showError(e.message);
-      }
-    }
-
-    /* ---------- streaming chat ---------- */
-    function stopStream() {
-      if (!streaming.value) return;
-      const sid = sessionId.value;
-      if (sid) {
-        // Fire-and-forget: asks the server to cancel the in-flight agent turn
-        // and roll its checkpoint back to the last completed message, in
-        // parallel with tearing down the client-side SSE reader below.
-        fetch(`${API}/api/sessions/${sid}/chat/stop`, { method: "POST" }).catch(() => {});
-      }
-      if (abortController) abortController.abort();
-    }
-
-    async function submit() {
-      const text = draft.value.trim();
-      if (!text || streaming.value || !sessionId.value) return;
-      draft.value = "";
-      await nextTick();
-      autoGrow();
-      try {
-        await streamChat(text);
-      } catch (e) {
-        if (e.name !== "AbortError") showError(e.message || "Request failed");
-      } finally {
-        streaming.value = false;
-        thinking.value = false;
-        stopToolTimer();
-        abortController = null;
-        nextTick(() => inputEl.value?.focus());
-      }
-    }
-
-    async function streamChat(message) {
-      streaming.value = true;
-      closePwdMenu();
-      sessionInfoOpen.value = false;
-      lastTurnUsage.value = null;
-      usageEstimate.value = null;
-
-      // Snapshot everything this turn will touch so a cancellation can roll
-      // the UI back to exactly how it looked right after the last completed
-      // agent message (mirrors the server-side checkpoint rollback).
-      const turnStartIndex = timeline.value.length;
-      const prevTitle = chatTitleOverride.value;
-
-      pushItem({ kind: "user", text: message });
-      chatTitleOverride.value = truncate(message);
-      sidebarSubtitle.value = "Running…";
-      thinking.value = true;
-
-      let assistantItem = null;
-      let toolItem = null;
-      let toolName = "";
-      let toolArgs = "";
-      let reader = null;
-      let rolledBack = false;
-
-      // Undo everything this turn added to the timeline and hand the
-      // original text back to the composer, mirroring the server-side
-      // checkpoint rollback triggered by /chat/stop.
-      const rollBackTurn = () => {
-        if (rolledBack) return;
-        rolledBack = true;
-        timeline.value.length = turnStartIndex;
-        draft.value = message;
-        chatTitleOverride.value = prevTitle;
-        sidebarSubtitle.value = "Stopped — message restored";
-        nextTick(() => autoGrow());
-      };
-
-      abortController = new AbortController();
-
-      try {
-        const res = await fetch(`${API}/api/sessions/${sessionId.value}/chat/stream`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message, pwd: selectedPwd.value || null }),
-          signal: abortController.signal,
-        });
-        if (!res.ok || !res.body) throw new Error(`Stream failed (${res.status})`);
-
-        reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        const feed = createSseParser();
-
-        const ensureAssistant = () => {
-          if (!assistantItem) assistantItem = pushItem({ kind: "assistant", text: "" });
-          return assistantItem;
-        };
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          for (const { data } of feed(decoder.decode(value, { stream: true }))) {
-            switch (data.type) {
-              case "source_start":
-                thinking.value = false;
-                if (data.is_subagent) {
-                  pushItem({ kind: "activity", icon: "subagent", name: "Sub-agent", detail: data.source });
-                }
-                break;
-
-              case "token":
-                thinking.value = false;
-                if (!data.is_subagent && data.source === "main") {
-                  ensureAssistant().text += data.text || "";
-                  scrollToBottom();
-                }
-                break;
-
-              case "tool_call_start":
-                thinking.value = false;
-                toolName = data.name || "tool";
-                toolArgs = "";
-                toolItem = pushItem({ kind: "activity", icon: "terminal", name: toolName, detail: "(…)" });
-                break;
-
-              case "tool_call_args":
-                toolArgs += data.args || "";
-                if (toolItem) toolItem.detail = `(${toolArgs})`;
-                break;
-
-              case "tool_call_end":
-                if (toolItem) toolItem.detail = `(${toolArgs || ""})`;
-                toolItem = null;
-                assistantItem = null;
-                break;
-
-              case "tool_running":
-                startToolTimer(data.name || toolName);
-                break;
-
-              case "tool_result": {
-                thinking.value = false;
-                stopToolTimer();
-                usageEstimate.value = null;
-                const content = data.content || "";
-                const previewText = content.slice(0, 200) + (content.length > 200 ? "…" : "");
-                pushItem({ kind: "activity", icon: "terminal", name: data.name, detail: `→ ${previewText}` });
-                assistantItem = null;
-                break;
-              }
-
-              case "usage":
-                if (data.turn?.model_calls) {
-                  lastTurnUsage.value = data.turn;
-                  usageEstimate.value = null;
-                }
-                break;
-
-              case "usage_estimate":
-                if (data.turn?.model_calls) lastTurnUsage.value = data.turn;
-                usageEstimate.value = data;
-                break;
-
-              case "error":
-                showError(data.message || "Agent error");
-                break;
-
-              case "done":
-                thinking.value = false;
-                stopToolTimer();
-                usageEstimate.value = null;
-                if (!assistantItem && data.reply) {
-                  pushItem({ kind: "assistant", text: data.reply });
-                }
-                if (data.usage?.model_calls) lastTurnUsage.value = data.usage;
-                sidebarSubtitle.value = `${data.messages?.length || 0} messages`;
-                if (session.value) session.value.message_count = data.messages?.length || 0;
-                loadFiles({ silent: true, force: true }).catch(() => {});
-                loadSessionList().catch(() => {});
-                break;
-
-              case "cancelled":
-                thinking.value = false;
-                stopToolTimer();
-                usageEstimate.value = null;
-                rollBackTurn();
-                break;
-            }
-          }
-        }
-      } catch (e) {
-        if (e.name === "AbortError") {
-          rollBackTurn();
-        } else {
-          throw e;
-        }
-      } finally {
-        if (reader) { try { reader.releaseLock(); } catch {} }
-      }
-    }
-
-    /* ---------- global listeners ---------- */
-    function onPwdPickerCapture(e) {
-      const target = e.target;
-      const trigger = target.closest("[data-pwd-picker-trigger]");
-      if (trigger && !trigger.disabled && pwdPickerEl.value) {
-        e.stopPropagation();
-        pwdPickerEl.value.toggle();
-        if (pwdPickerEl.value.menuOpen) onPwdPickerOpen();
-        return;
-      }
-      const option = target.closest("[data-pwd-option]");
-      if (option) {
-        e.stopPropagation();
-        selectPwd(option.dataset.folder || "");
-      }
-    }
-
-    function onDocClick(e) {
-      const target = e.target;
-      const previewBtn = target.closest("[data-preview-path]");
-      if (previewBtn && scrollEl.value?.contains(previewBtn)) {
-        const path = previewBtn.dataset.previewPath;
-        if (path) previewWorkspaceFile(path);
-        return;
-      }
-      if (sessionInfoOpen.value && sessionInfoEl.value && !sessionInfoEl.value.contains(target)) {
-        sessionInfoOpen.value = false;
-      }
-    }
-    function onKeydown(e) {
-      if (e.key === "Escape") {
-        closePwdMenu();
-        sessionInfoOpen.value = false;
-      }
-    }
-
-    onMounted(() => {
-      document.addEventListener("click", onPwdPickerCapture, true);
-      document.addEventListener("click", onDocClick);
-      document.addEventListener("keydown", onKeydown);
-      ensureSession().catch((e) => {
-        showError(e.message || "Failed to connect to API");
-        sidebarSubtitle.value = "Start API on port 8010";
-      });
-    });
-
-    onBeforeUnmount(() => {
-      document.removeEventListener("click", onPwdPickerCapture, true);
-      document.removeEventListener("click", onDocClick);
-      document.removeEventListener("keydown", onKeydown);
-      stopToolTimer();
-      clearPreviewBlob();
-      if (abortController) abortController.abort();
-    });
-
-    return {
-      iconBtn: ICON_BTN,
-      // session / chrome
-      session, sessionId, sessionList, sessionListLoading, chatTitle, chatSubtitle, modelLabel, sidebarSubtitle,
-      username, userInitial,
-      sessionInfoOpen, sessionInfoEl, sessionInfoRows,
-      loadSessionList, switchSession, deleteSession,
-      // chat
-      timeline, draft, streaming, thinking, errorMessage, canSend,
-      submit, stopStream, newChat, renderMarkdown, autoGrow,
-      // usage / running
-      usageText, runningTool, runningSeconds,
-      // files
-      fileTree, childrenMap, expandedFolders, filesLoading, filesError, workspaceOpen,
-      loadFiles, toggleFolder, newFolderOpen, newFolderName, creatingFolder, newFolderInputEl,
-      openNewFolder, cancelNewFolder, createFolder,
-      // pwd
-      workspaceFolders, selectedPwd, pwdCloseSignal, pwdPickerEl, selectPwd, onSessionInfoClick,
-      // preview
-      preview, previewCollapsed, previewExpanded, previewWidth,
-      previewWorkspaceFile, downloadWorkspaceFile, openPreviewInTab,
-      // refs
-      scrollEl, inputEl,
-    };
-  },
-}).mount("#app");
-</script>
+<script src="/main.js" defer></script>
 
 </body>
 </html>

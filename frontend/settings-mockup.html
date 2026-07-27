@@ -1,0 +1,1676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deep Agent — Settings (mockup)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f4f5f7;
+      --sidebar: #f0f1f3;
+      --surface: #ffffff;
+      --text: #1a1d23;
+      --text-secondary: #6b7280;
+      --text-muted: #9ca3af;
+      --border: #e5e7eb;
+      --border-strong: #d1d5db;
+      --hover: #e8eaed;
+      --active: #e5e7eb;
+      --primary: #374151;
+      --primary-hover: #1f2937;
+      --accent: #2563eb;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --req: #ef4444;
+      --radius: 10px;
+      --radius-sm: 6px;
+      --sidebar-w: 220px;
+      --shadow-modal: 0 20px 50px rgba(15, 23, 42, 0.18);
+      --font: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: var(--font);
+      color: var(--text);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input, textarea, select { font: inherit; color: inherit; }
+    button { cursor: pointer; border: none; background: none; }
+    a { color: var(--accent); }
+
+    .app {
+      display: flex;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 16px 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px 20px;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--text);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-name {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .nav-group { margin-bottom: 20px; }
+
+    .nav-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0 10px 8px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--text);
+      transition: background 0.12s;
+    }
+
+    .nav-item:hover { background: var(--hover); }
+    .nav-item.active { background: var(--active); }
+    .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; opacity: 0.75; }
+
+    /* ── Main ── */
+    .main {
+      flex: 1;
+      overflow: auto;
+      background: var(--surface);
+    }
+
+    .panel {
+      display: none;
+      max-width: 860px;
+      padding: 36px 48px 64px;
+      animation: fadeIn 0.18s ease;
+    }
+    .panel.active { display: block; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .panel { animation: none; }
+      * { transition: none !important; }
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+
+    .panel-title {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+    }
+
+    .panel-desc {
+      font-size: 13.5px;
+      color: var(--text-secondary);
+      line-height: 1.55;
+      max-width: 560px;
+      margin-bottom: 28px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      padding-top: 6px;
+    }
+
+    .btn-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+    }
+    .btn-text:hover { color: var(--text); background: var(--hover); }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+      transition: background 0.12s;
+    }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary svg { width: 14px; height: 14px; }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--hover);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+    }
+    .btn-secondary:hover { background: var(--border); }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .card-body { padding: 4px 0; }
+
+    /* ── Provider / accordion ── */
+    .provider {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .provider-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px;
+      background: var(--surface);
+      user-select: none;
+    }
+
+    .provider-head .chev {
+      width: 16px;
+      height: 16px;
+      color: var(--text-muted);
+      transition: transform 0.15s;
+      flex-shrink: 0;
+    }
+    .provider.collapsed .chev { transform: rotate(-90deg); }
+    .provider.collapsed .provider-models { display: none; }
+
+    .provider-name {
+      font-size: 14px;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .provider-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 6px;
+      color: var(--text-secondary);
+    }
+    .icon-btn:hover { background: var(--hover); color: var(--text); }
+    .icon-btn.danger:hover { background: #fef2f2; color: var(--danger); }
+    .icon-btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+
+    .provider-models { border-top: 1px solid var(--border); }
+
+    .model-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 16px 11px 38px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .model-row:last-child { border-bottom: none; }
+    .model-row:hover { background: #fafafa; }
+
+    .model-id {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .model-row .badge-default {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+      background: #eff6ff;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* ── Toggle ── */
+    .toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    .toggle input {
+      position: absolute;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      margin: 0;
+      z-index: 1;
+    }
+    .toggle-track {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: #d1d5db;
+      border-radius: 999px;
+      transition: background 0.15s;
+      pointer-events: none;
+    }
+    .toggle-track::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+      transition: transform 0.15s;
+    }
+    .toggle input:checked + .toggle-track { background: #4b5563; }
+    .toggle input:checked + .toggle-track::after { transform: translateX(16px); }
+    .toggle input:focus-visible + .toggle-track {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* ── MCP / list rows ── */
+    .list-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 10px 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13.5px;
+      font-weight: 500;
+    }
+    .list-row .chev-sm {
+      width: 14px;
+      height: 14px;
+      color: var(--text-muted);
+    }
+    .status-ok {
+      width: 16px;
+      height: 16px;
+      color: var(--success);
+      margin-left: auto;
+    }
+    .status-ok svg, .status-ok { display: block; }
+
+    .field-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 18px;
+      border-top: 1px solid var(--border);
+      font-size: 13.5px;
+    }
+    .field-row:first-child { border-top: none; }
+    .field-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 500;
+    }
+    .field-hint {
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+    .field-link {
+      font-size: 13px;
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    /* ── Form fields (sandbox / about) ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      padding: 18px;
+    }
+    @media (max-width: 640px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .panel { padding: 24px 20px 48px; }
+      .sidebar { width: 64px; }
+      .brand-name, .nav-label, .nav-item span { display: none; }
+      .nav-item { justify-content: center; }
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .field.span-2 { grid-column: 1 / -1; }
+    .field label {
+      font-size: 12.5px;
+      font-weight: 500;
+    }
+    .field label .req { color: var(--req); margin-left: 2px; }
+    .field input,
+    .field textarea,
+    .field select {
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 8px 11px;
+      font-size: 13px;
+      background: var(--surface);
+      outline: none;
+      transition: border-color 0.12s;
+    }
+    .field input:focus,
+    .field textarea:focus,
+    .field select:focus {
+      border-color: #9ca3af;
+    }
+    .field input:disabled {
+      background: #f9fafb;
+      color: var(--text-muted);
+    }
+    .field textarea {
+      min-height: 72px;
+      resize: vertical;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .field-help {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+    .field-help svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; stroke: currentColor; fill: none; stroke-width: 1.75; }
+
+    .switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .switch-row .label-block .title { font-size: 13.5px; font-weight: 500; }
+    .switch-row .label-block .sub { font-size: 12.5px; color: var(--text-secondary); margin-top: 2px; }
+
+    /* ── Tags ── */
+    .tag-input {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 6px 8px;
+      min-height: 40px;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #f3f4f6;
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+    }
+    .tag button {
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1;
+      padding: 0 2px;
+    }
+    .tag button:hover { color: var(--danger); }
+
+    /* ── About ── */
+    .about-hero {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 8px 0 24px;
+    }
+    .about-logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--text);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .about-meta {
+      font-size: 13.5px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+    .about-meta strong { color: var(--text); font-weight: 500; }
+    .about-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .path-box {
+      font-family: var(--mono);
+      font-size: 12px;
+      background: #f9fafb;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      word-break: break-all;
+      color: var(--text-secondary);
+    }
+
+    /* ── Modal ── */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.35);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 480px;
+      max-height: min(90vh, 640px);
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow-modal);
+      animation: modalIn 0.18s ease;
+    }
+    .modal.wide { max-width: 520px; }
+
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.97) translateY(6px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-title { font-size: 16px; font-weight: 600; }
+    .modal-body {
+      padding: 18px 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .modal-foot {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .search-wrap {
+      position: relative;
+    }
+    .search-wrap input {
+      width: 100%;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 9px 36px 9px 11px;
+      font-size: 13px;
+      outline: none;
+    }
+    .search-wrap svg {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 15px;
+      height: 15px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .pick-list {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .pick-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    .pick-item:last-child { border-bottom: none; }
+    .pick-item:hover { background: #f9fafb; }
+    .pick-item input { accent-color: var(--primary); width: 14px; height: 14px; }
+
+    .provider-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      background: #111;
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 9px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .input-with-icon {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 0 11px;
+    }
+    .input-with-icon input {
+      border: none;
+      padding: 8px 0;
+      flex: 1;
+      outline: none;
+      font-size: 13px;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(12px);
+      background: var(--text);
+      color: #fff;
+      font-size: 13px;
+      padding: 10px 18px;
+      border-radius: 8px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 200;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .dropdown {
+      position: relative;
+    }
+    .dropdown-menu {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: calc(100% + 4px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+      min-width: 180px;
+      padding: 4px;
+      z-index: 20;
+    }
+    .dropdown.open .dropdown-menu { display: block; }
+    .dropdown-menu button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 13px;
+      border-radius: 6px;
+    }
+    .dropdown-menu button:hover { background: var(--hover); }
+
+    /* ── MCP headers / JSON import ── */
+    .kv-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .kv-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 28px;
+      gap: 8px;
+      align-items: center;
+    }
+    .kv-row input {
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 7px 10px;
+      font-size: 13px;
+      outline: none;
+      width: 100%;
+    }
+    .kv-row input:focus { border-color: #9ca3af; }
+    .kv-row input.mono { font-family: var(--mono); font-size: 12px; }
+    .btn-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--accent);
+      padding: 2px 0;
+    }
+    .btn-link:hover { text-decoration: underline; }
+    .btn-link svg { width: 14px; height: 14px; }
+
+    .section-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .http-only { display: none; }
+    .http-only.show { display: flex; flex-direction: column; gap: 14px; }
+    .stdio-only.show { display: flex; flex-direction: column; gap: 14px; }
+    .stdio-only { display: none; }
+
+    .code-editor {
+      display: flex;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      background: #f8fafc;
+      min-height: 200px;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.55;
+    }
+    .code-gutter {
+      flex-shrink: 0;
+      width: 36px;
+      padding: 12px 0;
+      text-align: right;
+      color: var(--text-muted);
+      background: #f1f5f9;
+      border-right: 1px solid var(--border);
+      user-select: none;
+      font-size: 12px;
+    }
+    .code-gutter span {
+      display: block;
+      padding-right: 10px;
+      height: 1.55em;
+    }
+    .code-editor textarea {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 12px 14px;
+      resize: vertical;
+      outline: none;
+      font: inherit;
+      line-height: 1.55;
+      min-height: 200px;
+      color: var(--text);
+      tab-size: 2;
+    }
+    .code-editor.error {
+      border-color: var(--danger);
+      background: #fef2f2;
+    }
+
+    .tips-box {
+      display: flex;
+      gap: 10px;
+      padding: 12px 14px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: var(--radius-sm);
+      font-size: 12.5px;
+      color: #1e3a5f;
+      line-height: 1.5;
+    }
+    .tips-box svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      margin-top: 1px;
+      stroke: #2563eb;
+      fill: none;
+      stroke-width: 1.75;
+    }
+    .tips-box strong {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #1e40af;
+    }
+    .tips-box ul {
+      margin: 0;
+      padding-left: 16px;
+    }
+    .tips-box li + li { margin-top: 2px; }
+
+    .import-error {
+      display: none;
+      font-size: 12.5px;
+      color: var(--danger);
+      margin-top: -4px;
+    }
+    .import-error.show { display: block; }
+
+    .mcp-badge {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--text-secondary);
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 6px;
+    }
+    .mcp-badge.http { color: #1d4ed8; background: #eff6ff; }
+    .list-row .mcp-name { display: flex; align-items: center; flex: 1; min-width: 0; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">D</div>
+        <span class="brand-name">Deep Agent</span>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">AI Core</div>
+        <button type="button" class="nav-item active" data-panel="models">
+          <svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"/><path d="M13 12v4"/><path d="M11 14h4"/></svg>
+          <span>Models</span>
+        </button>
+        <button type="button" class="nav-item" data-panel="tools">
+          <svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <span>Tools</span>
+        </button>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">Runtime</div>
+        <button type="button" class="nav-item" data-panel="sandbox">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+          <span>Sandbox</span>
+        </button>
+      </div>
+
+      <div class="nav-group" style="margin-top: auto;">
+        <div class="nav-label">Other</div>
+        <button type="button" class="nav-item" data-panel="about">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span>About</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main">
+      <!-- Models -->
+      <section class="panel active" id="panel-models">
+        <div class="panel-header">
+          <h1 class="panel-title">Models</h1>
+        </div>
+        <p class="panel-desc">
+          Configure LLM providers and API keys. Platforms and models are stored in
+          <span style="font-family: var(--mono); font-size: 12px;">settings.json</span>;
+          keys go in <span style="font-family: var(--mono); font-size: 12px;">secrets.json</span>.
+        </p>
+
+        <div class="provider" id="provider-openrouter">
+          <div class="provider-head" data-toggle-provider>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            <span class="provider-name">OpenRouter</span>
+            <div class="provider-actions" onclick="event.stopPropagation()">
+              <label class="toggle" title="Enable platform">
+                <input type="checkbox" checked />
+                <span class="toggle-track"></span>
+              </label>
+              <button type="button" class="icon-btn" title="Add model" data-open="modal-add-model">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <button type="button" class="icon-btn" title="Remove platform">
+                <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+              </button>
+              <button type="button" class="icon-btn" title="Edit platform" data-open="modal-edit-platform">
+                <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="provider-models">
+            <div class="model-row">
+              <span class="model-id">anthropic/claude-sonnet-4.5</span>
+              <span class="badge-default">Default</span>
+              <label class="toggle"><input type="checkbox" checked /><span class="toggle-track"></span></label>
+              <button type="button" class="icon-btn" title="Test"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></button>
+              <button type="button" class="icon-btn danger" title="Remove"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
+            </div>
+            <div class="model-row">
+              <span class="model-id">openai/gpt-5.4</span>
+              <label class="toggle"><input type="checkbox" checked /><span class="toggle-track"></span></label>
+              <button type="button" class="icon-btn" title="Test"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></button>
+              <button type="button" class="icon-btn danger" title="Remove"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
+            </div>
+            <div class="model-row">
+              <span class="model-id">x-ai/grok-4.5</span>
+              <label class="toggle"><input type="checkbox" /><span class="toggle-track"></span></label>
+              <button type="button" class="icon-btn" title="Test"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></button>
+              <button type="button" class="icon-btn danger" title="Remove"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="provider collapsed" id="provider-ollama">
+          <div class="provider-head" data-toggle-provider>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            <span class="provider-name">Ollama</span>
+            <div class="provider-actions" onclick="event.stopPropagation()">
+              <label class="toggle" title="Enable platform">
+                <input type="checkbox" />
+                <span class="toggle-track"></span>
+              </label>
+              <button type="button" class="icon-btn" title="Add model"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+              <button type="button" class="icon-btn" title="Remove platform"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+              <button type="button" class="icon-btn" title="Edit platform"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+            </div>
+          </div>
+          <div class="provider-models">
+            <div class="model-row">
+              <span class="model-id">gemma4</span>
+              <label class="toggle"><input type="checkbox" checked /><span class="toggle-track"></span></label>
+              <button type="button" class="icon-btn" title="Test"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></button>
+              <button type="button" class="icon-btn danger" title="Remove"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tools -->
+      <section class="panel" id="panel-tools">
+        <div class="panel-header">
+          <h1 class="panel-title">Tools</h1>
+        </div>
+        <p class="panel-desc">
+          Configure MCP servers and built-in agent tools. Servers are loaded from
+          <span style="font-family: var(--mono); font-size: 12px;">.mcp.json</span>
+          (or your desktop data directory).
+        </p>
+
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">MCP Tools Configuration</span>
+            <div class="dropdown" id="add-mcp-dd">
+              <button type="button" class="btn-primary" id="btn-add-mcp-menu">
+                Add MCP
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <div class="dropdown-menu">
+                <button type="button" data-open="modal-add-mcp">Add server…</button>
+                <button type="button" data-open="modal-import-mcp">Import from JSON…</button>
+              </div>
+            </div>
+          </div>
+          <div class="card-body" id="mcp-server-list">
+            <div class="list-row" data-mcp="chrome-devtools">
+              <svg class="chev-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+              <div class="mcp-name">
+                <span>chrome-devtools</span>
+                <span class="mcp-badge">stdio</span>
+              </div>
+              <span class="status-ok" title="Connected">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg>
+              </span>
+              <button type="button" class="icon-btn" title="Edit" data-open="modal-add-mcp">
+                <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </button>
+              <button type="button" class="icon-btn" title="Refresh">
+                <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+              </button>
+            </div>
+            <div class="list-row" data-mcp="remote-api">
+              <svg class="chev-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+              <div class="mcp-name">
+                <span>remote-api</span>
+                <span class="mcp-badge http">http · auth</span>
+              </div>
+              <span class="status-ok" title="Connected">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg>
+              </span>
+              <button type="button" class="icon-btn" title="Edit" data-open="modal-add-mcp">
+                <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </button>
+              <button type="button" class="icon-btn" title="Refresh">
+                <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+              </button>
+            </div>
+            <div class="list-row" data-mcp="filesystem">
+              <svg class="chev-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+              <div class="mcp-name">
+                <span>filesystem</span>
+                <span class="mcp-badge">stdio</span>
+              </div>
+              <span class="status-ok" title="Connected">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg>
+              </span>
+              <button type="button" class="icon-btn" title="Edit" data-open="modal-add-mcp">
+                <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </button>
+              <button type="button" class="icon-btn" title="Refresh">
+                <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head" style="border-bottom: none;">
+            <span class="card-title">Built-in tools</span>
+          </div>
+          <div class="switch-row">
+            <div class="label-block">
+              <div class="title">Sandbox file tools</div>
+              <div class="sub">read / write / edit / glob / grep inside the VM workspace</div>
+            </div>
+            <label class="toggle"><input type="checkbox" checked disabled /><span class="toggle-track"></span></label>
+          </div>
+          <div class="switch-row" style="border-bottom: none;">
+            <div class="label-block">
+              <div class="title">Shell execution</div>
+              <div class="sub">Run commands in the microsandbox VM via <span style="font-family:var(--mono);font-size:11px;">vm_exec</span></div>
+            </div>
+            <label class="toggle"><input type="checkbox" checked disabled /><span class="toggle-track"></span></label>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sandbox -->
+      <section class="panel" id="panel-sandbox">
+        <div class="panel-header">
+          <h1 class="panel-title">Sandbox</h1>
+          <div class="header-actions">
+            <button type="button" class="btn-primary" id="btn-save-sandbox">Save</button>
+          </div>
+        </div>
+        <p class="panel-desc">
+          Resource limits and network policy for the agent VM. Changing these recreates the sandbox on next use.
+        </p>
+
+        <div class="card">
+          <div class="switch-row">
+            <div class="label-block">
+              <div class="title">Network access</div>
+              <div class="sub">Allow outbound HTTP/HTTPS from the sandbox</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="sandbox-network" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="form-grid">
+            <div class="field">
+              <label for="sb-mem">Memory (MiB)</label>
+              <input id="sb-mem" type="number" min="256" step="128" value="2048" />
+            </div>
+            <div class="field">
+              <label for="sb-cpus">CPUs</label>
+              <input id="sb-cpus" type="number" min="1" step="1" value="2" />
+            </div>
+            <div class="field span-2">
+              <label for="sb-dns">DNS nameservers</label>
+              <input id="sb-dns" type="text" value="1.1.1.1,8.8.8.8" disabled />
+              <div class="field-help">
+                <svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 4 12.7V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.3A7 7 0 0 1 12 2z"/><path d="M9 21h6"/></svg>
+                Enabled when network access is on.
+              </div>
+            </div>
+            <div class="field">
+              <label for="sb-exec">Exec timeout (s)</label>
+              <input id="sb-exec" type="number" min="0" value="120" />
+            </div>
+            <div class="field">
+              <label for="sb-idle">Idle timeout (s)</label>
+              <input id="sb-idle" type="number" min="0" value="600" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- About -->
+      <section class="panel" id="panel-about">
+        <div class="panel-header">
+          <h1 class="panel-title">About</h1>
+        </div>
+        <p class="panel-desc">App identity, paths, and version info.</p>
+
+        <div class="about-hero">
+          <div class="about-logo">D</div>
+          <div>
+            <div style="font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Deep Agent</div>
+            <div class="about-meta" style="margin-top: 4px;">
+              Version <strong>0.1.0</strong> · Tauri desktop + Python sidecar
+            </div>
+          </div>
+          <div class="about-links">
+            <button type="button" class="btn-secondary" id="btn-check-updates">Check for updates</button>
+            <a class="btn-secondary" href="https://github.com" style="text-decoration: none;">Documentation</a>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-title">Paths</span></div>
+          <div class="field-row" style="flex-direction: column; align-items: stretch;">
+            <div class="field-label">Data directory</div>
+            <div class="path-box" style="margin-top: 8px;">%APPDATA%\DeepAgent</div>
+          </div>
+          <div class="field-row" style="flex-direction: column; align-items: stretch;">
+            <div class="field-label">Workspace</div>
+            <div class="path-box" style="margin-top: 8px;">%APPDATA%\DeepAgent\workspace</div>
+          </div>
+          <div class="field-row" style="flex-direction: column; align-items: stretch; border-bottom: none;">
+            <div class="field-label">Settings file</div>
+            <div class="path-box" style="margin-top: 8px;">%APPDATA%\DeepAgent\settings.json</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal: Add Model -->
+  <div class="overlay" id="modal-add-model" role="dialog" aria-modal="true" aria-labelledby="add-model-title">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 class="modal-title" id="add-model-title">Add Model</h2>
+        <button type="button" class="icon-btn" data-close title="Close">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Select or enter model ID</label>
+          <div class="search-wrap">
+            <input type="text" id="model-search" placeholder="Select or enter model ID" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          </div>
+        </div>
+        <div class="pick-list" id="model-pick-list">
+          <label class="pick-item"><input type="checkbox" value="anthropic/claude-sonnet-4.5" /> anthropic/claude-sonnet-4.5</label>
+          <label class="pick-item"><input type="checkbox" value="anthropic/claude-opus-4" /> anthropic/claude-opus-4</label>
+          <label class="pick-item"><input type="checkbox" value="openai/gpt-5.4" /> openai/gpt-5.4</label>
+          <label class="pick-item"><input type="checkbox" value="openai/gpt-5.4-mini" /> openai/gpt-5.4-mini</label>
+          <label class="pick-item"><input type="checkbox" value="x-ai/grok-4.5" /> x-ai/grok-4.5</label>
+          <label class="pick-item"><input type="checkbox" value="google/gemini-2.5-pro" /> google/gemini-2.5-pro</label>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn-secondary" data-close>Cancel</button>
+        <button type="button" class="btn-primary" id="btn-confirm-add-model">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Edit Platform -->
+  <div class="overlay" id="modal-edit-platform" role="dialog" aria-modal="true" aria-labelledby="edit-plat-title">
+    <div class="modal wide">
+      <div class="modal-head">
+        <h2 class="modal-title" id="edit-plat-title">Edit Model Platform</h2>
+        <button type="button" class="icon-btn" data-close title="Close">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Model Provider <span class="req">*</span></label>
+          <div class="input-with-icon">
+            <span class="provider-icon">OR</span>
+            <input type="text" value="OpenRouter" />
+          </div>
+        </div>
+        <div class="field">
+          <label>API Endpoint <span class="req">*</span></label>
+          <input type="text" value="https://openrouter.ai/api/v1" />
+        </div>
+        <div class="field">
+          <label>API Key <span class="req">*</span></label>
+          <textarea placeholder="sk-or-…">sk-or-v1-••••••••••••••••••••••••</textarea>
+          <div class="field-help">
+            <svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 4 12.7V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.3A7 7 0 0 1 12 2z"/><path d="M9 21h6"/></svg>
+            Support multiple API keys, one per line — system will auto-rotate.
+          </div>
+        </div>
+        <div class="field">
+          <label>Model Name <span class="req">*</span></label>
+          <div class="tag-input">
+            <span class="tag">anthropic/claude-sonnet-4.5 <button type="button" aria-label="Remove">×</button></span>
+            <span class="tag">openai/gpt-5.4 <button type="button" aria-label="Remove">×</button></span>
+            <span class="tag">x-ai/grok-4.5 <button type="button" aria-label="Remove">×</button></span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn-secondary" data-close>Cancel</button>
+        <button type="button" class="btn-primary" id="btn-save-platform">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add MCP -->
+  <div class="overlay" id="modal-add-mcp" role="dialog" aria-modal="true" aria-labelledby="add-mcp-title">
+    <div class="modal wide">
+      <div class="modal-head">
+        <h2 class="modal-title" id="add-mcp-title">Add MCP Server</h2>
+        <button type="button" class="icon-btn" data-close title="Close">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="mcp-name">Name <span class="req">*</span></label>
+          <input id="mcp-name" type="text" placeholder="my-server" />
+        </div>
+        <div class="field">
+          <label for="mcp-transport">Transport</label>
+          <select id="mcp-transport">
+            <option value="stdio">stdio (command)</option>
+            <option value="http">HTTP</option>
+            <option value="sse">SSE</option>
+          </select>
+        </div>
+
+        <div class="stdio-only show" id="mcp-stdio-fields">
+          <div class="field">
+            <label for="mcp-command">Command <span class="req">*</span></label>
+            <input id="mcp-command" type="text" placeholder="npx" class="mono" style="font-family:var(--mono);font-size:12px;" />
+          </div>
+          <div class="field">
+            <label for="mcp-args">Args</label>
+            <input id="mcp-args" type="text" placeholder='-y @modelcontextprotocol/server-filesystem ./workspace' style="font-family:var(--mono);font-size:12px;" />
+            <div class="field-help">
+              <svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 4 12.7V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.3A7 7 0 0 1 12 2z"/><path d="M9 21h6"/></svg>
+              Space-separated. Env vars via <span style="font-family:var(--mono);font-size:11px;">${VAR}</span> are expanded at runtime.
+            </div>
+          </div>
+        </div>
+
+        <div class="http-only" id="mcp-http-fields">
+          <div class="field">
+            <label for="mcp-url">URL <span class="req">*</span></label>
+            <input id="mcp-url" type="text" placeholder="https://mcp.example.com/sse" style="font-family:var(--mono);font-size:12px;" />
+          </div>
+          <div class="field">
+            <label for="mcp-bearer">Bearer token</label>
+            <input id="mcp-bearer" type="password" autocomplete="off" placeholder="optional — sets Authorization: Bearer …" style="font-family:var(--mono);font-size:12px;" />
+          </div>
+          <div class="field">
+            <div class="section-label-row">
+              <label>Auth / custom headers</label>
+              <button type="button" class="btn-link" id="btn-add-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                Add header
+              </button>
+            </div>
+            <div class="kv-list" id="mcp-headers">
+              <div class="kv-row">
+                <input type="text" placeholder="Header name" value="Authorization" />
+                <input type="text" class="mono" placeholder="Value" value="Bearer ${API_TOKEN}" />
+                <button type="button" class="icon-btn danger" title="Remove header" data-remove-header>
+                  <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="field-help" style="margin-top:8px;">
+              <svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 4 12.7V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.3A7 7 0 0 1 12 2z"/><path d="M9 21h6"/></svg>
+              Stored as <span style="font-family:var(--mono);font-size:11px;">headers</span> on the server entry. Use <span style="font-family:var(--mono);font-size:11px;">${ENV}</span> for secrets.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn-secondary" data-close>Cancel</button>
+        <button type="button" class="btn-primary" id="btn-save-mcp">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Import MCP from JSON -->
+  <div class="overlay" id="modal-import-mcp" role="dialog" aria-modal="true" aria-labelledby="import-mcp-title">
+    <div class="modal wide">
+      <div class="modal-head">
+        <h2 class="modal-title" id="import-mcp-title">Import from JSON</h2>
+        <button type="button" class="icon-btn" data-close title="Close">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px;color:var(--text-secondary);line-height:1.55;">
+          Paste the MCP JSON configuration from the service documentation below.
+          If the configuration uses commands like <span style="font-family:var(--mono);font-size:12px;">npx</span> or
+          <span style="font-family:var(--mono);font-size:12px;">uvx</span>, make sure they are installed and available on your machine.
+        </p>
+        <div class="code-editor" id="mcp-json-editor">
+          <div class="code-gutter" id="mcp-json-gutter"><span>1</span></div>
+          <textarea id="mcp-json-input" spellcheck="false" aria-label="MCP JSON">
+{
+  "mcpServers": {
+    "weather": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/weather", "run", "weather.py"],
+      "description": "Weather information server"
+    },
+    "remote-docs": {
+      "url": "https://mcp.example.com/sse",
+      "headers": {
+        "Authorization": "Bearer ${DOCS_TOKEN}"
+      }
+    }
+  }
+}</textarea>
+        </div>
+        <p class="import-error" id="mcp-json-error"></p>
+        <div class="tips-box">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div>
+            <strong>Import tips</strong>
+            <ul>
+              <li>Use a valid JSON object with a top-level <span style="font-family:var(--mono);font-size:11px;">"mcpServers"</span> field.</li>
+              <li>Each server should define either <span style="font-family:var(--mono);font-size:11px;">"command"</span> (stdio) or <span style="font-family:var(--mono);font-size:11px;">"url"</span> (http/sse).</li>
+              <li>Auth: <span style="font-family:var(--mono);font-size:11px;">"headers"</span> and/or <span style="font-family:var(--mono);font-size:11px;">"bearer_token"</span> on URL servers.</li>
+              <li>Multiple servers can be imported at once.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn-secondary" data-close>Cancel</button>
+        <button type="button" class="btn-primary" id="btn-confirm-import-mcp">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script>
+    (function () {
+      const toastEl = document.getElementById("toast");
+      let toastTimer;
+
+      function toast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2200);
+      }
+
+      // Nav
+      document.querySelectorAll(".nav-item").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".nav-item").forEach((b) => b.classList.remove("active"));
+          document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+          btn.classList.add("active");
+          document.getElementById("panel-" + btn.dataset.panel).classList.add("active");
+        });
+      });
+
+      // Provider collapse
+      document.querySelectorAll("[data-toggle-provider]").forEach((head) => {
+        head.addEventListener("click", () => {
+          head.closest(".provider").classList.toggle("collapsed");
+        });
+      });
+
+      // Dropdowns
+      const addMcpDd = document.getElementById("add-mcp-dd");
+      document.getElementById("btn-add-mcp-menu").addEventListener("click", (e) => {
+        e.stopPropagation();
+        addMcpDd.classList.toggle("open");
+      });
+      document.addEventListener("click", () => {
+        addMcpDd.classList.remove("open");
+      });
+
+      // Modals
+      function openModal(id) {
+        document.getElementById(id)?.classList.add("open");
+        addMcpDd.classList.remove("open");
+        if (id === "modal-import-mcp") syncJsonGutter();
+      }
+      function closeModal(el) {
+        el.closest(".overlay")?.classList.remove("open");
+      }
+
+      document.querySelectorAll("[data-open]").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openModal(btn.dataset.open);
+        });
+      });
+      document.querySelectorAll("[data-close]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          closeModal(btn);
+          if (btn.dataset.toast) toast(btn.dataset.toast);
+        });
+      });
+      document.querySelectorAll(".overlay").forEach((ov) => {
+        ov.addEventListener("click", (e) => {
+          if (e.target === ov) ov.classList.remove("open");
+        });
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          document.querySelectorAll(".overlay.open").forEach((ov) => ov.classList.remove("open"));
+          addMcpDd.classList.remove("open");
+        }
+      });
+
+      // Model search filter
+      const search = document.getElementById("model-search");
+      search.addEventListener("input", () => {
+        const q = search.value.toLowerCase();
+        document.querySelectorAll("#model-pick-list .pick-item").forEach((item) => {
+          item.style.display = item.textContent.toLowerCase().includes(q) ? "" : "none";
+        });
+      });
+
+      document.getElementById("btn-confirm-add-model").addEventListener("click", () => {
+        const checked = [...document.querySelectorAll("#model-pick-list input:checked")];
+        const custom = search.value.trim();
+        const n = checked.length + (custom && !checked.some((c) => c.value === custom) ? 1 : 0);
+        closeModal(document.getElementById("btn-confirm-add-model"));
+        toast(n ? `Added ${n} model${n > 1 ? "s" : ""} (mock)` : "Nothing selected");
+      });
+
+      document.getElementById("btn-save-platform").addEventListener("click", () => {
+        closeModal(document.getElementById("btn-save-platform"));
+        toast("Platform saved (mock)");
+      });
+
+      document.getElementById("btn-check-updates").addEventListener("click", () => toast("You're up to date"));
+      document.getElementById("btn-save-sandbox").addEventListener("click", () => toast("Sandbox settings saved (mock)"));
+
+      // Network ↔ DNS enable
+      const net = document.getElementById("sandbox-network");
+      const dns = document.getElementById("sb-dns");
+      net.addEventListener("change", () => {
+        dns.disabled = !net.checked;
+      });
+
+      // ── MCP: transport toggle ──
+      const transport = document.getElementById("mcp-transport");
+      const stdioFields = document.getElementById("mcp-stdio-fields");
+      const httpFields = document.getElementById("mcp-http-fields");
+      function syncTransportFields() {
+        const http = transport.value === "http" || transport.value === "sse";
+        stdioFields.classList.toggle("show", !http);
+        httpFields.classList.toggle("show", http);
+      }
+      transport.addEventListener("change", syncTransportFields);
+      syncTransportFields();
+
+      // ── MCP: auth headers ──
+      const headersList = document.getElementById("mcp-headers");
+      function headerRow(name = "", value = "") {
+        const row = document.createElement("div");
+        row.className = "kv-row";
+        row.innerHTML =
+          `<input type="text" placeholder="Header name" value="${name.replace(/"/g, "&quot;")}" />` +
+          `<input type="text" class="mono" placeholder="Value" value="${value.replace(/"/g, "&quot;")}" />` +
+          `<button type="button" class="icon-btn danger" title="Remove header" data-remove-header>` +
+          `<svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`;
+        return row;
+      }
+      document.getElementById("btn-add-header").addEventListener("click", () => {
+        headersList.appendChild(headerRow());
+      });
+      headersList.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-remove-header]");
+        if (!btn) return;
+        const rows = headersList.querySelectorAll(".kv-row");
+        if (rows.length <= 1) {
+          rows[0].querySelectorAll("input").forEach((inp) => (inp.value = ""));
+          return;
+        }
+        btn.closest(".kv-row").remove();
+      });
+
+      function collectHeaders() {
+        const out = {};
+        headersList.querySelectorAll(".kv-row").forEach((row) => {
+          const [nameEl, valEl] = row.querySelectorAll("input");
+          const name = nameEl.value.trim();
+          if (name) out[name] = valEl.value;
+        });
+        return out;
+      }
+
+      function appendMcpRow(name, kind, hasAuth) {
+        const list = document.getElementById("mcp-server-list");
+        const badgeClass = kind === "stdio" ? "" : " http";
+        const badgeText = kind === "stdio" ? "stdio" : hasAuth ? kind + " · auth" : kind;
+        const row = document.createElement("div");
+        row.className = "list-row";
+        row.dataset.mcp = name;
+        row.innerHTML =
+          `<svg class="chev-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>` +
+          `<div class="mcp-name"><span></span><span class="mcp-badge${badgeClass}"></span></div>` +
+          `<span class="status-ok" title="Connected"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg></span>` +
+          `<button type="button" class="icon-btn" title="Edit" data-open="modal-add-mcp"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>` +
+          `<button type="button" class="icon-btn" title="Refresh"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg></button>`;
+        row.querySelector(".mcp-name span").textContent = name;
+        row.querySelector(".mcp-badge").textContent = badgeText;
+        list.appendChild(row);
+        row.querySelector("[data-open]").addEventListener("click", (e) => {
+          e.stopPropagation();
+          openModal("modal-add-mcp");
+        });
+      }
+
+      document.getElementById("btn-save-mcp").addEventListener("click", () => {
+        const name = document.getElementById("mcp-name").value.trim();
+        if (!name) {
+          toast("Name is required");
+          return;
+        }
+        const kind = transport.value;
+        const http = kind === "http" || kind === "sse";
+        if (http && !document.getElementById("mcp-url").value.trim()) {
+          toast("URL is required");
+          return;
+        }
+        if (!http && !document.getElementById("mcp-command").value.trim()) {
+          toast("Command is required");
+          return;
+        }
+        const headers = http ? collectHeaders() : {};
+        const bearer = document.getElementById("mcp-bearer").value.trim();
+        const hasAuth = http && (bearer || Object.keys(headers).length > 0);
+        appendMcpRow(name, http ? kind : "stdio", hasAuth);
+        closeModal(document.getElementById("btn-save-mcp"));
+        toast(`Added MCP “${name}” (mock)`);
+      });
+
+      // ── MCP: Import from JSON ──
+      const jsonInput = document.getElementById("mcp-json-input");
+      const jsonGutter = document.getElementById("mcp-json-gutter");
+      const jsonEditor = document.getElementById("mcp-json-editor");
+      const jsonError = document.getElementById("mcp-json-error");
+
+      function syncJsonGutter() {
+        const lines = Math.max(1, jsonInput.value.split("\n").length);
+        let html = "";
+        for (let i = 1; i <= lines; i++) html += `<span>${i}</span>`;
+        jsonGutter.innerHTML = html;
+      }
+      jsonInput.addEventListener("input", () => {
+        syncJsonGutter();
+        jsonEditor.classList.remove("error");
+        jsonError.classList.remove("show");
+      });
+      jsonInput.addEventListener("scroll", () => {
+        jsonGutter.style.transform = `translateY(${-jsonInput.scrollTop}px)`;
+      });
+      syncJsonGutter();
+
+      document.getElementById("btn-confirm-import-mcp").addEventListener("click", () => {
+        jsonEditor.classList.remove("error");
+        jsonError.classList.remove("show");
+        let data;
+        try {
+          data = JSON.parse(jsonInput.value);
+        } catch (err) {
+          jsonEditor.classList.add("error");
+          jsonError.textContent = "Invalid JSON: " + err.message;
+          jsonError.classList.add("show");
+          return;
+        }
+        const servers = data && data.mcpServers;
+        if (!servers || typeof servers !== "object" || Array.isArray(servers)) {
+          jsonEditor.classList.add("error");
+          jsonError.textContent = 'Expected a top-level "mcpServers" object.';
+          jsonError.classList.add("show");
+          return;
+        }
+        const names = Object.keys(servers);
+        if (!names.length) {
+          jsonEditor.classList.add("error");
+          jsonError.textContent = "No servers found under mcpServers.";
+          jsonError.classList.add("show");
+          return;
+        }
+        let imported = 0;
+        for (const name of names) {
+          const entry = servers[name] || {};
+          const hasCmd = !!entry.command;
+          const hasUrl = !!entry.url;
+          if (!hasCmd && !hasUrl) continue;
+          const kind = hasCmd ? "stdio" : (entry.type || entry.transport || "http");
+          const hasAuth = !!(entry.bearer_token || (entry.headers && Object.keys(entry.headers).length));
+          if (!document.querySelector(`[data-mcp="${CSS.escape(name)}"]`)) {
+            appendMcpRow(name, hasCmd ? "stdio" : String(kind).replace(/_/g, "-"), hasAuth);
+          }
+          imported++;
+        }
+        if (!imported) {
+          jsonEditor.classList.add("error");
+          jsonError.textContent = "Each server needs either \"command\" or \"url\".";
+          jsonError.classList.add("show");
+          return;
+        }
+        closeModal(document.getElementById("btn-confirm-import-mcp"));
+        toast(`Imported ${imported} MCP server${imported > 1 ? "s" : ""} (mock)`);
+      });
+    })();
+  </script>
+</body>
+</html>

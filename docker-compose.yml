@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
       args:
         BWRAP_SETUID: "0"
-    command: ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8010"]
+    command: ["uvicorn", "deep_agent.api.app:app", "--host", "0.0.0.0", "--port", "8010"]
     ports:
       - "8011:8010"
     environment:
@@ -22,12 +22,15 @@ services:
       IRESEARCHER_MCP_URL: ${IRESEARCHER_MCP_URL:-https://iresearcher-mcp.elevatics.site/mcp}
       IRESEARCHER_MCP_BEARER_TOKEN: ${IRESEARCHER_MCP_BEARER_TOKEN:-}
       DEEPAGENT_DATA_DIR: /app/data
+      DEEPAGENT_MCP_ENABLED: ${DEEPAGENT_MCP_ENABLED:-true}
     volumes:
       - ./workspace:/workspace
       - ./data:/app/data
       - ./frontend:/app/frontend
       - ./src:/app/src
       - ./agents:/app/agents
+      - ./skills:/app/skills
+      - ./.mcp.json:/app/.mcp.json:ro
     security_opt:
       - apparmor:unconfined
       - seccomp:unconfined
@@ -57,6 +60,7 @@ services:
       - ./workspace:/workspace
       - ./src:/app/src
       - ./agents:/app/agents
+      - ./skills:/app/skills
     security_opt:
       - apparmor:unconfined
       - seccomp:unconfined
