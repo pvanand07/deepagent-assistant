@@ -68,6 +68,16 @@ const CODE_LANG = {
 const fileName = (p) => (p || "").split("/").filter(Boolean).pop() || "file";
 const fileExt = (p) => fileName(p).toLowerCase().split(".").pop() || "";
 const isImagePath = (p) => IMAGE_EXT.has(fileExt(p));
+/** Office / archives / other binaries that browsers cannot inline-preview. */
+const BINARY_PREVIEW_EXT = new Set([
+  "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pdf",
+  "zip", "gz", "tgz", "tar", "7z", "rar",
+  "exe", "dll", "so", "dylib", "bin", "wasm",
+  "woff", "woff2", "ttf", "otf", "eot",
+  "mp3", "mp4", "mov", "webm", "wav", "ogg",
+  "sqlite", "db", "pyc", "class", "jar", "apk",
+]);
+const isNonPreviewablePath = (p) => BINARY_PREVIEW_EXT.has(fileExt(p));
 const truncate = (t, max = 48) => {
   const s = (t || "").trim();
   return s.length <= max ? (s || "New chat") : s.slice(0, max - 1) + "…";
@@ -1221,10 +1231,29 @@ createApp({
       return res.blob();
     }
 
+    async function showDownloadPreview(path, message) {
+      sidebarOpen.value = false;
+      previewCollapsed.value = false;
+      clearPreviewBlob();
+      Object.assign(preview, {
+        mode: "download",
+        message: message || "This file type cannot be previewed in the browser.",
+        title: fileName(path),
+        subtitle: path,
+        path,
+        content: "",
+        src: null,
+        rows: [],
+        highlighted: "",
+        ready: true,
+        type: "",
+      });
+    }
+
     async function previewWorkspaceFile(path) {
       if (!sessionId.value) return;
-      if (/\.(docx?|xlsx?|pptx?)$/i.test(path)) {
-        await openNativeOfficeFile(path);
+      if (isNonPreviewablePath(path)) {
+        await showDownloadPreview(path);
         return;
       }
       sidebarOpen.value = false;
@@ -1284,7 +1313,13 @@ createApp({
         }
         preview.ready = true;
       } catch (e) {
-        Object.assign(preview, { mode: "empty", message: e.message || "Preview unavailable", ready: false });
+        const msg = e.message || "Preview unavailable";
+        // Binary / unsupported content → download panel instead of a dead-end error.
+        if (/binary|cannot be displayed|415|unsupported/i.test(msg)) {
+          await showDownloadPreview(path, msg);
+          return;
+        }
+        Object.assign(preview, { mode: "empty", message: msg, ready: false });
       }
     }
 
@@ -1328,8 +1363,8 @@ createApp({
     }
 
     async function openNativeOfficeFile(path) {
-      // Browser deployments cannot invoke a host application; download instead.
-      await downloadWorkspaceFile(path);
+      // Browser deployments cannot invoke a host application; show download panel.
+      await showDownloadPreview(path);
     }
 
     /* ---------- run streaming (run-based API) ----------

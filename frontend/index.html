@@ -842,7 +842,7 @@
             :title="previewExpanded ? 'Shrink preview' : 'Expand preview'">
             <p-icon :name="previewExpanded ? 'corners-in' : 'corners-out'" :size="15" />
           </button>
-          <button type="button" @click="openPreviewInTab" :disabled="!preview.ready" :class="iconBtn"
+          <button type="button" @click="openPreviewInTab" :disabled="!preview.ready || preview.mode === 'download'" :class="iconBtn"
             title="Open in new tab">
             <p-icon name="external" :size="15" />
           </button>
@@ -864,6 +864,20 @@
         <div v-if="preview.mode === 'empty'" class="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground">
           <p-icon name="file" :size="20" class="text-muted-foreground/40" />
           {{ preview.message }}
+        </div>
+        <div v-else-if="preview.mode === 'download'" class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+          <p-icon name="file" :size="28" class="text-muted-foreground/50" />
+          <div class="space-y-1">
+            <p class="text-sm font-medium text-foreground">{{ preview.title }}</p>
+            <p class="text-xs text-muted-foreground">{{ preview.message }}</p>
+            <p class="truncate text-[11px] text-muted-foreground/70" :title="preview.subtitle">{{ preview.subtitle }}</p>
+          </div>
+          <button type="button"
+            class="inline-flex items-center gap-2 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:opacity-90"
+            @click="downloadWorkspaceFile(preview.path)">
+            <p-icon name="download" :size="15" />
+            Download
+          </button>
         </div>
         <iframe v-else-if="preview.mode === 'html' && preview.src" :src="preview.src"
           class="h-full w-full border-0 bg-background" sandbox="allow-scripts" title="Workspace file preview"></iframe>
