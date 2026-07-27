@@ -28,7 +28,7 @@ services:
       - ./frontend:/app/frontend
       - ./src:/app/src
       - ./agents:/app/agents
-      - ./skills/grillme:/app/skills/grillme
+      - ./skills:/app/skills
     security_opt:
       - apparmor:unconfined
       - seccomp:unconfined
@@ -58,7 +58,7 @@ services:
       - ./workspace:/workspace
       - ./src:/app/src
       - ./agents:/app/agents
-      - ./skills/grillme:/app/skills/grillme
+      - ./skills:/app/skills
     security_opt:
       - apparmor:unconfined
       - seccomp:unconfined

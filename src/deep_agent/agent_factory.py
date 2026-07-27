@@ -100,9 +100,9 @@ def ensure_agent_md_in_workdir(workdir: Path | None = None) -> Path | None:
 def ensure_skills_in_workdir(workdir: Path | None = None) -> Path:
     """Copy bundled ``skills/*/SKILL.md`` into the host workdir when missing.
 
-    Skills must live under the bind-mounted workdir so
-    ``MicrosandboxSandbox`` can read them at ``/workspace/skills/...``.
-    Existing skill directories are left alone (user edits win).
+    Skills must live under the bind-mounted workdir so the Bubblewrap sandbox
+    can read them at ``/workspace/skills/...``. Existing skill directories are
+    left alone (user edits win).
     """
     target = (workdir or default_workdir()) / "skills"
     target.mkdir(parents=True, exist_ok=True)
@@ -110,8 +110,6 @@ def ensure_skills_in_workdir(workdir: Path | None = None) -> Path:
         return target
     for skill_dir in sorted(_REPO_SKILLS_DIR.iterdir()):
         if not skill_dir.is_dir():
-            continue
-        if skill_dir.name != "grillme":
             continue
         skill_md = skill_dir / "SKILL.md"
         if not skill_md.is_file():
@@ -200,9 +198,9 @@ After the pipeline completes:
 Validation:
 - When the project has relevant tests, builds, linters, or format checks, run
   the narrowest useful validation first; broaden only when it adds confidence.
-- For HTML deliverables, open and spot-check the output under
-  `<task_dir>/output/` (structure, broken links, missing assets) before
-  claiming completion.
+- For HTML deliverables, require builder `inspect_html` (and `bundle_html` when
+  multi-file) with `ok: true`. Treat failed or skipped required checks as
+  incomplete.
 - Report unrelated failures that block validation; do not fix them.
 
 Final response:
@@ -360,7 +358,7 @@ def build_agent(
         system_prompt=system_prompt,
         subagents=subagents or None,
         tools=extra_tools or None,
-        skills=[f"{SANDBOX_SKILLS_SOURCE}grillme/"],
+        skills=[SANDBOX_SKILLS_SOURCE],
         middleware=[PwdContextMiddleware()],
         context_schema=AgentContext,
         checkpointer=checkpointer,

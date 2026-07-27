@@ -47,6 +47,7 @@ _DEFAULT_RO_BINDS = [
     "/bin",
     "/lib",
     "/lib64",
+    "/etc",
     "/etc/alternatives",
     "/etc/ssl",
     "/etc/resolv.conf",
@@ -89,7 +90,7 @@ class BubblewrapSandbox(BaseSandbox):
         env: dict[str, str] | None = None,
         as_uid: int = 0,
         as_gid: int = 0,
-        rlimit_as_mb: int | None = 1024,
+        rlimit_as_mb: int | None = 4096,
         rlimit_nproc: int | None = 64,
     ) -> None:
         """Create a bubblewrap-backed sandbox.

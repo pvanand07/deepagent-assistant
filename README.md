@@ -35,7 +35,7 @@ runs in a fresh `bwrap` sandbox with:
 | `src/deep_agent/api/app.py` | FastAPI HTTP API for the web GUI |
 | `src/deep_agent/agent_factory.py` | Wires model + sandbox + skills into the agent |
 | `agents/` | Research → plan → build pipeline (`source.md` / `spec.md` / `output/`) |
-| `skills/grillme/` | Bundled skill loaded into the workspace |
+| `skills/` | Bundled skills (grillme, officecli, chrome-devtools-axi) |
 | `pyproject.toml` / `uv.lock` | Python dependencies (managed with [uv](https://docs.astral.sh/uv/)) |
 | `frontend/` | Vue static GUI (chat, settings, MCP) |
 | `Dockerfile` / `docker-compose.yml` | Linux Bubblewrap runtime |

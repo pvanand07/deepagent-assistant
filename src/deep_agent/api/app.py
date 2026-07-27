@@ -764,6 +764,31 @@ async def read_file_raw(
     )
 
 
+@app.get("/api/sessions/{session_id}/files/download")
+async def download_workspace_file(
+    session_id: str,
+    path: str = Query(..., description="File path relative to workspace root"),
+) -> Response:
+    """Download any workspace file as an attachment (web replacement for native open)."""
+    meta = await _require_meta(session_id)
+    workdir = _meta_workdir(meta).resolve()
+    target = _resolve_workspace_path(workdir, path)
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    if target.is_dir():
+        raise HTTPException(status_code=400, detail="Path is a directory")
+    rel = str(target.relative_to(workdir)).replace("\\", "/")
+    return Response(
+        content=target.read_bytes(),
+        media_type=_media_type_for(target) or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{target.name}"',
+            "X-File-Path": rel,
+            "Cache-Control": "no-cache",
+        },
+    )
+
+
 @app.get("/api/sessions/{session_id}/preview/{file_path:path}")
 async def preview_workspace_asset(session_id: str, file_path: str) -> Response:
     """Serve an HTML entry (or sibling CSS/JS/image) for iframe preview.
@@ -801,15 +826,17 @@ async def open_file_native(
     session_id: str,
     path: str = Query(..., description="Office file path relative to workspace root"),
 ) -> dict[str, str]:
-    """Return a web-safe download hint; browsers cannot open host applications."""
+    """Web stand-in for desktop native open: point clients at the download route."""
     meta = await _require_meta(session_id)
     workdir = _meta_workdir(meta).resolve()
     target = _resolve_workspace_path(workdir, path)
     if not target.exists() or target.is_dir():
         raise HTTPException(status_code=404, detail="File not found")
+    rel = str(target.relative_to(workdir)).replace("\\", "/")
     return {
-        "path": str(target.relative_to(workdir)).replace("\\", "/"),
-        "status": "download_or_preview",
+        "path": rel,
+        "status": "download",
+        "download_url": f"/api/sessions/{session_id}/files/download?path={rel}",
     }
 
 

@@ -1302,11 +1302,17 @@ createApp({
         let blob;
         if (preview.path === path && preview.blob) {
           blob = preview.blob;
-        } else if (isImagePath(path)) {
-          blob = await loadFileBlob(path);
         } else {
-          const data = await api(`/api/sessions/${sessionId.value}/files/content?path=${encodeURIComponent(path)}`);
-          blob = new Blob([data.content], { type: "text/plain" });
+          // Binary-safe download (Office, images, etc.) — not the text content API.
+          const res = await fetch(
+            `${API}/api/sessions/${sessionId.value}/files/download?path=${encodeURIComponent(path)}`
+          );
+          if (!res.ok) {
+            let detail = res.statusText;
+            try { detail = (await res.json()).detail || detail; } catch {}
+            throw new Error(detail);
+          }
+          blob = await res.blob();
         }
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");

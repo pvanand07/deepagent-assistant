@@ -14,3 +14,11 @@ Run `docker compose up -d --build`, then open `http://localhost:8011`. The web
 API now uses background runs and resumable SSE instead of a connection-owned
 chat stream. Bubblewrap requires Linux, so macOS and Windows users should use
 Docker Compose rather than launching the sandbox directly on the host.
+
+
+## Tier-2 tooling
+
+The Compose image now includes Chromium and ``officecli`` for HTML QA
+(``inspect_html`` / ``screenshot_html`` / ``bundle_html``) and Office
+deliverables. Bundled skills under ``skills/`` (grillme, officecli,
+chrome-devtools-axi) are copied into the workspace on agent start.

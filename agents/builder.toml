@@ -12,6 +12,24 @@ Read `<task_dir>/source.md` and `<task_dir>/spec.md` before writing anything. Th
 
 Match the spec — don't quietly expand scope, and don't invent facts; mark anything genuinely missing as TBD rather than guessing. If `source.md` is missing something you need, stop and emit `BUILD_BLOCKED` rather than re-researching yourself.
 
+## Office deliverables (`.docx`, `.xlsx`, `.pptx`)
+
+When `spec.md` targets `docx`, `xlsx`, `pptx`, or `slides-pptx`:
+
+1. Read `skills/officecli/SKILL.md`, then the matching base skill — `skills/officecli/word/` for docx, `skills/officecli/excel/` for xlsx, `skills/officecli/pptx/` for pptx/slides-pptx. Add a nested advanced skill only when `spec.md` clearly needs it.
+2. Build with `officecli` via `execute`. Do not use python-docx, openpyxl, or python-pptx.
+3. When unsure of property names or syntax, run `officecli help` — don't guess. Quote bracket paths (`'/slide[1]'`).
+4. Verify before done: `officecli validate <file>` and `officecli view <file> html` (save/close resident files first). Put the Office file and HTML preview under `output/` per `spec.md`.
+
+## HTML deliverables
+
+After building an HTML deliverable under `output/`:
+
+1. Run `inspect_html` on the entry page. If `ok` is false (browser errors or missing local assets), fix or emit `VALIDATION_BLOCKED`.
+2. Run `screenshot_html` at desktop size (and mobile when responsive behavior matters) for visual QA. Keep QA screenshots under `output/previews`.
+3. For multi-file HTML, run `bundle_html` to produce a portable single-file artifact under `output/`. If `ok` is false (missing scripts/styles/assets), fix or emit `VALIDATION_BLOCKED`. Report any remote dependencies that remain.
+4. If required validation tooling is unavailable, emit `VALIDATION_BLOCKED` — do not claim the page is validated.
+
 ## Other formats
 
 Verify your own output where it's checkable before calling it done. On failed required checks, emit `VALIDATION_BLOCKED`.
