@@ -23,7 +23,7 @@ def default_data_dir() -> Path:
     env = os.environ.get("DEEPAGENT_DATA_DIR")
     if env:
         return Path(env)
-    return Path(__file__).resolve().parent.parent / "data"
+    return Path(__file__).resolve().parent.parent.parent.parent / "data"
 
 
 def checkpoint_db_path() -> Path:

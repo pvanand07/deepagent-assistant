@@ -9,13 +9,64 @@ from pydantic import BaseModel, Field
 
 class HealthResponse(BaseModel):
     status: str = "ok"
+    sandbox_healthy: bool = True
+    sandbox_degraded: bool = False
+    sandbox_starting: bool = False
+    sandbox_status: dict[str, Any] | None = None
+
+
+class SettingsResponse(BaseModel):
+    desktop: bool = False
+    data_dir: str
+    workdir: str
+    env_path: str = ""  # deprecated: was .env path; now settings.json path
+    settings_path: str = ""
+    values: dict[str, str] = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict)
+    setup_required: bool = False
+    sandbox_recreated: bool = False
+    sandbox_status: dict[str, Any] | None = None
+
+
+class SettingsUpdateRequest(BaseModel):
+    """Accept flat legacy ``values`` and/or structured ``config`` payload."""
+
+    values: dict[str, str] = Field(default_factory=dict)
+    config: dict[str, Any] | None = None
+    setup_complete: bool | None = None
+
+
+class ConfigResponse(BaseModel):
+    default_model: str
+    default_workdir: str | None
+    default_network: bool
+    mcp_enabled: bool
+    mcp_servers: list[str] = Field(default_factory=list)
+    username: str
+    sandbox_backend: str
+    desktop: bool
+    data_dir: str
+    sandbox_healthy: bool
+    sandbox_degraded: bool
+    sandbox_starting: bool = False
+    sandbox_status: dict[str, Any] | None = None
+    llm_provider: str
+    has_api_key: bool
+    setup_required: bool = False
 
 
 class CreateSessionRequest(BaseModel):
     model: str | None = None
+    with_subagents: bool = True
+    # Deprecated: ignored. Network/workdir are app-wide via env.
     network: bool | None = None
     workdir: str | None = None
-    with_subagents: bool = True
+
+
+class UpdateSessionRequest(BaseModel):
+    """Update mutable session fields (currently: model for the next turn)."""
+
+    model: str = Field(..., min_length=1)
 
 
 class SessionResponse(BaseModel):
@@ -28,6 +79,10 @@ class SessionResponse(BaseModel):
     mcp_servers: list[str] = Field(default_factory=list)
     mcp_tool_names: list[str] = Field(default_factory=list)
     subagent_names: list[str] = Field(default_factory=list)
+    active_run_id: str | None = None
+    last_usage: dict[str, Any] | None = None
+    last_step_usage: dict[str, Any] | None = None
+    agent_ready: bool = False
 
 
 class SessionSummary(BaseModel):
@@ -37,6 +92,7 @@ class SessionSummary(BaseModel):
     message_count: int
     model: str
     updated_at: float
+    active_run_id: str | None = None
 
 
 class SessionListResponse(BaseModel):
@@ -51,9 +107,29 @@ class ChatRequest(BaseModel):
     )
 
 
-class ChatResponse(BaseModel):
-    reply: str
-    messages: list[dict[str, Any]]
+class RunResponse(BaseModel):
+    """Returned by POST /chat (202): the turn now executes as a background run.
+
+    Stream it via GET /sessions/{session_id}/runs/{run_id}/events (SSE).
+    """
+
+    run_id: str
+    session_id: str
+    status: str
+    error: str | None = None
+    cause: str | None = None
+    stage: str | None = None
+    error: str | None = None
+    cause: str | None = None
+    stage: str | None = None
+
+
+class ActiveRunResponse(BaseModel):
+    run_id: str | None = None
+
+
+class CancelResponse(BaseModel):
+    cancelled: bool
 
 
 class ResetResponse(BaseModel):
@@ -93,3 +169,33 @@ class CreateFolderRequest(BaseModel):
 
 class FolderCreateResponse(BaseModel):
     path: str
+
+
+class AvailableModelsResponse(BaseModel):
+    models: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ModelTestRequest(BaseModel):
+    model: str = Field(..., min_length=1)
+
+
+class ModelTestResponse(BaseModel):
+    ok: bool
+    latency_ms: int = 0
+    error: str | None = None
+
+
+class McpConfigResponse(BaseModel):
+    path: str
+    servers: dict[str, Any] = Field(default_factory=dict)
+
+
+class McpConfigUpdateRequest(BaseModel):
+    servers: dict[str, Any] = Field(default_factory=dict)
+    merge: bool = False
+
+
+class McpTestResponse(BaseModel):
+    ok: bool
+    tool_count: int | None = None
+    error: str | None = None

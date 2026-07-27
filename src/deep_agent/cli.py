@@ -1,9 +1,9 @@
 """Interactive REPL for the sandboxed deep agent.
 
 Usage:
-    PYTHONPATH=src python src/cli.py
-    PYTHONPATH=src python src/cli.py --model "openai/gpt-5"
-    PYTHONPATH=src python src/cli.py --network   # allow the sandbox outbound internet access
+    PYTHONPATH=src python -m deep_agent.cli
+    PYTHONPATH=src python -m deep_agent.cli --model "openai/gpt-5"
+    PYTHONPATH=src python -m deep_agent.cli --network   # allow the sandbox outbound internet access
 
 Type 'exit' or Ctrl-D to quit. Type '/reset' to clear conversation history
 (the sandbox filesystem persists across turns within one run either way).
@@ -17,9 +17,9 @@ import argparse
 import os
 import sys
 
-from agent import _default_workdir, build_agent
-from session_persistence import CheckpointManager
-from streaming import DEFAULT_STYLE, stream_agent_turn
+from deep_agent.agent_factory import _default_workdir, build_agent
+from deep_agent.persistence.session_persistence import CheckpointManager
+from deep_agent.chat.streaming import DEFAULT_STYLE, stream_agent_turn
 
 CLI_THREAD_ID = os.environ.get("DEEPAGENT_CLI_THREAD_ID", "cli")
 

@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
       args:
         BWRAP_SETUID: "0"
-    command: ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8010"]
+    command: ["uvicorn", "deep_agent.api.app:app", "--host", "0.0.0.0", "--port", "8010"]
     ports:
       - "8011:8010"
     environment:
@@ -28,6 +28,7 @@ services:
       - ./frontend:/app/frontend
       - ./src:/app/src
       - ./agents:/app/agents
+      - ./skills/grillme:/app/skills/grillme
     security_opt:
       - apparmor:unconfined
       - seccomp:unconfined
@@ -57,6 +58,7 @@ services:
       - ./workspace:/workspace
       - ./src:/app/src
       - ./agents:/app/agents
+      - ./skills/grillme:/app/skills/grillme
     security_opt:
       - apparmor:unconfined
       - seccomp:unconfined

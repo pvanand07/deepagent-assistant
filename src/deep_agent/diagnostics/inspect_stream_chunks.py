@@ -7,7 +7,7 @@ import sys
 from collections import Counter
 from typing import Any
 
-from agent import build_agent
+from deep_agent.agent_factory import build_agent
 
 
 def _short_repr(obj: Any, max_len: int = 120) -> str:

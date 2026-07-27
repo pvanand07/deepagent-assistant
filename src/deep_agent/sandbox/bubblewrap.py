@@ -60,7 +60,7 @@ class BubblewrapSandbox(BaseSandbox):
 
     Examples:
         ```python
-        from bubblewrap_sandbox import BubblewrapSandbox
+        from deep_agent.sandbox.bubblewrap import BubblewrapSandbox
         from deepagents import create_deep_agent
 
         sandbox = BubblewrapSandbox(network=False)
