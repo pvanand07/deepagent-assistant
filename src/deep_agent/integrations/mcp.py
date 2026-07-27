@@ -210,7 +210,11 @@ def mcp_config_path() -> Path:
 
 
 def read_mcp_servers_raw() -> tuple[Path | None, dict[str, dict[str, Any]]]:
-    """Return (path used, servers dict). Path is None if nothing on disk."""
+    """Return (path used, servers dict). Path is None if nothing on disk.
+
+    Skips empty ``mcpServers`` objects so a blank data-dir file does not block
+    a seeded repo ``.mcp.json``.
+    """
     for path in _config_paths():
         if not path.is_file():
             continue
@@ -220,13 +224,14 @@ def read_mcp_servers_raw() -> tuple[Path | None, dict[str, dict[str, Any]]]:
             logger.warning("Failed to read MCP config %s: %s", path, exc)
             continue
         servers = data.get("mcpServers") or data.get("mcp_servers")
-        if isinstance(servers, dict):
+        if isinstance(servers, dict) and servers:
             cleaned = {
                 str(name): entry
                 for name, entry in servers.items()
                 if isinstance(entry, dict)
             }
-            return path, cleaned
+            if cleaned:
+                return path, cleaned
     return None, {}
 
 

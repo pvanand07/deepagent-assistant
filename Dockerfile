@@ -85,6 +85,7 @@ COPY agents/ ./agents/
 COPY skills/ ./skills/
 COPY frontend ./frontend
 COPY AGENT.md /app/seed/AGENT.md
+COPY .mcp.json.example /app/seed/.mcp.json
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
   && chmod +x /usr/local/bin/docker-entrypoint.sh

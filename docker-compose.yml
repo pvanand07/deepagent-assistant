@@ -22,6 +22,7 @@ services:
       IRESEARCHER_MCP_URL: ${IRESEARCHER_MCP_URL:-https://iresearcher-mcp.elevatics.site/mcp}
       IRESEARCHER_MCP_BEARER_TOKEN: ${IRESEARCHER_MCP_BEARER_TOKEN:-}
       DEEPAGENT_DATA_DIR: /app/data
+      DEEPAGENT_MCP_ENABLED: ${DEEPAGENT_MCP_ENABLED:-true}
     volumes:
       - ./workspace:/workspace
       - ./data:/app/data
@@ -29,6 +30,7 @@ services:
       - ./src:/app/src
       - ./agents:/app/agents
       - ./skills:/app/skills
+      - ./.mcp.json:/app/.mcp.json:ro
     security_opt:
       - apparmor:unconfined
       - seccomp:unconfined
