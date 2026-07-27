@@ -108,7 +108,7 @@
       <div class="flex h-12 shrink-0 items-center justify-between border-b border-border px-4 bg-background">
         <div class="flex items-center gap-2">
           <button type="button" @click="closeSettings" :class="iconBtn" title="Back" aria-label="Back to chat">
-            <p-icon name="x" :size="14" />
+            <p-icon name="x" :size="14"></p-icon>
           </button>
           <p class="text-sm font-semibold">Settings</p>
         </div>
@@ -509,25 +509,25 @@
 
       <div class="liquid-glass absolute inset-x-0 top-0 z-20 flex h-12 items-center gap-2 px-4">
         <span class="grid size-6 shrink-0 place-items-center rounded-md bg-foreground text-background">
-          <p-icon name="cube" :size="14" />
+          <p-icon name="cube" :size="14"></p-icon>
         </span>
         <span class="truncate text-sm font-semibold tracking-tight">Deep Agent</span>
         <div class="ml-auto flex items-center gap-0.5">
           <button type="button" @click="newChat" :class="iconBtn"
             title="New chat" aria-label="New chat">
-            <p-icon name="plus" :size="13" />
+            <p-icon name="plus" :size="13"></p-icon>
           </button>
           <button type="button" @click="openSettings" :class="iconBtn"
             title="Settings" aria-label="Settings">
-            <p-icon name="info" :size="13" />
+            <p-icon name="info" :size="13"></p-icon>
           </button>
           <button type="button" @click="loadSessionList" :disabled="sessionListLoading" :class="iconBtn"
             title="Refresh chat list" aria-label="Refresh chat list">
-            <p-icon name="refresh" :size="13" :class="sessionListLoading ? 'animate-spin' : ''" />
+            <p-icon name="refresh" :size="13" :class="sessionListLoading ? 'animate-spin' : ''"></p-icon>
           </button>
           <button type="button" @click="sidebarOpen = false" :class="iconBtn"
             class="lg:hidden" title="Close sidebar" aria-label="Close sidebar">
-            <p-icon name="x" :size="13" />
+            <p-icon name="x" :size="13"></p-icon>
           </button>
         </div>
       </div>
@@ -558,7 +558,7 @@
                 <button type="button" @click.stop="deleteSession(chat.id)"
                   class="mr-1 hidden size-6 shrink-0 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-destructive-soft hover:text-destructive group-hover:grid"
                   :title="'Delete chat'" :aria-label="'Delete chat ' + chat.title">
-                  <p-icon name="x" :size="11" />
+                  <p-icon name="x" :size="11"></p-icon>
                 </button>
               </div>
             </li>
@@ -580,11 +580,11 @@
               <span v-if="fileTree?.length" class="rounded-full bg-muted px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground/80">{{ fileTree.length }}</span>
               <button type="button" @click.stop="openNewFolder" :disabled="!sessionId || creatingFolder" :class="iconBtn"
                 title="New folder" aria-label="New folder">
-                <p-icon name="plus" :size="13" />
+                <p-icon name="plus" :size="13"></p-icon>
               </button>
               <button type="button" @click.stop="loadFiles({ force: true })" :disabled="filesLoading" :class="iconBtn"
                 title="Refresh workspace files" aria-label="Refresh workspace files">
-                <p-icon name="refresh" :size="13" :class="filesLoading ? 'animate-spin' : ''" />
+                <p-icon name="refresh" :size="13" :class="filesLoading ? 'animate-spin' : ''"></p-icon>
               </button>
             </div>
           </div>
@@ -596,21 +596,21 @@
               @keydown.enter.prevent="createFolder" @keydown.escape.prevent="cancelNewFolder" />
             <button type="button" @click="createFolder" :disabled="!newFolderName.trim() || creatingFolder" :class="iconBtn"
               title="Create folder" aria-label="Create folder">
-              <p-icon name="check" :size="13" />
+              <p-icon name="check" :size="13"></p-icon>
             </button>
             <button type="button" @click="cancelNewFolder" :disabled="creatingFolder" :class="iconBtn"
               title="Cancel" aria-label="Cancel new folder">
-              <p-icon name="x" :size="13" />
+              <p-icon name="x" :size="13"></p-icon>
             </button>
           </div>
           <ul v-show="workspaceOpen" class="scrollbar-hide flex min-h-0 flex-1 flex-col gap-px overflow-y-auto text-xs text-muted-foreground">
             <li v-if="filesError" class="flex items-center gap-1.5 rounded-md bg-destructive-soft px-2 py-1.5 text-destructive">
-              <p-icon name="warning" :size="13" class="shrink-0" />
+              <p-icon name="warning" :size="13" class="shrink-0"></p-icon>
               {{ filesError }}
             </li>
             <li v-else-if="fileTree === null" class="px-2 py-1 text-muted-foreground/60">Loading files…</li>
             <li v-else-if="!fileTree.length" class="flex flex-col items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-4 text-center text-muted-foreground/60">
-              <p-icon name="folder" :size="16" class="text-muted-foreground/40" />
+              <p-icon name="folder" :size="16" class="text-muted-foreground/40"></p-icon>
               <span>Empty workspace.<br/>Files the agent creates appear here.</span>
             </li>
             <file-node v-else v-for="entry in fileTree" :key="entry.path" :entry="entry" :depth="0"
@@ -639,7 +639,7 @@
           <div class="flex min-w-0 items-center gap-2">
             <button type="button" @click="sidebarOpen = true" :class="iconBtn"
               class="lg:hidden" title="Open sidebar" aria-label="Open sidebar">
-              <p-icon name="sidebar" :size="16" />
+              <p-icon name="sidebar" :size="16"></p-icon>
             </button>
             <div class="min-w-0">
               <p class="truncate text-sm font-semibold text-foreground">{{ chatTitle }}</p>
@@ -651,7 +651,7 @@
           <div class="relative" ref="sessionInfoEl">
             <button type="button" @click="onSessionInfoClick" :disabled="!session" :class="iconBtn"
               title="Session details" aria-label="Session details" :aria-expanded="String(sessionInfoOpen)">
-              <p-icon name="info" :size="16" />
+              <p-icon name="info" :size="16"></p-icon>
             </button>
             <div v-if="sessionInfoOpen && session"
               class="absolute right-0 top-full z-40 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-border bg-background p-3 shadow-lg">
@@ -702,7 +702,7 @@
             <!-- Empty state -->
             <div v-if="!timeline.length && !streaming" class="flex flex-col items-center gap-2 py-16 text-center">
               <span class="grid size-10 place-items-center rounded-xl bg-muted text-muted-foreground">
-                <p-icon name="cube" :size="20" />
+                <p-icon name="cube" :size="20"></p-icon>
               </span>
               <p class="text-sm font-medium text-foreground">Start building</p>
               <p class="max-w-64 text-xs leading-5 text-muted-foreground">
@@ -726,7 +726,7 @@
               <div v-else-if="item.kind === 'activity'"
                 class="flex items-center gap-2 py-px text-xs leading-5 text-muted-foreground/85">
                 <span aria-hidden="true" class="grid size-4 shrink-0 place-items-center rounded bg-muted text-muted-foreground/70">
-                  <p-icon :name="item.icon" :size="10" />
+                  <p-icon :name="item.icon" :size="10"></p-icon>
                 </span>
                 <span class="min-w-0 truncate">
                   <span v-if="item.name" class="font-medium text-muted-foreground">{{ item.name }}</span><span
@@ -760,12 +760,12 @@
         <!-- Error banner -->
         <div v-if="errorMessage"
           class="absolute inset-x-3 bottom-32 z-30 flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive-soft px-3 py-2 text-sm text-destructive shadow-sm sm:inset-x-4 sm:bottom-36">
-          <p-icon name="warning" :size="16" class="mt-0.5 shrink-0" />
+          <p-icon name="warning" :size="16" class="mt-0.5 shrink-0"></p-icon>
           <p class="min-w-0 flex-1">{{ errorMessage }}</p>
           <button type="button" @click="errorMessage = ''"
             class="grid size-5 shrink-0 place-items-center rounded text-destructive/70 transition-colors hover:bg-destructive/10 hover:text-destructive"
             aria-label="Dismiss error">
-            <p-icon name="x" :size="12" />
+            <p-icon name="x" :size="12"></p-icon>
           </button>
         </div>
 
@@ -786,13 +786,13 @@
               <button v-if="streaming" type="button" @click="stopStream"
                 class="mb-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:border-destructive/40 hover:bg-destructive-soft hover:text-destructive"
                 aria-label="Stop generating" title="Stop generating">
-                <p-icon name="stop" :size="11" />
+                <p-icon name="stop" :size="11"></p-icon>
               </button>
               <!-- send -->
               <button v-else type="submit" :disabled="!canSend"
                 class="mb-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:bg-foreground/90 disabled:opacity-35"
                 aria-label="Send message" title="Send message">
-                <p-icon name="arrow-up" :size="16" />
+                <p-icon name="arrow-up" :size="16"></p-icon>
               </button>
             </div>
 
@@ -830,7 +830,7 @@
           :title="previewCollapsed ? 'Show preview panel' : 'Hide preview panel'"
           :aria-label="previewCollapsed ? 'Show preview panel' : 'Hide preview panel'"
           :aria-expanded="String(!previewCollapsed)">
-          <p-icon name="sidebar" :size="16" />
+          <p-icon name="sidebar" :size="16"></p-icon>
         </button>
 
         <div v-if="!previewCollapsed" class="flex min-w-0 flex-1 items-center gap-1">
@@ -840,15 +840,15 @@
           </div>
           <button type="button" @click="previewExpanded = !previewExpanded" :class="iconBtn"
             :title="previewExpanded ? 'Shrink preview' : 'Expand preview'">
-            <p-icon :name="previewExpanded ? 'corners-in' : 'corners-out'" :size="15" />
+            <p-icon :name="previewExpanded ? 'corners-in' : 'corners-out'" :size="15"></p-icon>
           </button>
           <button type="button" @click="openPreviewInTab" :disabled="!preview.ready || preview.mode === 'download'" :class="iconBtn"
             title="Open in new tab">
-            <p-icon name="external" :size="15" />
+            <p-icon name="external" :size="15"></p-icon>
           </button>
           <button type="button" @click="preview.path && downloadWorkspaceFile(preview.path)" :disabled="!preview.ready" :class="iconBtn"
             title="Download file">
-            <p-icon name="download" :size="15" />
+            <p-icon name="download" :size="15"></p-icon>
           </button>
         </div>
       </div>
@@ -862,11 +862,11 @@
 
       <div v-else class="min-h-0 flex-1 bg-muted/30">
         <div v-if="preview.mode === 'empty'" class="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground">
-          <p-icon name="file" :size="20" class="text-muted-foreground/40" />
+          <p-icon name="file" :size="20" class="text-muted-foreground/40"></p-icon>
           {{ preview.message }}
         </div>
         <div v-else-if="preview.mode === 'download'" class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-          <p-icon name="file" :size="28" class="text-muted-foreground/50" />
+          <p-icon name="file" :size="28" class="text-muted-foreground/50"></p-icon>
           <div class="space-y-1">
             <p class="text-sm font-medium text-foreground">{{ preview.title }}</p>
             <p class="text-xs text-muted-foreground">{{ preview.message }}</p>
@@ -875,7 +875,7 @@
           <button type="button"
             class="inline-flex items-center gap-2 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:opacity-90"
             @click="downloadWorkspaceFile(preview.path)">
-            <p-icon name="download" :size="15" />
+            <p-icon name="download" :size="15"></p-icon>
             Download
           </button>
         </div>
